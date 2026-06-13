@@ -1,0 +1,21 @@
+# .NET
+**/bin/
+**/obj/
+*.user
+.vs/
+
+# Node
+**/node_modules/
+**/dist/
+*.log
+npm-debug.log*
+
+# Local environment overrides (committed defaults like .env.development are kept)
+.env
+.env.local
+.env.*.local
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/

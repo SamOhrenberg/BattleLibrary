@@ -1,0 +1,128 @@
+:root {
+  --bg: #f5f6f8;
+  --surface: #ffffff;
+  --fg: #1a2230;
+  --muted: #5c6878;
+  --border: #dfe3e9;
+  --accent: #2c6d8c;
+  --ok: #2f7d53;
+  --err: #b8443a;
+  --planned: #a9741f;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #11161d;
+    --surface: #1a212b;
+    --fg: #e4e9ef;
+    --muted: #97a4b3;
+    --border: #2a3542;
+    --accent: #5aa6c7;
+    --ok: #4bb27e;
+    --err: #e0675c;
+    --planned: #d6a84a;
+  }
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+}
+
+.app {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 48px 20px;
+  display: grid;
+  gap: 24px;
+}
+
+.eyebrow {
+  margin: 0 0 4px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+h1 {
+  margin: 0;
+  font-size: 2rem;
+}
+
+h2 {
+  margin: 0 0 12px;
+  font-size: 1.05rem;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 18px 20px;
+}
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-weight: 500;
+}
+
+.status-ok { color: var(--ok); }
+.status-error { color: var(--err); }
+
+.dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+.status-ok .dot { background: var(--ok); }
+.status-error .dot { background: var(--err); }
+
+.hint {
+  margin: 10px 0 0;
+  font-size: 0.88rem;
+  color: var(--muted);
+}
+
+code {
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 0.85em;
+  background: rgba(127, 127, 127, 0.15);
+}
+
+.systems {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.systems li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.badge {
+  padding: 3px 8px;
+  border-radius: 5px;
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  background: rgba(127, 127, 127, 0.15);
+}
+
+.badge-planned { color: var(--planned); }

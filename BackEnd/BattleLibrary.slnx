@@ -1,0 +1,7 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/BattleLibrary.Domain/BattleLibrary.Domain.csproj" />
+    <Project Path="src/BattleLibrary.Infrastructure/BattleLibrary.Infrastructure.csproj" />
+    <Project Path="src/BattleLibrary.Api/BattleLibrary.Api.csproj" />
+  </Folder>
+</Solution>
