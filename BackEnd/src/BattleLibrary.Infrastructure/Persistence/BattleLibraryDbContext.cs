@@ -1,3 +1,9 @@
+using BattleLibrary.Domain.Accounts;
+using BattleLibrary.Domain.Common;
+using BattleLibrary.Domain.Games;
+using BattleLibrary.Domain.Lists;
+using BattleLibrary.Domain.Social;
+using BattleLibrary.Infrastructure.BsData.Caching;
 using Microsoft.EntityFrameworkCore;
 
 namespace BattleLibrary.Infrastructure.Persistence;
@@ -8,9 +14,35 @@ namespace BattleLibrary.Infrastructure.Persistence;
 public class BattleLibraryDbContext(DbContextOptions<BattleLibraryDbContext> options)
     : DbContext(options)
 {
+    public DbSet<User> Users => Set<User>();
+    public DbSet<Profile> Profiles => Set<Profile>();
+    public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
+    public DbSet<Friendship> Friendships => Set<Friendship>();
+
+    public DbSet<CachedGameSystem> CachedGameSystems => Set<CachedGameSystem>();
+    public DbSet<CachedFaction> CachedFactions => Set<CachedFaction>();
+    public DbSet<CachedDatasheet> CachedDatasheets => Set<CachedDatasheet>();
+
+    public DbSet<ArmyList> ArmyLists => Set<ArmyList>();
+    public DbSet<ListEntry> ListEntries => Set<ListEntry>();
+
+    public DbSet<Game> Games => Set<Game>();
+    public DbSet<GameSession> GameSessions => Set<GameSession>();
+    public DbSet<GameParticipant> GameParticipants => Set<GameParticipant>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(BattleLibraryDbContext).Assembly);
+
+        // Entity keys are assigned in code (UUIDv7), not by the store, so a child
+        // added to an already-tracked parent is detected as an insert, not update.
+        foreach (var entityType in modelBuilder.Model.GetEntityTypes())
+        {
+            if (typeof(Entity).IsAssignableFrom(entityType.ClrType))
+            {
+                modelBuilder.Entity(entityType.ClrType).Property(nameof(Entity.Id)).ValueGeneratedNever();
+            }
+        }
     }
 }
