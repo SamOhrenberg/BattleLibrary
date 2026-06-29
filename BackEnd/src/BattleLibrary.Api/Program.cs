@@ -1,5 +1,16 @@
+using System.Text;
+using BattleLibrary.Api.Auth;
+using BattleLibrary.Api.Catalogue;
+using BattleLibrary.Api.Games;
+using BattleLibrary.Api.Lists;
+using BattleLibrary.Api.Social;
+using BattleLibrary.Domain.Accounts;
 using BattleLibrary.Infrastructure;
+using BattleLibrary.Infrastructure.BsData;
 using BattleLibrary.Infrastructure.Persistence;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.IdentityModel.Tokens;
 using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -14,7 +25,26 @@ if (!string.IsNullOrWhiteSpace(port))
 const string FrontendCorsPolicy = "frontend";
 
 builder.Services.AddInfrastructure(builder.Configuration);
+
+var bsDataOptions = builder.Configuration.GetSection(BsDataOptions.SectionName).Get<BsDataOptions>() ?? new BsDataOptions();
+builder.Services.AddSingleton(bsDataOptions);
+builder.Services.AddSingleton<BsDataParser>();
+builder.Services.AddScoped<BsDataRefreshService>();
+builder.Services.AddHttpClient<BsDataGitHubClient>(client =>
+{
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("BattleLibrary/0.1");
+    // GitHub's tree/raw endpoints can be slow for a ~130-file XML repo.
+    client.Timeout = TimeSpan.FromMinutes(2);
+    if (!string.IsNullOrWhiteSpace(bsDataOptions.GitHubToken))
+    {
+        client.DefaultRequestHeaders.Authorization =
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", bsDataOptions.GitHubToken);
+    }
+});
+builder.Services.AddHostedService<CatalogueRefreshBackgroundService>();
+
 builder.Services.AddOpenApi();
+builder.Services.AddSignalR();
 builder.Services.AddCors(options =>
 {
     // UI and API are separate origins; must match the UI origin in production.
@@ -24,12 +54,53 @@ builder.Services.AddCors(options =>
     options.AddPolicy(FrontendCorsPolicy, policy =>
         policy.WithOrigins(allowedOrigins)
               .AllowAnyHeader()
-              .AllowAnyMethod());
+              .AllowAnyMethod()
+              .AllowCredentials());
 });
+
+builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection(JwtOptions.SectionName));
+builder.Services.AddSingleton<IPasswordHasher<User>, PasswordHasher<User>>();
+builder.Services.AddSingleton<TokenService>();
+
+var jwt = builder.Configuration.GetSection(JwtOptions.SectionName).Get<JwtOptions>() ?? new JwtOptions();
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.MapInboundClaims = false;
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidIssuer = jwt.Issuer,
+            ValidateAudience = true,
+            ValidAudience = jwt.Audience,
+            ValidateIssuerSigningKey = true,
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwt.Key)),
+            ValidateLifetime = true,
+            ClockSkew = TimeSpan.FromSeconds(30),
+        };
+        // WebSocket clients can't send an Authorization header; the SignalR hub
+        // passes the access token as a query-string parameter instead.
+        options.Events = new JwtBearerEvents
+        {
+            OnMessageReceived = context =>
+            {
+                var accessToken = context.Request.Query["access_token"];
+                if (!string.IsNullOrEmpty(accessToken) &&
+                    context.HttpContext.Request.Path.StartsWithSegments("/hubs/game"))
+                {
+                    context.Token = accessToken;
+                }
+                return Task.CompletedTask;
+            },
+        };
+    });
+builder.Services.AddAuthorization();
 
 var app = builder.Build();
 
 app.UseCors(FrontendCorsPolicy);
+app.UseAuthentication();
+app.UseAuthorization();
 
 if (app.Environment.IsDevelopment())
 {
@@ -61,6 +132,14 @@ app.MapGet("/api/game-systems", () => Results.Ok(new[]
     new GameSystemSummary("wh40k-10e", "Warhammer 40,000 (10th Edition)", "planned"),
     new GameSystemSummary("kill-team", "Kill Team", "planned"),
 }));
+
+app.MapAuthEndpoints();
+app.MapCatalogueEndpoints();
+app.MapListEndpoints();
+app.MapSocialEndpoints();
+app.MapGameEndpoints();
+app.MapGameSessionEndpoints();
+app.MapHub<GameHub>("/hubs/game");
 
 app.Run();
 
