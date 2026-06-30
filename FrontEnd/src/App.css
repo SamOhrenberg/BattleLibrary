@@ -30,11 +30,20 @@ body {
 }
 
 .app {
-  max-width: 640px;
+  max-width: 980px;
   margin: 0 auto;
-  padding: 48px 20px;
+  /* Mobile-first: tighter gutters that respect notches; roomier on wider screens. */
+  padding: 24px max(16px, env(safe-area-inset-right)) calc(32px + env(safe-area-inset-bottom))
+    max(16px, env(safe-area-inset-left));
   display: grid;
-  gap: 24px;
+  gap: 18px;
+}
+
+@media (min-width: 640px) {
+  .app {
+    padding: 48px 20px;
+    gap: 24px;
+  }
 }
 
 .eyebrow {
@@ -126,3 +135,121 @@ code {
 }
 
 .badge-planned { color: var(--planned); }
+
+.app-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.account-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-top: 6px;
+}
+
+.account-name {
+  font-weight: 600;
+}
+
+.link-button {
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.account-details {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 16px;
+  margin: 0;
+}
+
+.account-details dt {
+  color: var(--muted);
+}
+
+.account-details dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.auth-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.auth-tabs button {
+  border: none;
+  background: none;
+  padding: 8px 12px;
+  margin-bottom: -1px;
+  color: var(--muted);
+  font: inherit;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+}
+
+.auth-tabs button.active {
+  color: var(--fg);
+  border-bottom-color: var(--accent);
+  font-weight: 600;
+}
+
+.auth-form {
+  display: grid;
+  gap: 14px;
+}
+
+.auth-form label {
+  display: grid;
+  gap: 5px;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.auth-form input {
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+}
+
+.auth-form input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.auth-error {
+  margin: 0;
+  color: var(--err);
+  font-size: 0.88rem;
+}
+
+.auth-submit {
+  padding: 10px 14px;
+  border: none;
+  border-radius: 7px;
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.auth-submit:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
