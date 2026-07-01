@@ -1,28 +1,41 @@
 import { useEffect, useState } from 'react'
-import { apiGet, type GameSystem, type HealthStatus } from './lib/api'
+import { apiGet, type HealthStatus } from './lib/api'
+import { useAuth } from './auth/AuthContext'
+import { AuthPage } from './auth/AuthPage'
+import { ListsView } from './lists/ListsView'
+import { GamesView } from './games/GamesView'
+import { CommunityView } from './social/CommunityView'
+import { TourOverlay } from './onboarding/TourOverlay'
 import './App.css'
 
 type Health = { state: 'loading' | 'ok' | 'error'; detail?: string }
 
 function App() {
+  const { user, status, logout } = useAuth()
   const [health, setHealth] = useState<Health>({ state: 'loading' })
-  const [systems, setSystems] = useState<GameSystem[]>([])
+  const [mainView, setMainView] = useState<'lists' | 'games' | 'community'>('lists')
 
   useEffect(() => {
     apiGet<HealthStatus>('/api/health')
       .then((h) => setHealth({ state: 'ok', detail: h.service }))
       .catch(() => setHealth({ state: 'error' }))
-
-    apiGet<GameSystem[]>('/api/game-systems')
-      .then(setSystems)
-      .catch(() => setSystems([]))
   }, [])
 
   return (
     <main className="app">
-      <header>
-        <p className="eyebrow">Tabletop wargaming companion</p>
-        <h1>The Battle Library</h1>
+      <header className="app-header">
+        <div>
+          <p className="eyebrow">Tabletop wargaming companion</p>
+          <h1>The Battle Library</h1>
+        </div>
+        {status === 'authenticated' && user && (
+          <div className="account-bar">
+            <span className="account-name">{user.username}</span>
+            <button type="button" className="link-button" onClick={() => void logout()}>
+              Sign out
+            </button>
+          </div>
+        )}
       </header>
 
       <section className="card">
@@ -41,21 +54,43 @@ function App() {
         )}
       </section>
 
-      <section className="card">
-        <h2>Game systems</h2>
-        {systems.length === 0 ? (
-          <p className="hint">None loaded yet.</p>
-        ) : (
-          <ul className="systems">
-            {systems.map((s) => (
-              <li key={s.id}>
-                <span>{s.name}</span>
-                <span className={`badge badge-${s.status}`}>{s.status}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+      {status === 'loading' && <p className="hint">Restoring session…</p>}
+
+      {status === 'anonymous' && <AuthPage />}
+
+      {status === 'authenticated' && user && (
+        <>
+          <nav className="segmented main-nav" aria-label="Sections">
+            <button
+              aria-selected={mainView === 'lists'}
+              className={mainView === 'lists' ? 'active' : ''}
+              onClick={() => setMainView('lists')}
+            >
+              Lists
+            </button>
+            <button
+              aria-selected={mainView === 'games'}
+              className={mainView === 'games' ? 'active' : ''}
+              onClick={() => setMainView('games')}
+            >
+              Games
+            </button>
+            <button
+              aria-selected={mainView === 'community'}
+              className={mainView === 'community' ? 'active' : ''}
+              onClick={() => setMainView('community')}
+            >
+              Community
+            </button>
+          </nav>
+
+          {mainView === 'lists' && <ListsView />}
+          {mainView === 'games' && <GamesView />}
+          {mainView === 'community' && <CommunityView email={user.email} />}
+        </>
+      )}
+
+      <TourOverlay />
     </main>
   )
 }
