@@ -1,0 +1,124 @@
+using System.Text.Json.Serialization;
+
+namespace BattleLibrary.Infrastructure.BsData.Json;
+
+// Partial mirror of the BSData JSON schema — only the fields the parser reads.
+
+internal sealed class GameSystemRoot
+{
+    public GameSystemDocument? GameSystem { get; set; }
+}
+
+internal sealed class CatalogueRoot
+{
+    public CatalogueDocument? Catalogue { get; set; }
+}
+
+internal abstract class DataDocument
+{
+    public string Id { get; set; } = "";
+    public string Name { get; set; } = "";
+    public int Revision { get; set; }
+    public List<CostType> CostTypes { get; set; } = [];
+    public List<ProfileType> ProfileTypes { get; set; } = [];
+    public List<CategoryEntry> CategoryEntries { get; set; } = [];
+    public List<ProfileNode> SharedProfiles { get; set; } = [];
+    public List<SelectionEntryNode> SharedSelectionEntries { get; set; } = [];
+    public List<SelectionEntryGroupNode> SharedSelectionEntryGroups { get; set; } = [];
+    public List<EntryLinkNode> EntryLinks { get; set; } = [];
+}
+
+internal sealed class GameSystemDocument : DataDocument;
+
+internal sealed class CatalogueDocument : DataDocument
+{
+    public string GameSystemId { get; set; } = "";
+    public bool Library { get; set; }
+    public List<CatalogueLink> CatalogueLinks { get; set; } = [];
+}
+
+internal sealed class CostType
+{
+    public string Id { get; set; } = "";
+    public string Name { get; set; } = "";
+}
+
+internal sealed class ProfileType
+{
+    public string Id { get; set; } = "";
+    public string Name { get; set; } = "";
+}
+
+internal sealed class CategoryEntry
+{
+    public string Id { get; set; } = "";
+    public string Name { get; set; } = "";
+}
+
+internal sealed class CatalogueLink
+{
+    public string Id { get; set; } = "";
+    public string Name { get; set; } = "";
+    public string TargetId { get; set; } = "";
+}
+
+internal sealed class CategoryLink
+{
+    public string Id { get; set; } = "";
+    public string Name { get; set; } = "";
+    public string TargetId { get; set; } = "";
+    public bool Primary { get; set; }
+}
+
+internal sealed class Cost
+{
+    public string Name { get; set; } = "";
+    public string TypeId { get; set; } = "";
+    public double Value { get; set; }
+}
+
+internal sealed class CharacteristicNode
+{
+    public string Name { get; set; } = "";
+    public string TypeId { get; set; } = "";
+
+    [JsonPropertyName("$text")]
+    public string? Text { get; set; }
+}
+
+internal sealed class ProfileNode
+{
+    public string Id { get; set; } = "";
+    public string Name { get; set; } = "";
+    public string TypeId { get; set; } = "";
+    public string TypeName { get; set; } = "";
+    public bool Hidden { get; set; }
+    public List<CharacteristicNode> Characteristics { get; set; } = [];
+}
+
+// Selection entries, groups, and links share the same child-bearing shape.
+internal abstract class SelectionNode
+{
+    public string Id { get; set; } = "";
+    public string Name { get; set; } = "";
+    public bool Hidden { get; set; }
+    public List<Cost> Costs { get; set; } = [];
+    public List<ProfileNode> Profiles { get; set; } = [];
+    public List<CategoryLink> CategoryLinks { get; set; } = [];
+    public List<SelectionEntryNode> SelectionEntries { get; set; } = [];
+    public List<SelectionEntryGroupNode> SelectionEntryGroups { get; set; } = [];
+    public List<EntryLinkNode> EntryLinks { get; set; } = [];
+}
+
+internal sealed class SelectionEntryNode : SelectionNode
+{
+    public string Type { get; set; } = "";
+}
+
+internal sealed class SelectionEntryGroupNode : SelectionNode;
+
+internal sealed class EntryLinkNode : SelectionNode
+{
+    public string Type { get; set; } = "";
+    public string TargetId { get; set; } = "";
+}
