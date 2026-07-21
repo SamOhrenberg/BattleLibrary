@@ -4,4 +4,7 @@
     <Project Path="src/BattleLibrary.Infrastructure/BattleLibrary.Infrastructure.csproj" />
     <Project Path="src/BattleLibrary.Api/BattleLibrary.Api.csproj" />
   </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/BattleLibrary.Tests/BattleLibrary.Tests.csproj" />
+  </Folder>
 </Solution>
