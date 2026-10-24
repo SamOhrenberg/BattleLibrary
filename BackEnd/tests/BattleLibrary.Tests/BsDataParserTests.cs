@@ -43,6 +43,23 @@ public class BsDataParserTests
     }
 
     [Fact]
+    public void Parses_orks_detachments_and_enhancements()
+    {
+        var (gst, orks) = LoadOrSkip();
+        var model = new BsDataParser().ParseCatalogue(gst, orks);
+
+        Assert.NotEmpty(model.Detachments);
+        Assert.Contains(model.Detachments, d => d.Name == "War Horde");
+
+        var warHorde = model.Detachments.Single(d => d.Name == "War Horde");
+        Assert.Equal(3, warHorde.Dp);
+        Assert.NotEmpty(warHorde.Enhancements);
+        var killchoppa = warHorde.Enhancements.FirstOrDefault(e => e.Name.Contains("Killchoppa"));
+        Assert.NotNull(killchoppa);
+        Assert.Equal(15, killchoppa!.Points);
+    }
+
+    [Fact]
     public void Writes_summary()
     {
         var (gst, orks) = LoadOrSkip();

@@ -10,7 +10,14 @@ public sealed record CatalogueModel(
     string FactionId,
     string FactionName,
     IReadOnlyList<Datasheet> Datasheets,
-    IReadOnlyList<string> Equipment);
+    IReadOnlyList<string> Equipment,
+    IReadOnlyList<Detachment> Detachments);
+
+// A detachment choice, its Detachment Points cost, and the enhancements it
+// offers (each with its pts cost).
+public sealed record Detachment(string Id, string Name, int Dp, IReadOnlyList<Enhancement> Enhancements);
+
+public sealed record Enhancement(string Id, string Name, int Points);
 
 public sealed record Datasheet(
     string Id,

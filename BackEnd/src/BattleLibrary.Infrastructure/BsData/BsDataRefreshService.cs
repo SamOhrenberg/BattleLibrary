@@ -82,6 +82,7 @@ public sealed class BsDataRefreshService(
                 Name = model.FactionName,
                 DatasheetCount = model.Datasheets.Count,
                 EquipmentJson = JsonSerializer.Serialize(model.Equipment, CacheJson.Options),
+                DetachmentsJson = JsonSerializer.Serialize(model.Detachments, CacheJson.Options),
             };
             foreach (var sheet in model.Datasheets)
             {
@@ -90,6 +91,7 @@ public sealed class BsDataRefreshService(
                     BsDataId = sheet.Id,
                     Name = sheet.Name,
                     Points = sheet.Points,
+                    KeywordsCsv = string.Join('|', sheet.Keywords),
                     ModelJson = JsonSerializer.Serialize(sheet, CacheJson.Options),
                 });
             }

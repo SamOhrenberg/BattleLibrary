@@ -7,6 +7,11 @@ namespace BattleLibrary.Api.Catalogue;
 
 public static class CatalogueEndpoints
 {
+    private static readonly JsonSerializerOptions WebJson = new(JsonSerializerDefaults.Web);
+
+    private sealed record EnhancementDto(string Id, string Name, int Points);
+    private sealed record DetachmentDto(string Id, string Name, int Dp, IReadOnlyList<EnhancementDto> Enhancements);
+
     private static string[] DeserializeNames(string? json)
     {
         if (string.IsNullOrWhiteSpace(json))
@@ -16,6 +21,22 @@ public static class CatalogueEndpoints
         try
         {
             return JsonSerializer.Deserialize<string[]>(json) ?? [];
+        }
+        catch (JsonException)
+        {
+            return [];
+        }
+    }
+
+    private static IReadOnlyList<DetachmentDto> DeserializeDetachments(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return [];
+        }
+        try
+        {
+            return JsonSerializer.Deserialize<List<DetachmentDto>>(json, WebJson) ?? [];
         }
         catch (JsonException)
         {
@@ -50,6 +71,8 @@ public static class CatalogueEndpoints
                 s.RefreshedAt,
                 Factions = s.Factions.Count,
                 Datasheets = s.Factions.Sum(f => f.DatasheetCount),
+                // A system is point-less (e.g. Kill Team 2024) when no datasheet carries points.
+                Pointless = !s.Factions.Any(f => f.Datasheets.Any(d => d.Points != null)),
             })
             .ToListAsync(ct);
         return Results.Ok(systems);
@@ -78,24 +101,32 @@ public static class CatalogueEndpoints
         var faction = await db.CachedFactions
             .Where(f => f.BsDataId == factionId)
             .Where(f => db.CachedGameSystems.Any(s => s.Key == f.GameSystemKey && s.Enabled))
-            .Select(f => new { f.Id, f.Name, f.BsDataId, f.EquipmentJson })
+            .Select(f => new { f.Id, f.Name, f.BsDataId, f.EquipmentJson, f.DetachmentsJson })
             .FirstOrDefaultAsync(ct);
         if (faction is null)
         {
             return Results.NotFound();
         }
 
-        var datasheets = await db.CachedDatasheets
+        var rows = await db.CachedDatasheets
             .Where(d => d.FactionId == faction.Id)
             .OrderBy(d => d.Name)
-            .Select(d => new { id = d.BsDataId, name = d.Name, points = d.Points })
+            .Select(d => new { id = d.BsDataId, name = d.Name, points = d.Points, keywords = d.KeywordsCsv })
             .ToListAsync(ct);
+        var datasheets = rows.Select(d => new
+        {
+            d.id,
+            d.name,
+            d.points,
+            keywords = string.IsNullOrEmpty(d.keywords) ? [] : d.keywords.Split('|'),
+        });
 
         var equipment = DeserializeNames(faction.EquipmentJson);
+        var detachments = DeserializeDetachments(faction.DetachmentsJson);
 
         return Results.Ok(new
         {
-            faction = new { id = faction.BsDataId, name = faction.Name, equipment },
+            faction = new { id = faction.BsDataId, name = faction.Name, equipment, detachments },
             datasheets,
         });
     }

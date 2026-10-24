@@ -13,6 +13,8 @@ namespace BattleLibrary.Infrastructure.BsData;
 public sealed class BsDataParser
 {
     private const int MaxDepth = 6;
+    // Enhancement entries sit deeper under nested config groups than datasheets.
+    private const int DetachmentMaxDepth = 10;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -94,11 +96,124 @@ public sealed class BsDataParser
 
         var ptsTypeId = ResolvePointsTypeId(system, schema);
         var index = Index.Build(documents);
-        var datasheets = ExtractDatasheets(catalogue, schema, ptsTypeId, index, BuildLibraryLookup(libraries));
+        var librariesById = BuildLibraryLookup(libraries);
+        var datasheets = ExtractDatasheets(catalogue, schema, ptsTypeId, index, librariesById);
         var equipment = ExtractFactionEquipment(catalogue, schema);
+        var detachments = ExtractDetachments(system, catalogue, schema, ptsTypeId, librariesById);
 
         var info = new GameSystemInfo(system.Id, system.Name, system.Revision);
-        return new CatalogueModel(info, catalogue.Id, catalogue.Name, datasheets, equipment);
+        return new CatalogueModel(info, catalogue.Id, catalogue.Name, datasheets, equipment, detachments);
+    }
+
+    // Detachments: child entries of a selection group named per the schema (40k's
+    // "Detachment"), each paired with its enhancements — the entries under a
+    // "<Detachment> Enhancements" group that carry an enhancement counter cost,
+    // snapshotting the enhancement's pts cost. Names only, no rules text.
+    private static IReadOnlyList<Detachment> ExtractDetachments(
+        GameSystemDocument system,
+        CatalogueDocument catalogue,
+        CatalogueSchema schema,
+        string ptsTypeId,
+        IReadOnlyDictionary<string, CatalogueDocument> librariesById)
+    {
+        if (string.IsNullOrEmpty(schema.DetachmentGroupName))
+        {
+            return [];
+        }
+
+        var enhCostId = system.CostTypes
+            .FirstOrDefault(c => string.Equals(c.Name, schema.EnhancementCostName, StringComparison.OrdinalIgnoreCase))?.Id ?? "";
+        var dpCostId = system.CostTypes
+            .FirstOrDefault(c => string.Equals(c.Name, schema.DetachmentPointsCostName, StringComparison.OrdinalIgnoreCase))?.Id ?? "";
+
+        var docs = new List<CatalogueDocument> { catalogue };
+        foreach (var link in catalogue.CatalogueLinks)
+        {
+            if (!string.IsNullOrEmpty(link.TargetId) && librariesById.TryGetValue(link.TargetId, out var library))
+            {
+                docs.Add(library);
+            }
+        }
+
+        var options = new List<(string Id, string Name, int Dp)>();
+        var enhancements = new List<(string Det, string Id, string Name, int Points)>();
+        foreach (var doc in docs)
+        {
+            foreach (var root in doc.SharedSelectionEntryGroups.Cast<SelectionNode>().Concat(doc.SharedSelectionEntries))
+            {
+                CollectDetachments(root, null, DetachmentMaxDepth, [], schema.DetachmentGroupName, enhCostId, dpCostId, ptsTypeId, options, enhancements);
+            }
+        }
+
+        var byDetachment = enhancements
+            .GroupBy(e => e.Det, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                g => g.Key,
+                g => g.DistinctBy(e => e.Name, StringComparer.OrdinalIgnoreCase)
+                      .Select(e => new Enhancement(e.Id, e.Name, e.Points))
+                      .ToList(),
+                StringComparer.OrdinalIgnoreCase);
+
+        return options
+            .DistinctBy(o => o.Id)
+            .Where(o => !string.IsNullOrWhiteSpace(o.Name))
+            .Select(o => new Detachment(
+                o.Id, o.Name, o.Dp,
+                byDetachment.TryGetValue(o.Name, out var es) ? es : []))
+            .OrderBy(d => d.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static void CollectDetachments(
+        SelectionNode node, string? groupName, int depth, HashSet<string> visited,
+        string detachmentGroupName, string enhCostId, string dpCostId, string ptsTypeId,
+        List<(string Id, string Name, int Dp)> options,
+        List<(string Det, string Id, string Name, int Points)> enhancements)
+    {
+        if (depth < 0 || (!string.IsNullOrEmpty(node.Id) && !visited.Add(node.Id)))
+        {
+            return;
+        }
+
+        // Detachment options: the direct child entries of a "Detachment" group,
+        // each with its Detachment Points cost (default 1 when unpriced).
+        if (node is SelectionEntryGroupNode && string.Equals(node.Name, detachmentGroupName, StringComparison.OrdinalIgnoreCase))
+        {
+            foreach (var child in node.SelectionEntries)
+            {
+                if (!string.IsNullOrEmpty(child.Id))
+                {
+                    var dp = string.IsNullOrEmpty(dpCostId)
+                        ? 1
+                        : child.Costs.Where(c => c.TypeId == dpCostId).Select(c => (int)Math.Round(c.Value)).DefaultIfEmpty(1).First();
+                    options.Add((child.Id, child.Name, dp));
+                }
+            }
+        }
+
+        // Enhancement entries: carry the enhancement counter cost; the enclosing
+        // group is named "<Detachment> Enhancements".
+        if (!string.IsNullOrEmpty(enhCostId)
+            && node.Costs.Any(c => c.TypeId == enhCostId && c.Value != 0)
+            && !string.IsNullOrWhiteSpace(node.Name))
+        {
+            var det = groupName ?? "";
+            const string suffix = " Enhancements";
+            if (det.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
+            {
+                det = det[..^suffix.Length];
+            }
+            enhancements.Add((det, node.Id, node.Name, PointsOf(node, ptsTypeId)));
+        }
+
+        foreach (var child in node.SelectionEntries)
+        {
+            CollectDetachments(child, groupName, depth - 1, visited, detachmentGroupName, enhCostId, dpCostId, ptsTypeId, options, enhancements);
+        }
+        foreach (var group in node.SelectionEntryGroups)
+        {
+            CollectDetachments(group, group.Name, depth - 1, visited, detachmentGroupName, enhCostId, dpCostId, ptsTypeId, options, enhancements);
+        }
     }
 
     // Faction-wide equipment (e.g. Kill Team's "Faction Equipment" group): the

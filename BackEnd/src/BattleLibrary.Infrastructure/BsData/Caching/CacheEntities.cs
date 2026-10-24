@@ -27,6 +27,9 @@ public sealed class CachedFaction
     // Faction-wide equipment names (jsonb array); empty for 40k.
     public string EquipmentJson { get; set; } = "[]";
 
+    // Detachments + their enhancements (jsonb); empty for point-less systems.
+    public string DetachmentsJson { get; set; } = "[]";
+
     public List<CachedDatasheet> Datasheets { get; set; } = [];
 }
 
@@ -39,6 +42,10 @@ public sealed class CachedDatasheet
     public string BsDataId { get; set; } = "";
     public string Name { get; set; } = "";
     public int? Points { get; set; }
+
+    // Keywords joined (for grouping the catalogue by unit type without
+    // deserializing the full model); the full set lives in ModelJson.
+    public string KeywordsCsv { get; set; } = "";
 
     // Serialized Domain.Catalogue.Datasheet (jsonb).
     public string ModelJson { get; set; } = "";

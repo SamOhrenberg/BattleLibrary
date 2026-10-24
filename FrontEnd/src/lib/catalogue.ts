@@ -10,6 +10,8 @@ export interface CatalogueSystem {
   refreshedAt: string
   factions: number
   datasheets: number
+  // True for point-less systems (e.g. Kill Team 2024): no points limits.
+  pointless: boolean
 }
 
 export interface CatalogueFaction {
@@ -22,10 +24,24 @@ export interface CatalogueDatasheet {
   id: string
   name: string
   points: number | null
+  keywords: string[]
+}
+
+export interface CatalogueEnhancement {
+  id: string
+  name: string
+  points: number
+}
+
+export interface CatalogueDetachment {
+  id: string
+  name: string
+  dp: number
+  enhancements: CatalogueEnhancement[]
 }
 
 export interface FactionDatasheets {
-  faction: { id: string; name: string; equipment?: string[] }
+  faction: { id: string; name: string; equipment?: string[]; detachments?: CatalogueDetachment[] }
   datasheets: CatalogueDatasheet[]
 }
 

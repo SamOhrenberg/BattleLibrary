@@ -14,6 +14,13 @@ public sealed class CatalogueSchema
     // Cost type name that holds list points ("pts"); empty for point-less systems.
     public required string PointsCostName { get; init; }
 
+    // Selection-group name listing detachments, and the cost-type names for an
+    // enhancement counter and a detachment's point cost. Empty on systems
+    // without detachments (e.g. Kill Team).
+    public string DetachmentGroupName { get; init; } = "";
+    public string EnhancementCostName { get; init; } = "";
+    public string DetachmentPointsCostName { get; init; } = "";
+
     private static HashSet<string> Set(params string[] values) => new(values, StringComparer.OrdinalIgnoreCase);
 
     public static readonly CatalogueSchema Wh40k = new()
@@ -24,6 +31,9 @@ public sealed class CatalogueSchema
         AbilityTypes = Set("Abilities"),
         EquipmentTypes = Set(),
         PointsCostName = "pts",
+        DetachmentGroupName = "Detachment",
+        EnhancementCostName = "Enhancements",
+        DetachmentPointsCostName = "Detachment Points",
     };
 
     public static readonly CatalogueSchema KillTeam2024 = new()
