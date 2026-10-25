@@ -4,6 +4,18 @@ public sealed record CreateListRequest(string Name, string GameSystemKey, string
 
 public sealed record UpdateListRequest(string Name, int? PointsLimit);
 
+public sealed record SetFeaturedRequest(bool Featured);
+
+public sealed record SetBattleSizeRequest(string? BattleSize);
+
+public sealed record SetDetachmentsRequest(IReadOnlyList<string> DetachmentIds);
+
+public sealed record ListDetachmentDto(string Id, string Name, int Dp);
+
+public sealed record SetWarlordRequest(bool IsWarlord);
+
+public sealed record SetEnhancementRequest(string? EnhancementId);
+
 public sealed record AddEntryRequest(string DatasheetId, int? Quantity, IReadOnlyList<string>? SelectedOptionIds);
 
 public sealed record UpdateEntryRequest(int Quantity, IReadOnlyList<string>? SelectedOptionIds);
@@ -18,6 +30,11 @@ public sealed record ListEntryDto(
     int OptionsPoints,
     int Quantity,
     int LineTotal,
+    IReadOnlyList<string> Keywords,
+    bool IsWarlord,
+    string? EnhancementId,
+    string? EnhancementName,
+    int EnhancementPoints,
     IReadOnlyList<SelectedOptionDto> SelectedOptions);
 
 public sealed record ArmyListSummaryDto(
@@ -29,6 +46,8 @@ public sealed record ArmyListSummaryDto(
     int? PointsLimit,
     int Total,
     int EntryCount,
+    bool Featured,
+    string? BattleSize,
     DateTimeOffset UpdatedAt);
 
 public sealed record ArmyListDto(
@@ -40,5 +59,8 @@ public sealed record ArmyListDto(
     int? PointsLimit,
     int Total,
     bool IsOverLimit,
+    bool Featured,
+    string? BattleSize,
+    IReadOnlyList<ListDetachmentDto> Detachments,
     DateTimeOffset UpdatedAt,
     IReadOnlyList<ListEntryDto> Entries);

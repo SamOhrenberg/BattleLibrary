@@ -14,6 +14,18 @@ public class ListEntry : Entity
     public int Points { get; set; }
     public int Quantity { get; set; } = 1;
 
+    // Datasheet keywords snapshotted at add-time, for list-legality checks
+    // (CHARACTER / EPIC HERO / BATTLELINE / DEDICATED TRANSPORT).
+    public List<string> Keywords { get; set; } = [];
+
+    // Army's warlord (exactly one CHARACTER across the list).
+    public bool IsWarlord { get; set; }
+
+    // Enhancement assigned to this character, snapshotting id/name/points.
+    public string? EnhancementId { get; set; }
+    public string? EnhancementName { get; set; }
+    public int EnhancementPoints { get; set; }
+
     // Chosen wargear options, each snapshotting its id/name/points at add-time.
     public List<SelectedOption> SelectedOptions { get; set; } = [];
 }

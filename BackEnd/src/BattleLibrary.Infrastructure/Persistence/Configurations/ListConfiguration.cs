@@ -13,6 +13,8 @@ public sealed class ArmyListConfiguration : IEntityTypeConfiguration<ArmyList>
         builder.Property(l => l.GameSystemKey).IsRequired().HasMaxLength(100);
         builder.Property(l => l.FactionId).IsRequired().HasMaxLength(100);
         builder.Property(l => l.FactionName).HasMaxLength(200);
+        builder.Property(l => l.BattleSize).HasMaxLength(50);
+        builder.OwnsMany(l => l.Detachments, d => d.ToJson());
         builder.HasIndex(l => l.UserId);
 
         builder.HasOne<User>()
@@ -33,6 +35,8 @@ public sealed class ListEntryConfiguration : IEntityTypeConfiguration<ListEntry>
     {
         builder.Property(e => e.DatasheetId).IsRequired().HasMaxLength(100);
         builder.Property(e => e.DatasheetName).IsRequired().HasMaxLength(200);
+        builder.Property(e => e.EnhancementId).HasMaxLength(100);
+        builder.Property(e => e.EnhancementName).HasMaxLength(200);
         builder.OwnsMany(e => e.SelectedOptions, o => o.ToJson());
         builder.HasIndex(e => e.ArmyListId);
     }
