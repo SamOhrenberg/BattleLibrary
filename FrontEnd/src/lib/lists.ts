@@ -17,6 +17,11 @@ export interface ListEntry {
   optionsPoints: number
   quantity: number
   lineTotal: number
+  keywords: string[]
+  isWarlord: boolean
+  enhancementId: string | null
+  enhancementName: string | null
+  enhancementPoints: number
   selectedOptions: SelectedOption[]
 }
 
@@ -29,7 +34,15 @@ export interface ArmyListSummary {
   pointsLimit: number | null
   total: number
   entryCount: number
+  featured: boolean
+  battleSize: string | null
   updatedAt: string
+}
+
+export interface ListDetachment {
+  id: string
+  name: string
+  dp: number
 }
 
 export interface ArmyList {
@@ -41,6 +54,9 @@ export interface ArmyList {
   pointsLimit: number | null
   total: number
   isOverLimit: boolean
+  featured: boolean
+  battleSize: string | null
+  detachments: ListDetachment[]
   updatedAt: string
   entries: ListEntry[]
 }
@@ -85,6 +101,28 @@ export function updateList(id: string, name: string, pointsLimit: number | null)
 
 export function deleteList(id: string): Promise<void> {
   return send<void>(`/api/lists/${id}`, 'DELETE')
+}
+
+export function setListFeatured(id: string, featured: boolean): Promise<ArmyList> {
+  return send<ArmyList>(`/api/lists/${id}/featured`, 'POST', { featured })
+}
+
+export const BATTLE_SIZES = ['Incursion', 'Strike Force', 'Onslaught'] as const
+
+export function setBattleSize(id: string, battleSize: string | null): Promise<ArmyList> {
+  return send<ArmyList>(`/api/lists/${id}/battle-size`, 'POST', { battleSize })
+}
+
+export function setDetachments(id: string, detachmentIds: string[]): Promise<ArmyList> {
+  return send<ArmyList>(`/api/lists/${id}/detachments`, 'POST', { detachmentIds })
+}
+
+export function setWarlord(listId: string, entryId: string, isWarlord: boolean): Promise<ArmyList> {
+  return send<ArmyList>(`/api/lists/${listId}/entries/${entryId}/warlord`, 'POST', { isWarlord })
+}
+
+export function setEnhancement(listId: string, entryId: string, enhancementId: string | null): Promise<ArmyList> {
+  return send<ArmyList>(`/api/lists/${listId}/entries/${entryId}/enhancement`, 'POST', { enhancementId })
 }
 
 export function addEntry(

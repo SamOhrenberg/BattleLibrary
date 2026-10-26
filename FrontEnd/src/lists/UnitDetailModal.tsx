@@ -1,22 +1,43 @@
 import { useEffect, useMemo, useState } from 'react'
 import { getDatasheet, type DatasheetDetail, type DatasheetOption } from '../lib/catalogue'
 
+interface EnhancementOption {
+  id: string
+  name: string
+  points: number
+}
+
 interface Props {
   datasheetId: string
+  initialSelected?: string[]
+  submitLabel?: string
+  busy?: boolean
+  // Edit-only: assign the Warlord / an enhancement, applied immediately.
+  warlord?: { value: boolean; onChange: (value: boolean) => void }
+  enhancement?: { value: string | null; options: EnhancementOption[]; onChange: (id: string | null) => void }
   onAdd: (selectedOptionIds: string[]) => void
   onClose: () => void
 }
 
-export function UnitDetailModal({ datasheetId, onAdd, onClose }: Props) {
+export function UnitDetailModal({
+  datasheetId,
+  initialSelected,
+  submitLabel,
+  busy,
+  warlord,
+  enhancement,
+  onAdd,
+  onClose,
+}: Props) {
   const [detail, setDetail] = useState<DatasheetDetail | null>(null)
   const [error, setError] = useState(false)
-  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [selected, setSelected] = useState<Set<string>>(() => new Set(initialSelected ?? []))
 
   useEffect(() => {
     let active = true
     setDetail(null)
     setError(false)
-    setSelected(new Set())
+    setSelected(new Set(initialSelected ?? []))
     getDatasheet(datasheetId)
       .then((d) => active && setDetail(d))
       .catch(() => active && setError(true))
@@ -122,6 +143,46 @@ export function UnitDetailModal({ datasheetId, onAdd, onClose }: Props) {
               </div>
             )}
 
+            {(() => {
+              const kw = new Set(detail.keywords.map((k) => k.toLowerCase()))
+              const isChar = kw.has('character')
+              const isEpic = kw.has('epic hero')
+              return (
+                <>
+                  {warlord && isChar && (
+                    <div className="detail-section">
+                      <h4>Warlord</h4>
+                      <label className="modal-check">
+                        <input
+                          type="checkbox"
+                          checked={warlord.value}
+                          onChange={(e) => warlord.onChange(e.target.checked)}
+                          disabled={busy}
+                        />
+                        Make this unit your Warlord
+                      </label>
+                    </div>
+                  )}
+                  {enhancement && isChar && !isEpic && (
+                    <div className="detail-section">
+                      <h4>Enhancement</h4>
+                      <select
+                        className="enh-select"
+                        value={enhancement.value ?? ''}
+                        onChange={(e) => enhancement.onChange(e.target.value || null)}
+                        disabled={busy}
+                      >
+                        <option value="">No enhancement</option>
+                        {enhancement.options.map((o) => (
+                          <option key={o.id} value={o.id}>{o.name} (+{o.points})</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                </>
+              )
+            })()}
+
             <div className="modal-actions">
               {detail.points != null && (
                 <span className="modal-subtotal">
@@ -129,7 +190,7 @@ export function UnitDetailModal({ datasheetId, onAdd, onClose }: Props) {
                 </span>
               )}
               <button type="button" className="btn btn-primary" onClick={() => onAdd([...selected])}>
-                Add to list
+                {submitLabel ?? 'Add to list'}
               </button>
             </div>
           </>

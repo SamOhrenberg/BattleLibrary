@@ -288,7 +288,9 @@
     grid-template-columns: 1fr 1fr;
     margin-top: 16px;
   }
-  .builder-grid .panel {
+  /* Both panels show side by side; override the single-tab hide rules. */
+  .builder-grid.tab-catalogue .panel-list,
+  .builder-grid.tab-list .panel-catalogue {
     display: flex;
   }
 }
@@ -329,13 +331,16 @@
 
 .scroll {
   overflow-y: auto;
-  max-height: 62vh;
+  max-height: 70vh;
+  min-height: 300px;
   -webkit-overflow-scrolling: touch;
 }
 
 @media (min-width: 820px) {
   .scroll {
-    max-height: 460px;
+    /* Fill most of the viewport so there's less scrolling inside the box. */
+    max-height: calc(100vh - 280px);
+    min-height: 440px;
   }
 }
 
@@ -408,9 +413,28 @@
 .entry-row .entry-name {
   font-weight: 500;
   min-width: 0;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* The entry name doubles as the edit trigger. */
+.entry-row button.entry-name {
+  display: block;
+  border: none;
+  background: none;
+  padding: 0;
+  color: inherit;
+  font-family: inherit;
+  font-size: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.entry-row button.entry-name:hover {
+  color: var(--accent);
+  text-decoration: underline;
 }
 
 .entry-row .entry-each {
@@ -673,12 +697,264 @@
 }
 
 .entry-opts {
-  margin-top: 3px;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+}
+
+.entry-opts li {
   font-size: 0.74rem;
   color: var(--muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  padding: 2px 7px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+}
+
+.entry-edit-link {
+  margin-top: 4px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-size: 0.74rem;
+  cursor: pointer;
+}
+
+/* Battle size + detachment setup */
+.list-setup {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+@media (min-width: 560px) {
+  .list-setup {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.setup-field {
+  display: grid;
+  gap: 4px;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.setup-field select {
+  padding: 10px;
+  min-height: 42px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--fg);
+  font: inherit;
+}
+
+/* List legality summary */
+.legality {
+  margin-top: 12px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-size: 0.86rem;
+  border: 1px solid var(--border);
+}
+
+.legality.ok {
+  border-color: var(--ok);
+  color: var(--ok);
+  background: color-mix(in srgb, var(--ok) 10%, var(--surface));
+}
+
+.legality.bad {
+  border-color: var(--planned);
+  background: color-mix(in srgb, var(--planned) 10%, var(--surface));
+}
+
+.legality-head {
+  font-weight: 600;
+}
+
+.legality ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  color: var(--fg);
+}
+
+.legality li {
+  margin: 2px 0;
+}
+
+/* Per-character warlord + enhancement controls */
+.entry-extra {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+  align-items: center;
+}
+
+.warlord-btn {
+  padding: 3px 9px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.74rem;
+  cursor: pointer;
+}
+
+.warlord-btn.on {
+  border-color: var(--planned);
+  color: var(--planned);
+  font-weight: 600;
+}
+
+.enh-select {
+  max-width: 100%;
+  padding: 3px 6px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--fg);
+  font: inherit;
+  font-size: 0.74rem;
+}
+
+/* Transient "Saved ✓" confirmation on the Save button */
+.btn.is-saved {
+  background: var(--ok);
+  border-color: var(--ok);
+  color: #fff;
+  opacity: 1;
+}
+
+/* Warlord / enhancement status on a list entry */
+.entry-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.badge-warlord {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--planned);
+  border: 1px solid var(--planned);
+  border-radius: 6px;
+  padding: 2px 7px;
+}
+
+.badge-enh {
+  font-size: 0.72rem;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  padding: 2px 7px;
+}
+
+.modal-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.modal-check input {
+  width: 18px;
+  height: 18px;
+}
+
+/* Multi-detachment chips */
+.detachment-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.det-chip {
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--fg);
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.det-chip.on {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+  font-weight: 600;
+}
+
+.det-chip .det-dp {
+  color: var(--muted);
+  font-weight: 400;
+  font-size: 0.72rem;
+}
+
+.det-chip.on .det-dp {
+  color: var(--accent);
+}
+
+/* Collapsible unit-type groups in the catalogue and list */
+.role-group {
+  border-bottom: 1px solid var(--border);
+}
+
+.role-group:last-child {
+  border-bottom: none;
+}
+
+.role-summary {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 8px 14px;
+  background: var(--bg);
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.role-summary::-webkit-details-marker {
+  display: none;
+}
+
+.role-summary::before {
+  content: '▾';
+  font-size: 0.7rem;
+  transition: transform 0.15s;
+}
+
+.role-group:not([open]) .role-summary::before {
+  transform: rotate(-90deg);
+}
+
+.role-count {
+  margin-left: auto;
+  padding: 1px 7px;
+  border-radius: 10px;
+  background: var(--border);
+  color: var(--fg);
+  font-weight: 600;
 }
 
 /* Kill Team faction equipment banner */

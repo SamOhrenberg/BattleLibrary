@@ -153,7 +153,9 @@ function CreateForm({ onCreated, onCancel }: { onCreated: (list: ArmyList) => vo
     getCatalogueSystems()
       .then((s) => {
         setSystems(s)
-        if (s.length > 0) setSystemKey(s[0].key)
+        // Default to the first pointed system so the points step is present.
+        const preferred = s.find((x) => !x.pointless) ?? s[0]
+        if (preferred) setSystemKey(preferred.key)
       })
       .catch(() => setError('Could not load game systems. Is the catalogue loaded?'))
   }, [])
@@ -170,6 +172,11 @@ function CreateForm({ onCreated, onCancel }: { onCreated: (list: ArmyList) => vo
       .catch(() => setError('Could not load factions.'))
   }, [systemKey])
 
+  const pointless = useMemo(
+    () => systems.find((s) => s.key === systemKey)?.pointless ?? false,
+    [systems, systemKey],
+  )
+
   const canSubmit = useMemo(
     () => name.trim().length > 0 && systemKey !== '' && factionId !== '' && !busy,
     [name, systemKey, factionId, busy],
@@ -185,7 +192,7 @@ function CreateForm({ onCreated, onCancel }: { onCreated: (list: ArmyList) => vo
         name: name.trim(),
         gameSystemKey: systemKey,
         factionId,
-        pointsLimit: Number.isNaN(parsed!) ? null : parsed,
+        pointsLimit: pointless || Number.isNaN(parsed!) ? null : parsed,
       })
       onCreated(list)
     } catch (err) {
@@ -222,15 +229,17 @@ function CreateForm({ onCreated, onCancel }: { onCreated: (list: ArmyList) => vo
         </label>
       </div>
 
-      <label data-tour="create-limit">
-        Points limit (optional)
-        <input
-          inputMode="numeric"
-          value={limit}
-          placeholder="e.g. 2000"
-          onChange={(e) => setLimit(e.target.value.replace(/[^0-9]/g, ''))}
-        />
-      </label>
+      {!pointless && (
+        <label data-tour="create-limit">
+          Points limit (optional)
+          <input
+            inputMode="numeric"
+            value={limit}
+            placeholder="e.g. 2000"
+            onChange={(e) => setLimit(e.target.value.replace(/[^0-9]/g, ''))}
+          />
+        </label>
+      )}
 
       {error && <p className="builder-error">{error}</p>}
 

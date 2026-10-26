@@ -1,14 +1,22 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ApiError } from '../lib/api'
-import { getDatasheets, type CatalogueDatasheet } from '../lib/catalogue'
+import { getDatasheets, type CatalogueDatasheet, type CatalogueDetachment } from '../lib/catalogue'
 import {
   addEntry,
   deleteList,
   removeEntry,
+  setBattleSize,
+  setDetachments,
+  setEnhancement,
+  setWarlord,
   updateEntry,
   updateList,
+  BATTLE_SIZES,
   type ArmyList,
+  type ListEntry,
 } from '../lib/lists'
+import { validateList, BATTLE_SIZE_RULES } from './validation'
+import { groupByRole } from './roles'
 import { useTour } from '../onboarding/TourContext'
 import { UnitDetailModal } from './UnitDetailModal'
 
@@ -23,12 +31,15 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
   const [list, setList] = useState<ArmyList>(initial)
   const [datasheets, setDatasheets] = useState<CatalogueDatasheet[]>([])
   const [equipment, setEquipment] = useState<string[]>([])
+  const [detachments, setFactionDetachments] = useState<CatalogueDetachment[]>([])
   const [search, setSearch] = useState('')
   const [tab, setTab] = useState<'catalogue' | 'list'>('catalogue')
   const [detailId, setDetailId] = useState<string | null>(null)
+  const [editEntry, setEditEntry] = useState<ListEntry | null>(null)
   const [name, setName] = useState(initial.name)
   const [limit, setLimit] = useState(initial.pointsLimit?.toString() ?? '')
   const [busy, setBusy] = useState(false)
+  const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
   // Fire the 'entry-added' tour milestone only on the first add.
   const addedOnce = useRef(initial.entries.length > 0)
@@ -40,6 +51,7 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
         if (!active) return
         setDatasheets(d.datasheets)
         setEquipment(d.faction.equipment ?? [])
+        setFactionDetachments(d.faction.detachments ?? [])
       })
       .catch(() => active && setError('Could not load the faction catalogue.'))
     return () => {
@@ -69,6 +81,21 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
     }
   }
 
+  // Applies an entry change and keeps the open edit modal in sync.
+  async function runEntry(entryId: string, action: () => Promise<ArmyList>) {
+    setBusy(true)
+    setError(null)
+    try {
+      const next = await action()
+      setList(next)
+      setEditEntry(next.entries.find((x) => x.id === entryId) ?? null)
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Something went wrong.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   async function add(datasheetId: string, optionIds: string[] = []) {
     await run(() => addEntry(list.id, datasheetId, 1, optionIds))
     if (!addedOnce.current) {
@@ -83,9 +110,19 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
   }
 
   async function save() {
-    const parsed = limit.trim() === '' ? null : Number(limit)
-    await run(() => updateList(list.id, name.trim() || list.name, Number.isNaN(parsed!) ? null : parsed))
-    notify('saved')
+    setBusy(true)
+    setError(null)
+    try {
+      const parsed = limit.trim() === '' ? null : Number(limit)
+      setList(await updateList(list.id, name.trim() || list.name, Number.isNaN(parsed!) ? null : parsed))
+      setSaved(true)
+      setTimeout(() => setSaved(false), 1800)
+      notify('saved')
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not save the list.')
+    } finally {
+      setBusy(false)
+    }
   }
 
   async function remove() {
@@ -101,6 +138,29 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
   }
 
   const over = list.isOverLimit
+  const hasDetachments = detachments.length > 0
+  const chosenIds = useMemo(() => new Set(list.detachments.map((d) => d.id)), [list.detachments])
+  const rules = BATTLE_SIZE_RULES[list.battleSize ?? '']
+  const dpUsed = list.detachments.reduce((n, d) => n + d.dp, 0)
+  const issues = useMemo(() => validateList(list, hasDetachments, pointless), [list, hasDetachments, pointless])
+
+  // Enhancements offered by any chosen detachment.
+  const availableEnhancements = useMemo(
+    () => detachments.filter((d) => chosenIds.has(d.id)).flatMap((d) => d.enhancements),
+    [detachments, chosenIds],
+  )
+
+  const changeBattleSize = (b: string | null) => run(() => setBattleSize(list.id, b))
+  const toggleDetachment = (id: string) =>
+    run(() => setDetachments(list.id, chosenIds.has(id) ? [...chosenIds].filter((x) => x !== id) : [...chosenIds, id]))
+
+  // Enhancements still free to take (plus the entry's own current one).
+  function enhancementsFor(e: ListEntry) {
+    const usedByOthers = new Set(
+      list.entries.filter((x) => x.id !== e.id && x.enhancementId).map((x) => x.enhancementId),
+    )
+    return availableEnhancements.filter((en) => !usedByOthers.has(en.id))
+  }
 
   return (
     <section className="card">
@@ -131,23 +191,35 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
               <>
                 <div className={`pts${over ? ' over' : ''}`}>{list.total}</div>
                 <label className="limit-label">
-                  limit{' '}
-                  <input
-                    className="limit-edit"
-                    inputMode="numeric"
-                    value={limit}
-                    placeholder="none"
-                    onChange={(e) => setLimit(e.target.value.replace(/[^0-9]/g, ''))}
-                    onBlur={save}
-                  />
+                  {list.battleSize ? (
+                    <>{list.battleSize} · {list.pointsLimit}</>
+                  ) : (
+                    <>
+                      limit{' '}
+                      <input
+                        className="limit-edit"
+                        inputMode="numeric"
+                        value={limit}
+                        placeholder="none"
+                        onChange={(e) => setLimit(e.target.value.replace(/[^0-9]/g, ''))}
+                        onBlur={save}
+                      />
+                    </>
+                  )}
                 </label>
                 {over && <div className="over-badge">Over limit</div>}
               </>
             )}
           </div>
           <div className="lists-actions">
-            <button type="button" className="btn btn-primary" data-tour="save-list" onClick={save} disabled={busy}>
-              Save
+            <button
+              type="button"
+              className={`btn btn-primary${saved ? ' is-saved' : ''}`}
+              data-tour="save-list"
+              onClick={save}
+              disabled={busy || saved}
+            >
+              {busy ? 'Saving…' : saved ? 'Saved ✓' : 'Save'}
             </button>
             <button type="button" className="btn btn-danger" onClick={remove} disabled={busy}>
               Delete
@@ -157,6 +229,60 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
       </div>
 
       {error && <p className="builder-error">{error}</p>}
+
+      {!pointless && (
+        <div className="list-setup">
+          <label className="setup-field">
+            <span>Battle size</span>
+            <select value={list.battleSize ?? ''} onChange={(e) => changeBattleSize(e.target.value || null)} disabled={busy}>
+              <option value="">Custom</option>
+              {BATTLE_SIZES.map((b) => (
+                <option key={b} value={b}>{b} · {BATTLE_SIZE_RULES[b].cap} pts</option>
+              ))}
+            </select>
+          </label>
+          {hasDetachments && (
+            <div className="setup-field">
+              <span>
+                Detachments{rules ? ` · ${dpUsed}/${rules.dp} DP` : dpUsed > 0 ? ` · ${dpUsed} DP` : ''}
+              </span>
+              <div className="detachment-chips">
+                {detachments.map((d) => {
+                  const selected = chosenIds.has(d.id)
+                  // One detachment is always allowed; past that, adding can't exceed the budget.
+                  const overBudget =
+                    !selected && !!rules && list.detachments.length >= 1 && dpUsed + d.dp > rules.dp
+                  return (
+                    <button
+                      key={d.id}
+                      type="button"
+                      className={`det-chip${selected ? ' on' : ''}`}
+                      onClick={() => toggleDetachment(d.id)}
+                      disabled={busy || overBudget}
+                      title={overBudget ? 'Not enough Detachment Points left' : undefined}
+                    >
+                      {d.name} <span className="det-dp">{d.dp} DP</span>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {list.entries.length > 0 && !pointless && (
+        <div className={`legality ${issues.length === 0 ? 'ok' : 'bad'}`}>
+          {issues.length === 0 ? (
+            <span className="legality-head">✓ Battle ready{list.detachments.length > 0 ? ` · ${list.detachments.map((d) => d.name).join(', ')}` : ''}</span>
+          ) : (
+            <>
+              <span className="legality-head">{issues.length} to fix before this list is legal</span>
+              <ul>{issues.map((i, idx) => <li key={idx}>{i}</li>)}</ul>
+            </>
+          )}
+        </div>
+      )}
 
       {equipment.length > 0 && (
         <div className="faction-equipment">
@@ -205,22 +331,29 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
             {filtered.length === 0 ? (
               <p className="empty">No units match.</p>
             ) : (
-              filtered.map((d, i) => (
-                <div className="unit-row" key={d.id}>
-                  <button type="button" className="unit-name" onClick={() => setDetailId(d.id)}>
-                    {d.name}
-                  </button>
-                  {!pointless && <span className="unit-pts">{d.points != null ? `${d.points}` : '—'}</span>}
-                  <button
-                    type="button"
-                    className="add-btn"
-                    data-tour={i === 0 ? 'catalogue-add' : undefined}
-                    onClick={() => void add(d.id)}
-                    disabled={busy}
-                  >
-                    Add
-                  </button>
-                </div>
+              groupByRole(filtered, (d) => d.keywords).map((group) => (
+                <details className="role-group" key={group.role} open>
+                  <summary className="role-summary">
+                    {group.role} <span className="role-count">{group.items.length}</span>
+                  </summary>
+                  {group.items.map((d) => (
+                    <div className="unit-row" key={d.id}>
+                      <button type="button" className="unit-name" onClick={() => setDetailId(d.id)}>
+                        {d.name}
+                      </button>
+                      {!pointless && <span className="unit-pts">{d.points != null ? `${d.points}` : '—'}</span>}
+                      <button
+                        type="button"
+                        className="add-btn"
+                        data-tour={d.id === filtered[0].id ? 'catalogue-add' : undefined}
+                        onClick={() => void add(d.id)}
+                        disabled={busy}
+                      >
+                        Add
+                      </button>
+                    </div>
+                  ))}
+                </details>
               ))
             )}
           </div>
@@ -235,10 +368,17 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
             {list.entries.length === 0 ? (
               <p className="empty">No {unitWord} yet. Add some from the catalogue.</p>
             ) : (
-              list.entries.map((e) => (
+              groupByRole(list.entries, (e) => e.keywords).map((group) => (
+                <details className="role-group" key={group.role} open>
+                  <summary className="role-summary">
+                    {group.role} <span className="role-count">{group.items.length}</span>
+                  </summary>
+                  {group.items.map((e) => (
                 <div className="entry-row" key={e.id}>
-                  <div style={{ minWidth: 0 }}>
-                    <div className="entry-name">{e.datasheetName}</div>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <button type="button" className="entry-name entry-edit" onClick={() => setEditEntry(e)} title="View / edit options">
+                      {e.datasheetName}
+                    </button>
                     {!pointless && (
                       <div className="entry-each">
                         {e.points + e.optionsPoints} pts each
@@ -246,10 +386,26 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
                       </div>
                     )}
                     {e.selectedOptions.length > 0 && (
-                      <div className="entry-opts">
-                        {e.selectedOptions.map((o) => o.name).join(', ')}
+                      <ul className="entry-opts">
+                        {e.selectedOptions.map((o) => (
+                          <li key={o.id}>
+                            {o.name}
+                            {o.points > 0 ? ` (+${o.points})` : ''}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    {(e.isWarlord || e.enhancementName) && (
+                      <div className="entry-badges">
+                        {e.isWarlord && <span className="badge-warlord">★ Warlord</span>}
+                        {e.enhancementName && (
+                          <span className="badge-enh">{e.enhancementName} (+{e.enhancementPoints})</span>
+                        )}
                       </div>
                     )}
+                    <button type="button" className="entry-edit-link" onClick={() => setEditEntry(e)}>
+                      Edit…
+                    </button>
                   </div>
                   <div className="qty">
                     <button type="button" onClick={() => void changeQty(e.id, e.quantity - 1)} disabled={busy || e.quantity <= 1} aria-label="Decrease">−</button>
@@ -259,6 +415,8 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
                   {!pointless && <span className="line-total">{e.lineTotal}</span>}
                   <button type="button" className="icon-btn" onClick={() => void run(() => removeEntry(list.id, e.id))} disabled={busy} aria-label="Remove">×</button>
                 </div>
+                  ))}
+                </details>
               ))
             )}
           </div>
@@ -273,6 +431,38 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
             setDetailId(null)
           }}
           onClose={() => setDetailId(null)}
+        />
+      )}
+
+      {editEntry && (
+        <UnitDetailModal
+          key={editEntry.id}
+          datasheetId={editEntry.datasheetId}
+          initialSelected={editEntry.selectedOptions.map((o) => o.id)}
+          submitLabel="Save changes"
+          busy={busy}
+          warlord={
+            pointless
+              ? undefined
+              : {
+                  value: editEntry.isWarlord,
+                  onChange: (v) => void runEntry(editEntry.id, () => setWarlord(list.id, editEntry.id, v)),
+                }
+          }
+          enhancement={
+            pointless || list.detachments.length === 0
+              ? undefined
+              : {
+                  value: editEntry.enhancementId,
+                  options: enhancementsFor(editEntry),
+                  onChange: (id) => void runEntry(editEntry.id, () => setEnhancement(list.id, editEntry.id, id)),
+                }
+          }
+          onAdd={(optionIds) => {
+            void run(() => updateEntry(list.id, editEntry.id, editEntry.quantity, optionIds))
+            setEditEntry(null)
+          }}
+          onClose={() => setEditEntry(null)}
         />
       )}
     </section>
