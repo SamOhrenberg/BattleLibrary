@@ -122,13 +122,14 @@ public static class SocialEndpoints
             ? await db.ArmyLists
                 .Where(l => l.UserId == user.Id)
                 .Include(l => l.Entries)
-                .OrderByDescending(l => l.UpdatedAt)
+                .OrderByDescending(l => l.Featured)
+                .ThenByDescending(l => l.UpdatedAt)
                 .ToListAsync(ct)
             : [];
 
         var listDtos = lists.Select(l => new PublicListDto(
             l.Id, l.Name, l.GameSystemKey, l.FactionName, l.PointsLimit,
-            l.Entries.Sum(Total), l.Entries.Count, l.UpdatedAt)).ToList();
+            l.Entries.Sum(Total), l.Entries.Count, l.Featured, l.UpdatedAt)).ToList();
 
         return Results.Ok(new PublicProfileDto(
             user.Id, user.Username, user.Profile.Visibility.ToString(),
@@ -322,7 +323,7 @@ public static class SocialEndpoints
     }
 
     private static int Total(ListEntry e) =>
-        (e.Points + e.SelectedOptions.Sum(o => o.Points)) * e.Quantity;
+        (e.Points + e.SelectedOptions.Sum(o => o.Points)) * e.Quantity + e.EnhancementPoints;
 
     private static Guid? UserId(ClaimsPrincipal principal) =>
         Guid.TryParse(principal.FindFirstValue("sub"), out var id) ? id : null;

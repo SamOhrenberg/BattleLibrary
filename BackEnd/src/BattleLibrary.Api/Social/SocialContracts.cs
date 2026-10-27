@@ -26,6 +26,7 @@ public sealed record PublicListDto(
     int? PointsLimit,
     int Total,
     int EntryCount,
+    bool Featured,
     DateTimeOffset UpdatedAt);
 
 public sealed record PublicProfileDto(

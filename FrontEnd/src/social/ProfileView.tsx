@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { ApiError } from '../lib/api'
+import { getLists, setListFeatured, type ArmyListSummary } from '../lib/lists'
 import {
   acceptFriendRequest,
   cancelFriendRequest,
@@ -17,10 +18,10 @@ import {
 import { PublicProfile } from './PublicProfile'
 import './social.css'
 
-type Tab = 'friends' | 'find' | 'profile'
+type Tab = 'profile' | 'friends' | 'find'
 
-export function CommunityView({ email }: { email: string }) {
-  const [tab, setTab] = useState<Tab>('friends')
+export function ProfileView({ username, email }: { username: string; email: string }) {
+  const [tab, setTab] = useState<Tab>('profile')
   const [viewing, setViewing] = useState<string | null>(null)
   const [friends, setFriends] = useState<Friend[]>([])
   const [requests, setRequests] = useState<FriendRequests>({ incoming: [], outgoing: [] })
@@ -32,7 +33,7 @@ export function CommunityView({ email }: { email: string }) {
       setFriends(f)
       setRequests(r)
     } catch {
-      setError('Could not load your friends.')
+      setError('Could not load your community.')
     }
   }, [])
 
@@ -41,40 +42,186 @@ export function CommunityView({ email }: { email: string }) {
   }, [reload])
 
   if (viewing) {
-    return (
-      <PublicProfile
-        username={viewing}
-        onBack={() => setViewing(null)}
-        onChanged={reload}
-      />
-    )
+    return <PublicProfile username={viewing} onBack={() => setViewing(null)} onChanged={reload} />
   }
 
   return (
     <section className="card">
-      <h2>Community</h2>
+      <h2>Profile</h2>
       <div className="segmented" role="tablist">
+        <button role="tab" aria-selected={tab === 'profile'} className={tab === 'profile' ? 'active' : ''} onClick={() => setTab('profile')}>
+          You
+        </button>
         <button role="tab" aria-selected={tab === 'friends'} className={tab === 'friends' ? 'active' : ''} onClick={() => setTab('friends')}>
-          Friends{friends.length > 0 ? ` (${friends.length})` : ''}
+          Friends{friends.length > 0 ? ` (${friends.length})` : ''}{requests.incoming.length > 0 ? ' •' : ''}
         </button>
         <button role="tab" aria-selected={tab === 'find'} className={tab === 'find' ? 'active' : ''} onClick={() => setTab('find')}>
           Find
-        </button>
-        <button role="tab" aria-selected={tab === 'profile'} className={tab === 'profile' ? 'active' : ''} onClick={() => setTab('profile')}>
-          Profile{requests.incoming.length > 0 ? ` •` : ''}
         </button>
       </div>
 
       {error && <p className="builder-error">{error}</p>}
 
       <div className="community-body">
-        {tab === 'friends' && (
-          <FriendsTab friends={friends} requests={requests} onView={setViewing} reload={reload} />
-        )}
+        {tab === 'profile' && <ProfileTab username={username} email={email} onPreview={() => setViewing(username)} />}
+        {tab === 'friends' && <FriendsTab friends={friends} requests={requests} onView={setViewing} reload={reload} />}
         {tab === 'find' && <FindTab onView={setViewing} reload={reload} />}
-        {tab === 'profile' && <ProfileTab email={email} />}
       </div>
     </section>
+  )
+}
+
+function ProfileTab({ username, email, onPreview }: { username: string; email: string; onPreview: () => void }) {
+  const [visibility, setVisibility] = useState('Private')
+  const [bio, setBio] = useState('')
+  const [loaded, setLoaded] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    getProfile()
+      .then((p) => {
+        setVisibility(p.visibility)
+        setBio(p.bio ?? '')
+      })
+      .catch(() => setError('Could not load your profile.'))
+      .finally(() => setLoaded(true))
+  }, [])
+
+  async function save() {
+    setBusy(true)
+    setError(null)
+    try {
+      const p = await updateProfile(visibility, bio.trim() || null)
+      setVisibility(p.visibility)
+      setBio(p.bio ?? '')
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2000)
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not save.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (!loaded) return <p className="hint">Loading…</p>
+
+  return (
+    <div className="profile-form">
+      <div className="pub-head">
+        <div className="avatar">{username.slice(0, 2)}</div>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div className="pub-name">{username}</div>
+          <div className="person-sub">{visibility} profile</div>
+        </div>
+        <button type="button" className="btn-sm" onClick={onPreview}>
+          Preview
+        </button>
+      </div>
+
+      <div>
+        <h3 className="section-title">Profile visibility</h3>
+        <div className="segmented">
+          <button className={visibility === 'Private' ? 'active' : ''} onClick={() => setVisibility('Private')}>
+            Private
+          </button>
+          <button className={visibility === 'Public' ? 'active' : ''} onClick={() => setVisibility('Public')}>
+            Public
+          </button>
+        </div>
+        <p className="vis-hint">
+          {visibility === 'Public'
+            ? 'Anyone can view your profile and army lists.'
+            : 'Only you and your friends can see your profile and lists.'}
+        </p>
+      </div>
+
+      <label>
+        Bio
+        <textarea
+          value={bio}
+          onChange={(e) => setBio(e.target.value)}
+          maxLength={500}
+          placeholder="A line about you, your armies, your local scene…"
+        />
+      </label>
+
+      <label>
+        Email
+        <input className="search-box" value={email} disabled />
+      </label>
+
+      {error && <p className="builder-error">{error}</p>}
+
+      <button type="button" className="btn btn-primary" onClick={save} disabled={busy || saved}>
+        {busy ? 'Saving…' : saved ? 'Saved ✓' : 'Save profile'}
+      </button>
+
+      <HighlightLists />
+    </div>
+  )
+}
+
+// Pick which army lists are highlighted (shown first) on the public profile.
+function HighlightLists() {
+  const [lists, setLists] = useState<ArmyListSummary[] | null>(null)
+  const [busyId, setBusyId] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    getLists()
+      .then(setLists)
+      .catch(() => setError('Could not load your lists.'))
+  }, [])
+
+  async function toggle(list: ArmyListSummary) {
+    setBusyId(list.id)
+    setError(null)
+    try {
+      const updated = await setListFeatured(list.id, !list.featured)
+      setLists((prev) => prev?.map((l) => (l.id === list.id ? { ...l, featured: updated.featured } : l)) ?? null)
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not update that list.')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  return (
+    <div>
+      <h3 className="section-title">Highlighted lists</h3>
+      <p className="vis-hint">Starred lists appear first on your public profile.</p>
+      {error && <p className="builder-error">{error}</p>}
+      {lists === null ? (
+        <p className="hint">Loading…</p>
+      ) : lists.length === 0 ? (
+        <p className="empty-note">No lists yet. Build one in the Lists tab.</p>
+      ) : (
+        <ul className="list-index">
+          {lists.map((l) => (
+            <li key={l.id} style={{ cursor: 'default' }}>
+              <div>
+                <div className="li-name">{l.name}</div>
+                <div className="li-meta">
+                  {l.factionName} · {l.entryCount} {l.entryCount === 1 ? 'entry' : 'entries'}
+                </div>
+              </div>
+              <button
+                type="button"
+                className={`star-btn${l.featured ? ' on' : ''}`}
+                aria-pressed={l.featured}
+                aria-label={l.featured ? 'Remove highlight' : 'Highlight on profile'}
+                disabled={busyId === l.id}
+                onClick={() => toggle(l)}
+              >
+                {l.featured ? '★' : '☆'}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   )
 }
 
@@ -213,9 +360,7 @@ function FindTab({ onView, reload }: { onView: (username: string) => void; reloa
     setBusyId(r.id)
     try {
       await sendFriendRequest(r.username)
-      setResults((prev) =>
-        prev.map((x) => (x.id === r.id ? { ...x, friendshipStatus: 'pending_outgoing' } : x)),
-      )
+      setResults((prev) => prev.map((x) => (x.id === r.id ? { ...x, friendshipStatus: 'pending_outgoing' } : x)))
       await reload()
     } finally {
       setBusyId(null)
@@ -270,84 +415,5 @@ function FindAction({ result, busy, onAdd }: { result: UserSearchResult; busy: b
     <button className="btn-sm primary" disabled={busy} onClick={onAdd}>
       {label}
     </button>
-  )
-}
-
-function ProfileTab({ email }: { email: string }) {
-  const [visibility, setVisibility] = useState('Private')
-  const [bio, setBio] = useState('')
-  const [loaded, setLoaded] = useState(false)
-  const [busy, setBusy] = useState(false)
-  const [saved, setSaved] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    getProfile()
-      .then((p) => {
-        setVisibility(p.visibility)
-        setBio(p.bio ?? '')
-      })
-      .catch(() => setError('Could not load your profile.'))
-      .finally(() => setLoaded(true))
-  }, [])
-
-  async function save() {
-    setBusy(true)
-    setError(null)
-    try {
-      const p = await updateProfile(visibility, bio.trim() || null)
-      setVisibility(p.visibility)
-      setBio(p.bio ?? '')
-      setSaved(true)
-      setTimeout(() => setSaved(false), 2000)
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not save.')
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  if (!loaded) return <p className="hint">Loading…</p>
-
-  return (
-    <div className="profile-form">
-      <div>
-        <h3 className="section-title">Profile visibility</h3>
-        <div className="segmented">
-          <button className={visibility === 'Private' ? 'active' : ''} onClick={() => setVisibility('Private')}>
-            Private
-          </button>
-          <button className={visibility === 'Public' ? 'active' : ''} onClick={() => setVisibility('Public')}>
-            Public
-          </button>
-        </div>
-        <p className="vis-hint">
-          {visibility === 'Public'
-            ? 'Anyone can view your profile and army lists.'
-            : 'Only you and your friends can see your profile and lists.'}
-        </p>
-      </div>
-
-      <label>
-        Bio
-        <textarea
-          value={bio}
-          onChange={(e) => setBio(e.target.value)}
-          maxLength={500}
-          placeholder="A line about you, your armies, your local scene…"
-        />
-      </label>
-
-      <label>
-        Email
-        <input className="search-box" value={email} disabled />
-      </label>
-
-      {error && <p className="builder-error">{error}</p>}
-
-      <button type="button" className="btn btn-primary" onClick={save} disabled={busy || saved}>
-        {busy ? 'Saving…' : saved ? 'Saved ✓' : 'Save profile'}
-      </button>
-    </div>
   )
 }

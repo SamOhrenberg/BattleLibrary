@@ -45,6 +45,7 @@ export interface PublicList {
   pointsLimit: number | null
   total: number
   entryCount: number
+  featured: boolean
   updatedAt: string
 }
 

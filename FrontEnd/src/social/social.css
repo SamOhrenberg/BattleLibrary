@@ -77,6 +77,8 @@
 .person-main {
   min-width: 0;
   flex: 1;
+  display: flex;
+  flex-direction: column;
 }
 
 .person-name {
@@ -142,6 +144,34 @@
   border-radius: 6px;
   background: rgba(127, 127, 127, 0.14);
   white-space: nowrap;
+}
+
+.star-btn {
+  flex: none;
+  min-height: 38px;
+  min-width: 38px;
+  border-radius: 7px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--muted);
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.star-btn.on {
+  color: var(--planned);
+  border-color: var(--planned);
+}
+
+.star-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.li-name .li-star {
+  color: var(--planned);
+  margin-left: 6px;
 }
 
 .search-box {

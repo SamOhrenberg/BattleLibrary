@@ -80,7 +80,10 @@ export function PublicProfile({ username, onBack, onChanged }: Props) {
                   {profile.lists.map((l) => (
                     <li key={l.id} style={{ cursor: 'default' }}>
                       <div>
-                        <div className="li-name">{l.name}</div>
+                        <div className="li-name">
+                          {l.name}
+                          {l.featured && <span className="li-star" aria-label="Highlighted" title="Highlighted">★</span>}
+                        </div>
                         <div className="li-meta">
                           {l.factionName} · {l.entryCount} {l.entryCount === 1 ? 'entry' : 'entries'}
                         </div>
