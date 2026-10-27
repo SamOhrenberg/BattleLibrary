@@ -40,6 +40,7 @@ public sealed record UnitDto(
     Guid Id,
     string DatasheetId,
     string Name,
+    int MaxModels,
     int StartingModels,
     int CurrentModels,
     bool Destroyed);

@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using BattleLibrary.Domain.Games;
+using BattleLibrary.Domain.Lists;
 using BattleLibrary.Infrastructure.Persistence;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
@@ -229,19 +230,24 @@ public static class GameSessionEndpoints
             {
                 return Results.NotFound(new { error = "That army list was not found." });
             }
-            var units = new List<GameUnit>();
-            foreach (var e in list.Entries.OrderBy(e => e.DatasheetName))
+            if (ValidateList(list, session) is { } problem)
             {
-                for (var i = 0; i < e.Quantity && units.Count < MaxUnits; i++)
+                return Problem("list", $"That list can't be used: {problem}");
+            }
+            // One unit per entry; the list quantity is the model count you may
+            // bring (default full, capped so you can't field more than the list).
+            var units = new List<GameUnit>();
+            foreach (var e in list.Entries.OrderBy(e => e.DatasheetName).Take(MaxUnits))
+            {
+                var models = Math.Max(1, e.Quantity);
+                units.Add(new GameUnit
                 {
-                    units.Add(new GameUnit
-                    {
-                        DatasheetId = e.DatasheetId,
-                        Name = e.Quantity > 1 ? $"{e.DatasheetName} ({i + 1})" : e.DatasheetName,
-                        StartingModels = 1,
-                        CurrentModels = 1,
-                    });
-                }
+                    DatasheetId = e.DatasheetId,
+                    Name = e.DatasheetName,
+                    MaxModels = models,
+                    StartingModels = models,
+                    CurrentModels = models,
+                });
             }
             mine.ArmyListId = list.Id;
             mine.FactionName = list.FactionName;
@@ -299,11 +305,30 @@ public static class GameSessionEndpoints
         {
             return Problem("status", "This game has already started.");
         }
-        var accepted = session.Participants.Count(p => p.Status == ParticipantStatus.Accepted);
-        if (accepted < 2)
+        var players = session.Participants.Where(p => p.Status == ParticipantStatus.Accepted).ToList();
+        if (players.Count < 2)
         {
             return Problem("participants", "At least two players must accept before starting.");
         }
+
+        // Every player needs a valid army list before the game can begin.
+        var listIds = players.Where(p => p.ArmyListId is not null).Select(p => p.ArmyListId!.Value).ToList();
+        var lists = listIds.Count == 0
+            ? []
+            : await db.ArmyLists.Include(l => l.Entries).Where(l => listIds.Contains(l.Id)).ToListAsync(ct);
+        foreach (var p in players)
+        {
+            var list = p.ArmyListId is { } lid ? lists.FirstOrDefault(l => l.Id == lid) : null;
+            if (list is null)
+            {
+                return Problem("lists", $"{p.User.Username} has not chosen an army list yet.");
+            }
+            if (ValidateList(list, session) is { } problem)
+            {
+                return Problem("lists", $"{p.User.Username}'s list can't be used: {problem}");
+            }
+        }
+
         session.Status = GameSessionStatus.Active;
         session.CurrentRound = 1;
         session.StartedAt = DateTimeOffset.UtcNow;
@@ -401,10 +426,12 @@ public static class GameSessionEndpoints
 
         if (session.Status == GameSessionStatus.Setup)
         {
-            // During setup the player sets each unit's starting model count.
+            // During setup the player may bring fewer models than the list, never
+            // more; the cap is the list count (fallback for legacy units).
             if (request.StartingModels is { } starting)
             {
-                unit.StartingModels = Math.Clamp(starting, 1, 999);
+                var cap = unit.MaxModels > 0 ? unit.MaxModels : 999;
+                unit.StartingModels = Math.Clamp(starting, 1, cap);
                 unit.CurrentModels = unit.StartingModels;
                 unit.Destroyed = false;
             }
@@ -596,6 +623,28 @@ public static class GameSessionEndpoints
     private static int Total(GameParticipant p) =>
         p.Rounds.Sum(r => r.PrimaryScore + r.Secondaries.Sum(x => x.Score));
 
+    private static int ListTotal(ArmyList l) =>
+        l.Entries.Sum(e => (e.Points + e.SelectedOptions.Sum(o => o.Points)) * e.Quantity + e.EnhancementPoints);
+
+    // A list is usable in a game when it is non-empty, matches the game's system,
+    // and fits the game's points limit. Returns null when valid, else the reason.
+    private static string? ValidateList(ArmyList list, GameSession session)
+    {
+        if (session.GameSystemKey.Length > 0 && list.GameSystemKey != session.GameSystemKey)
+        {
+            return "it is for a different game system than this game.";
+        }
+        if (list.Entries.Count == 0)
+        {
+            return "it has no units yet.";
+        }
+        if (session.PointsLimit is { } limit && ListTotal(list) > limit)
+        {
+            return $"it is {ListTotal(list)} pts, over this game's {limit} pt limit.";
+        }
+        return null;
+    }
+
     private static SessionDto ToDto(GameSession s, Guid me)
     {
         var participants = s.Participants
@@ -610,7 +659,7 @@ public static class GameSessionEndpoints
     private static ParticipantDto ToParticipant(GameParticipant p, Guid me)
     {
         var units = p.Units
-            .Select(u => new UnitDto(u.Id, u.DatasheetId, u.Name, u.StartingModels, u.CurrentModels, u.Destroyed))
+            .Select(u => new UnitDto(u.Id, u.DatasheetId, u.Name, u.MaxModels, u.StartingModels, u.CurrentModels, u.Destroyed))
             .ToList();
         var rounds = p.Rounds
             .OrderBy(r => r.RoundNumber)

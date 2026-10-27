@@ -137,6 +137,8 @@ function CreateSessionForm({ onCreated, onCancel }: { onCreated: (id: string) =>
       .catch(() => {})
   }, [])
 
+  const pointless = systems.find((s) => s.key === systemKey)?.pointless ?? false
+
   async function submit(e: FormEvent) {
     e.preventDefault()
     setBusy(true)
@@ -146,7 +148,7 @@ function CreateSessionForm({ onCreated, onCancel }: { onCreated: (id: string) =>
       const session = await createSession({
         name: name.trim() || null,
         gameSystemKey: systemKey || null,
-        pointsLimit: Number.isNaN(parsed as number) ? null : parsed,
+        pointsLimit: pointless || Number.isNaN(parsed as number) ? null : parsed,
       })
       onCreated(session.id)
     } catch (err) {
@@ -171,10 +173,12 @@ function CreateSessionForm({ onCreated, onCancel }: { onCreated: (id: string) =>
           </select>
         </label>
       )}
-      <label>
-        Points limit (optional)
-        <input inputMode="numeric" value={limit} onChange={(e) => setLimit(e.target.value.replace(/[^0-9]/g, ''))} placeholder="e.g. 2000" />
-      </label>
+      {!pointless && (
+        <label>
+          Points limit (optional)
+          <input inputMode="numeric" value={limit} onChange={(e) => setLimit(e.target.value.replace(/[^0-9]/g, ''))} placeholder="e.g. 2000" />
+        </label>
+      )}
       {error && <p className="builder-error">{error}</p>}
       <div className="create-actions">
         <button type="submit" className="btn btn-primary" disabled={busy}>{busy ? 'Creating…' : 'Create game'}</button>
@@ -394,6 +398,16 @@ function GameForm({
     }
   }
 
+  // Only offer lists that match the chosen game system.
+  const listsForSystem = gameSystemKey ? lists.filter((l) => l.gameSystemKey === gameSystemKey) : lists
+
+  function pickSystem(key: string) {
+    setGameSystemKey(key)
+    if (key && playerListId && !lists.some((l) => l.id === playerListId && l.gameSystemKey === key)) {
+      setPlayerListId(null)
+    }
+  }
+
   const canSubmit = opponentName.trim().length > 0 && !busy
 
   async function onSubmit(e: FormEvent) {
@@ -473,12 +487,12 @@ function GameForm({
           <input type="date" value={playedOn} onChange={(e) => setPlayedOn(e.target.value)} max={today()} />
         </label>
 
-        {lists.length > 0 && (
+        {listsForSystem.length > 0 && (
           <label>
             Your list (optional)
             <select value={playerListId ?? ''} onChange={(e) => pickList(e.target.value)}>
               <option value="">No list</option>
-              {lists.map((l) => (
+              {listsForSystem.map((l) => (
                 <option key={l.id} value={l.id}>
                   {l.name} · {l.factionName}
                 </option>
@@ -490,7 +504,7 @@ function GameForm({
         {systems.length > 0 && (
           <label>
             Game system (optional)
-            <select value={gameSystemKey} onChange={(e) => setGameSystemKey(e.target.value)}>
+            <select value={gameSystemKey} onChange={(e) => pickSystem(e.target.value)}>
               <option value="">Unspecified</option>
               {systems.map((s) => (
                 <option key={s.key} value={s.key}>

@@ -11,6 +11,7 @@ export interface SessionUnit {
   id: string
   datasheetId: string
   name: string
+  maxModels: number
   startingModels: number
   currentModels: number
   destroyed: boolean

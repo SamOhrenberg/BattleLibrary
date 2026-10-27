@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { ApiError } from '../lib/api'
 import { getLists, type ArmyListSummary } from '../lib/lists'
+import { getFriends, searchUsers, type Friend, type UserSearchResult } from '../lib/social'
 import { joinSessionGroup, leaveSessionGroup, onSessionUpdated } from '../lib/gameHub'
 import {
   advanceSession,
@@ -110,12 +111,14 @@ function SetupView({
   act: (fn: () => Promise<GameSession | void>) => Promise<void>
 }) {
   const [lists, setLists] = useState<ArmyListSummary[]>([])
-  const [invite, setInvite] = useState('')
   const acceptedCount = session.participants.filter((p) => p.status === 'Accepted').length
 
   useEffect(() => {
     if (me && me.status === 'Accepted') getLists().then(setLists).catch(() => {})
   }, [me])
+
+  // Only lists for this game's system can be used here.
+  const usableLists = lists.filter((l) => !session.gameSystemKey || l.gameSystemKey === session.gameSystemKey)
 
   return (
     <div className="session-body">
@@ -164,14 +167,21 @@ function SetupView({
               onChange={(e) => act(() => setSessionList(session.id, e.target.value || null))}
             >
               <option value="">Choose a list…</option>
-              {lists.map((l) => (
-                <option key={l.id} value={l.id}>{l.name} · {l.factionName} ({l.total} pts)</option>
+              {usableLists.map((l) => (
+                <option key={l.id} value={l.id}>
+                  {l.name} · {l.factionName}{l.total > 0 ? ` (${l.total} pts)` : ''}
+                </option>
               ))}
             </select>
           </label>
+          {usableLists.length === 0 && (
+            <p className="empty-note">No lists for this game system yet. Build one in the Lists tab first.</p>
+          )}
           {me.units.length > 0 && (
             <>
-              <p className="empty-note">Set each unit's starting model count so deaths can be tracked.</p>
+              <p className="empty-note">
+                Models default to your list. Bring fewer if you like — you can't bring more than your list allows.
+              </p>
               <ul className="unit-list">
                 {me.units.map((u) => (
                   <li className="unit-row" key={u.id}>
@@ -179,8 +189,9 @@ function SetupView({
                     <Stepper
                       value={u.startingModels}
                       min={1}
+                      max={u.maxModels > 0 ? u.maxModels : undefined}
                       onChange={(v) => act(() => updateSessionUnit(session.id, u.id, { startingModels: v }))}
-                      suffix="models"
+                      suffix={u.maxModels > 1 ? `/ ${u.maxModels} models` : 'models'}
                     />
                   </li>
                 ))}
@@ -190,22 +201,7 @@ function SetupView({
         </div>
       )}
 
-      {session.isHost && (
-        <div>
-          <h3 className="section-title">Invite players</h3>
-          <form
-            className="invite-row"
-            onSubmit={(e) => {
-              e.preventDefault()
-              const name = invite.trim()
-              if (name) act(() => inviteToSession(session.id, name)).then(() => setInvite(''))
-            }}
-          >
-            <input className="search-box" placeholder="Username…" value={invite} onChange={(e) => setInvite(e.target.value)} autoCapitalize="off" autoComplete="off" />
-            <button className="btn" type="submit">Invite</button>
-          </form>
-        </div>
-      )}
+      {session.isHost && <InvitePicker session={session} act={act} />}
 
       <div className="create-actions">
         {session.isHost && (
@@ -218,6 +214,119 @@ function SetupView({
         </button>
       </div>
     </div>
+  )
+}
+
+// Invite lookup: friends first, then public players, with a text fallback so a
+// private-profile player can still be invited by exact username.
+function InvitePicker({
+  session,
+  act,
+}: {
+  session: GameSession
+  act: (fn: () => Promise<GameSession | void>) => Promise<void>
+}) {
+  const [query, setQuery] = useState('')
+  const [friends, setFriends] = useState<Friend[]>([])
+  const [results, setResults] = useState<UserSearchResult[]>([])
+
+  useEffect(() => {
+    getFriends().then(setFriends).catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    const q = query.trim()
+    if (q.length < 1) {
+      setResults([])
+      return
+    }
+    const handle = setTimeout(() => {
+      searchUsers(q)
+        .then(setResults)
+        .catch(() => setResults([]))
+    }, 250)
+    return () => clearTimeout(handle)
+  }, [query])
+
+  const term = query.trim().toLowerCase()
+  const taken = new Set(
+    session.participants
+      .filter((p) => p.status !== 'Declined' && p.status !== 'Left')
+      .map((p) => p.username.toLowerCase()),
+  )
+  const friendMatches = friends.filter(
+    (f) => !taken.has(f.username.toLowerCase()) && (term === '' || f.username.toLowerCase().includes(term)),
+  )
+  const publicMatches = results.filter(
+    (r) => r.friendshipStatus !== 'friends' && r.visibility === 'Public' && !taken.has(r.username.toLowerCase()),
+  )
+
+  const invite = (username: string) => act(() => inviteToSession(session.id, username)).then(() => setQuery(''))
+
+  return (
+    <div>
+      <h3 className="section-title">Invite players</h3>
+      <form
+        className="invite-row"
+        onSubmit={(e) => {
+          e.preventDefault()
+          const name = query.trim()
+          if (name) void invite(name)
+        }}
+      >
+        <input
+          className="search-box"
+          placeholder="Search by username…"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          autoCapitalize="off"
+          autoComplete="off"
+        />
+        <button className="btn" type="submit">Invite</button>
+      </form>
+
+      {friendMatches.length > 0 && (
+        <>
+          <div className="suggest-head">Friends</div>
+          <ul className="people-list">
+            {friendMatches.map((f) => (
+              <InviteRow key={f.id} username={f.username} onInvite={() => void invite(f.username)} />
+            ))}
+          </ul>
+        </>
+      )}
+
+      {publicMatches.length > 0 && (
+        <>
+          <div className="suggest-head">Public players</div>
+          <ul className="people-list">
+            {publicMatches.map((r) => (
+              <InviteRow key={r.id} username={r.username} onInvite={() => void invite(r.username)} />
+            ))}
+          </ul>
+        </>
+      )}
+
+      {term.length > 0 && friendMatches.length === 0 && publicMatches.length === 0 && (
+        <p className="empty-note">No players found — press Invite to send to that exact username.</p>
+      )}
+    </div>
+  )
+}
+
+function InviteRow({ username, onInvite }: { username: string; onInvite: () => void }) {
+  return (
+    <li className="person-row">
+      <span className="person-tap" style={{ cursor: 'default' }}>
+        <span className="avatar">{username.slice(0, 2)}</span>
+        <span className="person-main">
+          <span className="person-name">{username}</span>
+        </span>
+      </span>
+      <div className="person-actions">
+        <button type="button" className="btn-sm primary" onClick={onInvite}>Invite</button>
+      </div>
+    </li>
   )
 }
 

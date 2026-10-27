@@ -27,11 +27,13 @@ public class GameParticipant : Entity
 }
 
 // A unit on the board with a model counter. Destroyed is set when models hit 0.
+// MaxModels is the count the army list allows — you can bring fewer, never more.
 public class GameUnit
 {
     public Guid Id { get; set; } = Guid.CreateVersion7();
     public string DatasheetId { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
+    public int MaxModels { get; set; } = 1;
     public int StartingModels { get; set; } = 1;
     public int CurrentModels { get; set; } = 1;
     public bool Destroyed { get; set; }
