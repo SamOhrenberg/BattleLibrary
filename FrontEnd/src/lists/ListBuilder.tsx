@@ -232,7 +232,7 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
 
       {!pointless && (
         <div className="list-setup">
-          <label className="setup-field">
+          <label className="setup-field battle-size">
             <span>Battle size</span>
             <select value={list.battleSize ?? ''} onChange={(e) => changeBattleSize(e.target.value || null)} disabled={busy}>
               <option value="">Custom</option>
@@ -271,7 +271,7 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
         </div>
       )}
 
-      {list.entries.length > 0 && !pointless && (
+      {!pointless && (
         <div className={`legality ${issues.length === 0 ? 'ok' : 'bad'}`}>
           {issues.length === 0 ? (
             <span className="legality-head">✓ Battle ready{list.detachments.length > 0 ? ` · ${list.detachments.map((d) => d.name).join(', ')}` : ''}</span>
@@ -327,6 +327,7 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
+          <p className="panel-hint">Tap a unit's name for its full datasheet.</p>
           <div className="scroll">
             {filtered.length === 0 ? (
               <p className="empty">No units match.</p>

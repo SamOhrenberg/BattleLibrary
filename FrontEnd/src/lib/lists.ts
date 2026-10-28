@@ -66,6 +66,8 @@ export interface CreateListInput {
   gameSystemKey: string
   factionId: string
   pointsLimit: number | null
+  // Null (or "Custom") keeps the manual points limit; a battle size sets its cap.
+  battleSize?: string | null
 }
 
 async function send<T>(path: string, method: string, body?: unknown): Promise<T> {

@@ -1,6 +1,6 @@
 namespace BattleLibrary.Api.Lists;
 
-public sealed record CreateListRequest(string Name, string GameSystemKey, string FactionId, int? PointsLimit);
+public sealed record CreateListRequest(string Name, string GameSystemKey, string FactionId, int? PointsLimit, string? BattleSize = null);
 
 public sealed record UpdateListRequest(string Name, int? PointsLimit);
 

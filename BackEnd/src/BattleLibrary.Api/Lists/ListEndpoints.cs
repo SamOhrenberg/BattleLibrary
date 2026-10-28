@@ -88,6 +88,21 @@ public static class ListEndpoints
             return Results.NotFound(new { error = "Unknown game system or faction." });
         }
 
+        // A battle size (if given) sets the points limit from its cap; "Custom"
+        // or none keeps the manually supplied limit.
+        string? battleSize = null;
+        var pointsLimit = request.PointsLimit;
+        var size = request.BattleSize?.Trim();
+        if (!string.IsNullOrEmpty(size) && !string.Equals(size, "Custom", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!BattleSizes.TryGetValue(size, out var cap))
+            {
+                return Problem("battleSize", "Unknown battle size.");
+            }
+            battleSize = BattleSizes.Keys.First(k => string.Equals(k, size, StringComparison.OrdinalIgnoreCase));
+            pointsLimit = cap;
+        }
+
         var list = new ArmyList
         {
             UserId = userId,
@@ -95,7 +110,8 @@ public static class ListEndpoints
             GameSystemKey = request.GameSystemKey,
             FactionId = request.FactionId,
             FactionName = factionName,
-            PointsLimit = request.PointsLimit,
+            PointsLimit = pointsLimit,
+            BattleSize = battleSize,
         };
         db.ArmyLists.Add(list);
         await db.SaveChangesAsync(ct);

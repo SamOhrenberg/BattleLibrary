@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { ApiError } from '../lib/api'
 import { getCatalogueSystems, getFactions, type CatalogueFaction, type CatalogueSystem } from '../lib/catalogue'
-import { createList, getList, getLists, type ArmyList, type ArmyListSummary } from '../lib/lists'
+import { BATTLE_SIZES, createList, getList, getLists, type ArmyList, type ArmyListSummary } from '../lib/lists'
+import { BATTLE_SIZE_RULES } from './validation'
 import { useTour } from '../onboarding/TourContext'
 import { ListBuilder } from './ListBuilder'
 import './builder.css'
@@ -146,6 +147,7 @@ function CreateForm({ onCreated, onCancel }: { onCreated: (list: ArmyList) => vo
   const [factionId, setFactionId] = useState('')
   const [name, setName] = useState('')
   const [limit, setLimit] = useState('2000')
+  const [battleSize, setBattleSize] = useState<string>('Strike Force')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -187,12 +189,14 @@ function CreateForm({ onCreated, onCancel }: { onCreated: (list: ArmyList) => vo
     setBusy(true)
     setError(null)
     try {
+      const custom = battleSize === 'Custom'
       const parsed = limit.trim() === '' ? null : Number(limit)
       const list = await createList({
         name: name.trim(),
         gameSystemKey: systemKey,
         factionId,
-        pointsLimit: pointless || Number.isNaN(parsed!) ? null : parsed,
+        pointsLimit: pointless || custom ? (Number.isNaN(parsed!) ? null : parsed) : BATTLE_SIZE_RULES[battleSize].cap,
+        battleSize: pointless || custom ? null : battleSize,
       })
       onCreated(list)
     } catch (err) {
@@ -230,15 +234,33 @@ function CreateForm({ onCreated, onCancel }: { onCreated: (list: ArmyList) => vo
       </div>
 
       {!pointless && (
-        <label data-tour="create-limit">
-          Points limit (optional)
-          <input
-            inputMode="numeric"
-            value={limit}
-            placeholder="e.g. 2000"
-            onChange={(e) => setLimit(e.target.value.replace(/[^0-9]/g, ''))}
-          />
-        </label>
+        <div className="create-grid" data-tour="create-limit">
+          <label>
+            Battle size
+            <select value={battleSize} onChange={(e) => setBattleSize(e.target.value)}>
+              <option value="Custom">Custom</option>
+              {BATTLE_SIZES.map((b) => (
+                <option key={b} value={b}>{b} · {BATTLE_SIZE_RULES[b].cap} pts</option>
+              ))}
+            </select>
+          </label>
+          {battleSize === 'Custom' ? (
+            <label>
+              Points limit (optional)
+              <input
+                inputMode="numeric"
+                value={limit}
+                placeholder="e.g. 2000"
+                onChange={(e) => setLimit(e.target.value.replace(/[^0-9]/g, ''))}
+              />
+            </label>
+          ) : (
+            <label>
+              Points limit
+              <input value={`${BATTLE_SIZE_RULES[battleSize].cap} pts`} disabled readOnly />
+            </label>
+          )}
+        </div>
       )}
 
       {error && <p className="builder-error">{error}</p>}
