@@ -807,6 +807,133 @@
   margin: 2px 0;
 }
 
+.legality-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.btn-sm {
+  min-height: 32px;
+  padding: 5px 11px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+/* ---- List assistant ---- */
+.modal.assistant .modal-head .icon-btn {
+  font-size: 1.5rem;
+}
+
+.assistant-intro {
+  margin: 10px 0 0;
+  font-size: 0.86rem;
+  color: var(--muted);
+}
+
+.assistant-done {
+  margin: 16px 0;
+  font-size: 0.95rem;
+  color: var(--ok);
+  font-weight: 600;
+}
+
+.assistant-list {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.assistant-issue {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  background: var(--bg);
+}
+
+.ai-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ai-msg {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.ai-fix {
+  margin: 4px 0 10px;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.ai-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ai-note {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--muted);
+  font-style: italic;
+}
+
+.ai-units {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.ai-units li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+/* Catalogue pick-lists (recommended units / candidate Warlords) can be long,
+   so they scroll inside the issue rather than stretching the sheet. */
+.ai-pick {
+  max-height: 300px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-right: 2px;
+}
+
+.ai-unit-name {
+  min-width: 0;
+  font-size: 0.86rem;
+  font-weight: 500;
+}
+
+.ai-sub {
+  color: var(--muted);
+  font-weight: 400;
+  font-size: 0.78rem;
+}
+
+.ai-unit-actions {
+  display: flex;
+  gap: 6px;
+  flex: none;
+}
+
+.ai-unit-actions .btn {
+  min-height: 32px;
+  padding: 4px 10px;
+  font-size: 0.78rem;
+}
+
 /* Per-character warlord + enhancement controls */
 .entry-extra {
   display: flex;

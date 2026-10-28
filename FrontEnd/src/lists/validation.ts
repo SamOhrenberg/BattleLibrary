@@ -34,47 +34,113 @@ export const hasKeyword = (e: ListEntry, kw: string) =>
 export const isCharacter = (e: ListEntry) => hasKeyword(e, 'Character')
 export const isEpicHero = (e: ListEntry) => hasKeyword(e, 'Epic Hero')
 
-export function validateList(list: ArmyList, hasDetachments: boolean, pointless: boolean): string[] {
-  const issues: string[] = []
+// What kind of problem an issue is, so the assistant knows how to resolve it.
+export type IssueCode =
+  | 'empty'
+  | 'over-points'
+  | 'no-detachment'
+  | 'dp-over'
+  | 'no-warlord'
+  | 'too-many-warlords'
+  | 'too-many-enhancements'
+  | 'rule-of-n'
+
+export interface ListIssue {
+  code: IssueCode
+  // One-line statement shown in the legality summary.
+  message: string
+  // How to resolve it, shown in the assistant.
+  fix: string
+  // Entries the fix acts on (warlord candidates, over-cap offenders, …).
+  entryIds?: string[]
+  // Amount over a budget, for points / DP messaging.
+  amount?: number
+}
+
+export function validateList(list: ArmyList, hasDetachments: boolean, pointless: boolean): ListIssue[] {
+  const issues: ListIssue[] = []
   if (list.entries.length === 0) {
-    issues.push('Add at least one unit.')
-    return issues
+    issues.push({
+      code: 'empty',
+      message: 'Add at least one unit.',
+      fix: 'Battleline units are a solid start — add one below, or browse the full catalogue.',
+    })
   }
+  // Point-less systems (Kill Team) have no further legality rules.
   if (pointless) {
     return issues
   }
 
+  // The remaining checks still run on an empty list so the assistant shows the
+  // whole checklist up front (needs a detachment, needs a Warlord, …).
   const rules = rulesFor(list.battleSize)
 
   if (list.pointsLimit != null && list.total > list.pointsLimit) {
-    issues.push(`Over the ${list.pointsLimit} pt limit by ${list.total - list.pointsLimit}.`)
+    const over = list.total - list.pointsLimit
+    // Offer the priciest entries first as trim candidates.
+    const priciest = [...list.entries].sort((a, b) => b.lineTotal - a.lineTotal).map((e) => e.id)
+    issues.push({
+      code: 'over-points',
+      message: `Over the ${list.pointsLimit} pt limit by ${over}.`,
+      fix: `Remove or shrink units to free up ${over} pts. The priciest entries are listed first.`,
+      entryIds: priciest,
+      amount: over,
+    })
   }
 
   if (hasDetachments) {
     const dpUsed = list.detachments.reduce((n, d) => n + d.dp, 0)
     if (list.detachments.length === 0) {
-      issues.push('Select a detachment.')
+      issues.push({
+        code: 'no-detachment',
+        message: 'Select a detachment.',
+        fix: 'Pick a detachment below — it sets your detachment rule and the enhancements you can take.',
+      })
     } else if (list.detachments.length > 1 && dpUsed > rules.dp) {
       // A single detachment is always legal even if it exceeds the budget.
-      issues.push(`Detachments cost ${dpUsed} DP, over the ${rules.dp} DP budget.`)
+      issues.push({
+        code: 'dp-over',
+        message: `Detachments cost ${dpUsed} DP, over the ${rules.dp} DP budget.`,
+        fix: `Drop a detachment to get back to ${rules.dp} DP.`,
+        amount: dpUsed - rules.dp,
+      })
     }
   }
 
-  const warlords = list.entries.filter((e) => e.isWarlord).length
-  if (warlords === 0) {
-    issues.push('Assign a Warlord.')
-  } else if (warlords > 1) {
-    issues.push('Only one Warlord is allowed.')
+  const warlords = list.entries.filter((e) => e.isWarlord)
+  if (warlords.length === 0) {
+    const candidates = list.entries.filter(isCharacter).map((e) => e.id)
+    issues.push({
+      code: 'no-warlord',
+      message: 'Assign a Warlord.',
+      fix: candidates.length > 0
+        ? 'Pick one of your Characters to be the Warlord.'
+        : 'Add a Character and make it your Warlord.',
+      entryIds: candidates,
+    })
+  } else if (warlords.length > 1) {
+    issues.push({
+      code: 'too-many-warlords',
+      message: 'Only one Warlord is allowed.',
+      fix: 'Keep a single Warlord and clear the others.',
+      entryIds: warlords.map((e) => e.id),
+    })
   }
 
-  const enhancements = list.entries.filter((e) => e.enhancementId).length
-  if (enhancements > rules.enhancements) {
-    issues.push(`No more than ${rules.enhancements} Enhancements at this battle size.`)
+  const enhanced = list.entries.filter((e) => e.enhancementId)
+  if (enhanced.length > rules.enhancements) {
+    issues.push({
+      code: 'too-many-enhancements',
+      message: `No more than ${rules.enhancements} Enhancements at this battle size.`,
+      fix: `Remove ${enhanced.length - rules.enhancements} enhancement(s).`,
+      entryIds: enhanced.map((e) => e.id),
+      amount: enhanced.length - rules.enhancements,
+    })
   }
 
   // Rule of N: ≤N of a datasheet, Battleline ≤2N, Dedicated Transport unlimited,
   // Epic Hero ≤1.
-  const groups = new Map<string, { n: number; name: string; max: number }>()
+  const groups = new Map<string, { n: number; name: string; max: number; ids: string[] }>()
   for (const e of list.entries) {
     const max = hasKeyword(e, 'Dedicated Transport')
       ? Infinity
@@ -83,13 +149,20 @@ export function validateList(list: ArmyList, hasDetachments: boolean, pointless:
         : hasKeyword(e, 'Battleline')
           ? rules.ruleOfN * 2
           : rules.ruleOfN
-    const g = groups.get(e.datasheetId) ?? { n: 0, name: e.datasheetName, max }
+    const g = groups.get(e.datasheetId) ?? { n: 0, name: e.datasheetName, max, ids: [] }
     g.n += e.quantity
+    g.ids.push(e.id)
     groups.set(e.datasheetId, g)
   }
   for (const g of groups.values()) {
     if (g.n > g.max) {
-      issues.push(`Too many ${g.name}: ${g.n} of max ${g.max}.`)
+      issues.push({
+        code: 'rule-of-n',
+        message: `Too many ${g.name}: ${g.n} of max ${g.max}.`,
+        fix: `Reduce ${g.name} to ${g.max} or fewer.`,
+        entryIds: g.ids,
+        amount: g.n - g.max,
+      })
     }
   }
 

@@ -19,6 +19,7 @@ import { validateList, BATTLE_SIZE_RULES } from './validation'
 import { groupByRole } from './roles'
 import { useTour } from '../onboarding/TourContext'
 import { UnitDetailModal } from './UnitDetailModal'
+import { ListAssistant } from './ListAssistant'
 
 interface Props {
   initial: ArmyList
@@ -36,6 +37,7 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
   const [tab, setTab] = useState<'catalogue' | 'list'>('catalogue')
   const [detailId, setDetailId] = useState<string | null>(null)
   const [editEntry, setEditEntry] = useState<ListEntry | null>(null)
+  const [showAssistant, setShowAssistant] = useState(false)
   const [name, setName] = useState(initial.name)
   const [limit, setLimit] = useState(initial.pointsLimit?.toString() ?? '')
   const [busy, setBusy] = useState(false)
@@ -107,6 +109,22 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
   async function changeQty(entryId: string, quantity: number) {
     if (quantity < 1) return
     await run(() => updateEntry(list.id, entryId, quantity))
+  }
+
+  // Adds a datasheet and sets the new entry as Warlord in one step.
+  async function addAsWarlord(datasheetId: string) {
+    setBusy(true)
+    setError(null)
+    try {
+      const before = new Set(list.entries.map((e) => e.id))
+      const added = await addEntry(list.id, datasheetId, 1, [])
+      const fresh = added.entries.find((e) => !before.has(e.id))
+      setList(fresh ? await setWarlord(list.id, fresh.id, true) : added)
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Something went wrong.')
+    } finally {
+      setBusy(false)
+    }
   }
 
   async function save() {
@@ -277,8 +295,13 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
             <span className="legality-head">✓ Battle ready{list.detachments.length > 0 ? ` · ${list.detachments.map((d) => d.name).join(', ')}` : ''}</span>
           ) : (
             <>
-              <span className="legality-head">{issues.length} to fix before this list is legal</span>
-              <ul>{issues.map((i, idx) => <li key={idx}>{i}</li>)}</ul>
+              <div className="legality-top">
+                <span className="legality-head">{issues.length} to fix before this list is legal</span>
+                <button type="button" className="btn btn-sm" onClick={() => setShowAssistant(true)}>
+                  Help me fix
+                </button>
+              </div>
+              <ul>{issues.map((i, idx) => <li key={idx}>{i.message}</li>)}</ul>
             </>
           )}
         </div>
@@ -464,6 +487,29 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
             setEditEntry(null)
           }}
           onClose={() => setEditEntry(null)}
+        />
+      )}
+
+      {showAssistant && (
+        <ListAssistant
+          list={list}
+          issues={issues}
+          datasheets={datasheets}
+          detachments={detachments}
+          chosenDetachmentIds={chosenIds}
+          busy={busy}
+          onToggleDetachment={toggleDetachment}
+          onSetWarlord={(entryId, value) => void run(() => setWarlord(list.id, entryId, value))}
+          onRemoveEnhancement={(entryId) => void run(() => setEnhancement(list.id, entryId, null))}
+          onRemoveEntry={(entryId) => void run(() => removeEntry(list.id, entryId))}
+          onChangeQty={(entryId, quantity) => void changeQty(entryId, quantity)}
+          onAdd={(datasheetId) => void add(datasheetId)}
+          onAddWarlord={(datasheetId) => void addAsWarlord(datasheetId)}
+          onGoCatalogue={() => {
+            setTab('catalogue')
+            setShowAssistant(false)
+          }}
+          onClose={() => setShowAssistant(false)}
         />
       )}
     </section>
