@@ -4,20 +4,20 @@ import { useAuth } from './auth/AuthContext'
 import { AuthPage } from './auth/AuthPage'
 import { ListsView } from './lists/ListsView'
 import { GamesView } from './games/GamesView'
-import { CommunityView } from './social/CommunityView'
+import { ProfileView } from './social/ProfileView'
 import { TourOverlay } from './onboarding/TourOverlay'
 import './App.css'
 
-type Health = { state: 'loading' | 'ok' | 'error'; detail?: string }
+type Health = { state: 'loading' | 'ok' | 'error' }
 
 function App() {
   const { user, status, logout } = useAuth()
   const [health, setHealth] = useState<Health>({ state: 'loading' })
-  const [mainView, setMainView] = useState<'lists' | 'games' | 'community'>('lists')
+  const [mainView, setMainView] = useState<'lists' | 'games' | 'profile'>('lists')
 
   useEffect(() => {
     apiGet<HealthStatus>('/api/health')
-      .then((h) => setHealth({ state: 'ok', detail: h.service }))
+      .then(() => setHealth({ state: 'ok' }))
       .catch(() => setHealth({ state: 'error' }))
   }, [])
 
@@ -30,7 +30,14 @@ function App() {
         </div>
         {status === 'authenticated' && user && (
           <div className="account-bar">
-            <span className="account-name">{user.username}</span>
+            <button
+              type="button"
+              className="account-name"
+              onClick={() => setMainView('profile')}
+              title="View your profile"
+            >
+              {user.username}
+            </button>
             <button type="button" className="link-button" onClick={() => void logout()}>
               Sign out
             </button>
@@ -38,21 +45,21 @@ function App() {
         )}
       </header>
 
-      <section className="card">
-        <h2>API status</h2>
-        <p className={`status status-${health.state}`}>
+      {health.state === 'error' && (
+        <div className="conn-banner" role="alert">
           <span className="dot" />
-          {health.state === 'loading' && 'Checking…'}
-          {health.state === 'ok' && `Connected — ${health.detail}`}
-          {health.state === 'error' && 'Unreachable'}
-        </p>
-        {health.state === 'error' && (
-          <p className="hint">
-            Start the API with <code>dotnet run</code> and check{' '}
-            <code>VITE_API_BASE_URL</code>.
-          </p>
-        )}
-      </section>
+          <div>
+            Can’t reach the Battle Library server right now — your lists and games may not load.
+            This usually clears up on its own; try again in a moment.
+            {import.meta.env.DEV && (
+              <p className="hint">
+                Dev: start the API with <code>dotnet run</code> and check{' '}
+                <code>VITE_API_BASE_URL</code>.
+              </p>
+            )}
+          </div>
+        </div>
+      )}
 
       {status === 'loading' && <p className="hint">Restoring session…</p>}
 
@@ -75,18 +82,11 @@ function App() {
             >
               Games
             </button>
-            <button
-              aria-selected={mainView === 'community'}
-              className={mainView === 'community' ? 'active' : ''}
-              onClick={() => setMainView('community')}
-            >
-              Community
-            </button>
           </nav>
 
           {mainView === 'lists' && <ListsView />}
           {mainView === 'games' && <GamesView />}
-          {mainView === 'community' && <CommunityView email={user.email} />}
+          {mainView === 'profile' && <ProfileView username={user.username} email={user.email} />}
         </>
       )}
 
