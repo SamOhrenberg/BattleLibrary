@@ -15,7 +15,7 @@ import {
   type ArmyList,
   type ListEntry,
 } from '../lib/lists'
-import { validateList, BATTLE_SIZE_RULES } from './validation'
+import { validateList, isCharacter, BATTLE_SIZE_RULES } from './validation'
 import { groupByRole } from './roles'
 import { isLegends, isCrucible } from './tiers'
 import { useTour } from '../onboarding/TourContext'
@@ -41,6 +41,8 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
   const [showLegends, setShowLegends] = useState(false)
   const [showCrucible, setShowCrucible] = useState(true)
   const [tab, setTab] = useState<'catalogue' | 'list'>('catalogue')
+  // Role groups collapsed in the catalogue panel.
+  const [catCollapsed, setCatCollapsed] = useState<Set<string>>(new Set())
   const [detailId, setDetailId] = useState<string | null>(null)
   const [editEntry, setEditEntry] = useState<ListEntry | null>(null)
   const [showAssistant, setShowAssistant] = useState(false)
@@ -87,6 +89,11 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
       return true
     })
   }, [datasheets, search, showLegends, showCrucible])
+
+  const catalogueGroups = useMemo(() => groupByRole(filtered, (d) => d.keywords), [filtered])
+  const allCollapsed = catalogueGroups.length > 0 && catalogueGroups.every((g) => catCollapsed.has(g.role))
+  const toggleAllGroups = () =>
+    setCatCollapsed(allCollapsed ? new Set() : new Set(catalogueGroups.map((g) => g.role)))
 
   async function run(action: () => Promise<ArmyList>) {
     setBusy(true)
@@ -414,12 +421,19 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
         <div className="panel panel-catalogue" data-tour="catalogue">
           <div className="panel-head">
             <h3>Catalogue</h3>
-            <input
-              className="catalogue-search"
-              placeholder="Search units…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
+            <div className="panel-head-actions">
+              <input
+                className="catalogue-search"
+                placeholder="Search units…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+              {catalogueGroups.length > 1 && (
+                <button type="button" className="collapse-all" onClick={toggleAllGroups}>
+                  {allCollapsed ? 'Expand all' : 'Collapse all'}
+                </button>
+              )}
+            </div>
           </div>
           <p className="panel-hint">Tap a unit's name for its full datasheet.</p>
           {(legendsCount > 0 || crucibleCount > 0) && (
@@ -443,8 +457,22 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
             {filtered.length === 0 ? (
               <p className="empty">No units match.</p>
             ) : (
-              groupByRole(filtered, (d) => d.keywords).map((group) => (
-                <details className="role-group" key={group.role} open>
+              catalogueGroups.map((group) => (
+                <details
+                  className="role-group"
+                  key={group.role}
+                  open={!catCollapsed.has(group.role)}
+                  onToggle={(e) => {
+                    const open = (e.currentTarget as HTMLDetailsElement).open
+                    setCatCollapsed((prev) => {
+                      if (open === !prev.has(group.role)) return prev
+                      const next = new Set(prev)
+                      if (open) next.delete(group.role)
+                      else next.add(group.role)
+                      return next
+                    })
+                  }}
+                >
                   <summary className="role-summary">
                     {group.role} <span className="role-count">{group.items.length}</span>
                   </summary>
@@ -507,9 +535,18 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
                         ))}
                       </ul>
                     )}
-                    {(e.isWarlord || e.enhancementName) && (
+                    {((!pointless && isCharacter(e)) || e.enhancementName) && (
                       <div className="entry-badges">
-                        {e.isWarlord && <span className="badge-warlord">★ Warlord</span>}
+                        {!pointless && isCharacter(e) && (
+                          <button
+                            type="button"
+                            className={`warlord-btn${e.isWarlord ? ' on' : ''}`}
+                            onClick={() => void run(() => setWarlord(list.id, e.id, !e.isWarlord))}
+                            disabled={busy}
+                          >
+                            ★ {e.isWarlord ? 'Warlord' : 'Make Warlord'}
+                          </button>
+                        )}
                         {e.enhancementName && (
                           <span className="badge-enh">{e.enhancementName} (+{e.enhancementPoints})</span>
                         )}
@@ -553,14 +590,6 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
           initialSelected={editEntry.selectedOptions.map((o) => o.id)}
           submitLabel="Save changes"
           busy={busy}
-          warlord={
-            pointless
-              ? undefined
-              : {
-                  value: editEntry.isWarlord,
-                  onChange: (v) => void runEntry(editEntry.id, () => setWarlord(list.id, editEntry.id, v)),
-                }
-          }
           enhancement={
             pointless || list.detachments.length === 0
               ? undefined

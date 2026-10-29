@@ -431,16 +431,28 @@ public sealed class BsDataParser
     private static IReadOnlyList<DatasheetOption> ExtractOptions(SelectionEntryNode entry, CatalogueSchema schema, string ptsTypeId, Index index)
     {
         var options = new List<DatasheetOption>();
-        CollectOptions(entry, MaxDepth, [], options, index, ptsTypeId);
+        CollectOptions(entry, MaxDepth, [], options, index, ptsTypeId, schema);
         return options
             .Where(o => !string.IsNullOrWhiteSpace(o.Name) && !string.IsNullOrEmpty(o.Id))
             .DistinctBy(o => o.Id)
             .ToList();
     }
 
+    // Weapon stat line(s) a wargear choice grants, for the option preview.
+    private static IReadOnlyList<WeaponProfile> OptionWeapons(SelectionNode choice, CatalogueSchema schema, Index index)
+    {
+        var profiles = new List<ProfileNode>();
+        Gather(choice, 2, [], profiles, index, descendGroups: false);
+        return profiles
+            .Where(p => schema.WeaponTypes.Contains(p.TypeName))
+            .Select(p => new WeaponProfile(p.Name, schema.RangedWeaponTypes.Contains(p.TypeName), ToCharacteristics(p)))
+            .DistinctBy(w => (w.Name, w.Ranged))
+            .ToList();
+    }
+
     private static void CollectOptions(
         SelectionNode node, int depth, HashSet<string> visited,
-        List<DatasheetOption> options, Index index, string ptsTypeId)
+        List<DatasheetOption> options, Index index, string ptsTypeId, CatalogueSchema schema)
     {
         if (depth < 0)
         {
@@ -460,22 +472,22 @@ public sealed class BsDataParser
                 {
                     var id = !string.IsNullOrEmpty(choice.Id) ? choice.Id
                         : (choice as EntryLinkNode)?.TargetId ?? "";
-                    options.Add(new DatasheetOption(id, name, pts, group.Name));
+                    options.Add(new DatasheetOption(id, name, pts, group.Name, OptionWeapons(choice, schema, index)));
                 }
-                CollectOptions(choice, depth - 1, visited, options, index, ptsTypeId);
+                CollectOptions(choice, depth - 1, visited, options, index, ptsTypeId, schema);
             }
-            CollectOptions(group, depth - 1, visited, options, index, ptsTypeId);
+            CollectOptions(group, depth - 1, visited, options, index, ptsTypeId, schema);
         }
 
         foreach (var child in node.SelectionEntries)
         {
-            CollectOptions(child, depth - 1, visited, options, index, ptsTypeId);
+            CollectOptions(child, depth - 1, visited, options, index, ptsTypeId, schema);
         }
         foreach (var link in node.EntryLinks)
         {
             if (!string.IsNullOrEmpty(link.TargetId) && index.Entries.TryGetValue(link.TargetId, out var target))
             {
-                CollectOptions(target, depth - 1, visited, options, index, ptsTypeId);
+                CollectOptions(target, depth - 1, visited, options, index, ptsTypeId, schema);
             }
         }
     }

@@ -36,8 +36,10 @@ public sealed record Datasheet(
 
 // A selectable wargear/upgrade choice. Points is the additive pts cost (0 when
 // the option is free, as most 11e wargear is). Group is the choice set it
-// belongs to (e.g. "Melee Weapons"), for presentation.
-public sealed record DatasheetOption(string Id, string Name, int Points, string Group);
+// belongs to (e.g. "Melee Weapons"), for presentation. Weapons holds the stat
+// line(s) the choice grants, when it is a weapon (empty for plain upgrades).
+public sealed record DatasheetOption(
+    string Id, string Name, int Points, string Group, IReadOnlyList<WeaponProfile> Weapons);
 
 public sealed record UnitProfile(string Name, IReadOnlyList<Characteristic> Characteristics);
 

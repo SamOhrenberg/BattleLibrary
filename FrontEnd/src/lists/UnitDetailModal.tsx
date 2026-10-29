@@ -14,8 +14,8 @@ interface Props {
   initialSelected?: string[]
   submitLabel?: string
   busy?: boolean
-  // Edit-only: assign the Warlord / an enhancement, applied immediately.
-  warlord?: { value: boolean; onChange: (value: boolean) => void }
+  // Edit-only: assign an enhancement, applied immediately. (Warlord is set from
+  // the list overview, not here.)
   enhancement?: { value: string | null; options: EnhancementOption[]; onChange: (id: string | null) => void }
   onAdd: (selectedOptionIds: string[]) => void
   onClose: () => void
@@ -26,7 +26,6 @@ export function UnitDetailModal({
   initialSelected,
   submitLabel,
   busy,
-  warlord,
   enhancement,
   onAdd,
   onClose,
@@ -133,15 +132,34 @@ export function UnitDetailModal({
                   <div className="option-group" key={g.name}>
                     {g.name && <div className="option-group-name">{g.name}</div>}
                     {g.options.map((o) => (
-                      <label className="option-row" key={o.id}>
-                        <input
-                          type="checkbox"
-                          checked={selected.has(o.id)}
-                          onChange={() => toggle(o.id)}
-                        />
-                        <span className="opt-name">{o.name}</span>
-                        <span className="opt-pts">{o.points > 0 ? `+${o.points}` : 'free'}</span>
-                      </label>
+                      <div className="option-wrap" key={o.id}>
+                        <label className="option-row">
+                          <input
+                            type="checkbox"
+                            checked={selected.has(o.id)}
+                            onChange={() => toggle(o.id)}
+                          />
+                          <span className="opt-name">{o.name}</span>
+                          <span className="opt-pts">{o.points > 0 ? `+${o.points}` : 'free'}</span>
+                        </label>
+                        {o.weapons?.length > 0 && (
+                          <div className="opt-weapon">
+                            {o.weapons.map((w) => (
+                              <div className="owl" key={`${w.name}-${w.ranged}`}>
+                                <span className="owl-type">{w.ranged ? 'Ranged' : 'Melee'}</span>
+                                {w.characteristics
+                                  .filter((c) => c.value)
+                                  .map((c) => (
+                                    <span className="owl-stat" key={c.name}>
+                                      {c.name}
+                                      <b>{c.value}</b>
+                                    </span>
+                                  ))}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     ))}
                   </div>
                 ))}
@@ -154,20 +172,6 @@ export function UnitDetailModal({
               const isEpic = kw.has('epic hero')
               return (
                 <>
-                  {warlord && isChar && (
-                    <div className="detail-section">
-                      <h4>Warlord</h4>
-                      <label className="modal-check">
-                        <input
-                          type="checkbox"
-                          checked={warlord.value}
-                          onChange={(e) => warlord.onChange(e.target.checked)}
-                          disabled={busy}
-                        />
-                        Make this unit your Warlord
-                      </label>
-                    </div>
-                  )}
                   {enhancement && isChar && !isEpic && (
                     <div className="detail-section">
                       <h4>Enhancement</h4>

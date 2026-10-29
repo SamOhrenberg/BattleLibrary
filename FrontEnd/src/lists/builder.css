@@ -398,6 +398,23 @@
   width: 150px;
 }
 
+.panel-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.collapse-all {
+  border: none;
+  background: none;
+  padding: 2px 4px;
+  color: var(--accent);
+  font: inherit;
+  font-size: 0.78rem;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
 .scroll {
   overflow-y: auto;
   max-height: 70vh;
@@ -806,18 +823,61 @@
   margin: 8px 0 2px;
 }
 
+.option-wrap {
+  border-bottom: 1px solid var(--border);
+}
+
+.option-wrap:last-child {
+  border-bottom: none;
+}
+
 .option-row {
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 9px 4px;
   min-height: 44px;
-  border-bottom: 1px solid var(--border);
   cursor: pointer;
 }
 
-.option-row:last-child {
-  border-bottom: none;
+/* Hover/focus reveal of a wargear choice's weapon stat line. In-flow (not a
+   floating popover) so it is never clipped by the scrolling modal. */
+.opt-weapon {
+  display: none;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  padding: 0 4px 9px 34px;
+}
+
+.option-wrap:hover .opt-weapon,
+.option-wrap:focus-within .opt-weapon {
+  display: flex;
+}
+
+.owl {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+}
+
+.owl-type {
+  font-size: 0.66rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.owl-stat {
+  font-size: 0.74rem;
+  color: var(--muted);
+}
+
+.owl-stat b {
+  margin-left: 2px;
+  color: var(--fg);
+  font-variant-numeric: tabular-nums;
 }
 
 .option-row input {

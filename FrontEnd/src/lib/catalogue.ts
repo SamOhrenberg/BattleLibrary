@@ -74,6 +74,8 @@ export interface DatasheetOption {
   name: string
   points: number
   group: string
+  // Weapon stat line(s) this choice grants (empty for plain upgrades).
+  weapons: DatasheetWeapon[]
 }
 
 export interface DatasheetDetail {
