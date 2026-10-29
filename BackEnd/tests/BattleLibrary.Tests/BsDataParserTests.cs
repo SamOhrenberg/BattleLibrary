@@ -84,7 +84,7 @@ public class BsDataParserTests
         var line = bw.Profiles.First();
         sb.AppendLine($"  statline : {string.Join("  ", line.Characteristics.Select(c => $"{c.Name} {c.Value}"))}");
         sb.AppendLine($"  weapons  : {string.Join(", ", bw.Weapons.Select(w => w.Name))}");
-        sb.AppendLine($"  abilities: {string.Join(", ", bw.Abilities)}");
+        sb.AppendLine($"  abilities: {string.Join(", ", bw.Abilities.Select(a => a.Name))}");
         sb.AppendLine($"  options  : {string.Join(", ", bw.Options.Select(o => o.Points > 0 ? $"{o.Name} (+{o.Points})" : o.Name))}");
 
         var outPath = Path.Combine(Environment.GetEnvironmentVariable("BSDATA_TEST_DIR")!, "parse-summary.txt");

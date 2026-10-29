@@ -641,6 +641,69 @@
   margin-bottom: 3px;
 }
 
+/* Named rules with their text (abilities, detachment rules). */
+.rules-list {
+  margin: 0;
+}
+
+.rules-list .rule {
+  margin-bottom: 10px;
+}
+
+.rules-list dt {
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.rules-list dd {
+  margin: 2px 0 0;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: var(--muted);
+  white-space: pre-wrap;
+}
+
+.enh-text {
+  margin: 6px 0 0;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  color: var(--muted);
+  white-space: pre-wrap;
+}
+
+/* Chosen-detachment rules panel in the builder. */
+.detachment-rules {
+  margin-top: 12px;
+  display: grid;
+  gap: 8px;
+}
+
+.det-rules {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  padding: 10px 14px;
+}
+
+.det-rules > summary {
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--accent);
+  list-style: none;
+}
+
+.det-rules > summary::-webkit-details-marker {
+  display: none;
+}
+
+.det-rules[open] > summary {
+  margin-bottom: 8px;
+}
+
 .modal-actions {
   display: flex;
   align-items: center;

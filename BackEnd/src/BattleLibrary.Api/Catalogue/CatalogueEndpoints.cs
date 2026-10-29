@@ -9,8 +9,10 @@ public static class CatalogueEndpoints
 {
     private static readonly JsonSerializerOptions WebJson = new(JsonSerializerDefaults.Web);
 
-    private sealed record EnhancementDto(string Id, string Name, int Points);
-    private sealed record DetachmentDto(string Id, string Name, int Dp, IReadOnlyList<EnhancementDto> Enhancements);
+    private sealed record AbilityDto(string Name, string Text);
+    private sealed record EnhancementDto(string Id, string Name, int Points, string Text);
+    private sealed record DetachmentDto(
+        string Id, string Name, int Dp, IReadOnlyList<EnhancementDto> Enhancements, IReadOnlyList<AbilityDto> Rules);
 
     private static string[] DeserializeNames(string? json)
     {

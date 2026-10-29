@@ -20,6 +20,7 @@ import { groupByRole } from './roles'
 import { useTour } from '../onboarding/TourContext'
 import { UnitDetailModal } from './UnitDetailModal'
 import { ListAssistant } from './ListAssistant'
+import { RuleText } from './RuleText'
 
 interface Props {
   initial: ArmyList
@@ -162,10 +163,15 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
   const dpUsed = list.detachments.reduce((n, d) => n + d.dp, 0)
   const issues = useMemo(() => validateList(list, hasDetachments, pointless), [list, hasDetachments, pointless])
 
+  const chosenDetachments = useMemo(
+    () => detachments.filter((d) => chosenIds.has(d.id)),
+    [detachments, chosenIds],
+  )
+
   // Enhancements offered by any chosen detachment.
   const availableEnhancements = useMemo(
-    () => detachments.filter((d) => chosenIds.has(d.id)).flatMap((d) => d.enhancements),
-    [detachments, chosenIds],
+    () => chosenDetachments.flatMap((d) => d.enhancements),
+    [chosenDetachments],
   )
 
   const changeBattleSize = (b: string | null) => run(() => setBattleSize(list.id, b))
@@ -286,6 +292,26 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {!pointless && chosenDetachments.some((d) => d.rules.length > 0) && (
+        <div className="detachment-rules">
+          {chosenDetachments
+            .filter((d) => d.rules.length > 0)
+            .map((d) => (
+              <details className="det-rules" key={d.id} open>
+                <summary>{d.name} — detachment rule{d.rules.length > 1 ? 's' : ''}</summary>
+                <dl className="rules-list">
+                  {d.rules.map((r) => (
+                    <div className="rule" key={r.name}>
+                      <dt>{r.name}</dt>
+                      {r.text && <dd><RuleText text={r.text} /></dd>}
+                    </div>
+                  ))}
+                </dl>
+              </details>
+            ))}
         </div>
       )}
 

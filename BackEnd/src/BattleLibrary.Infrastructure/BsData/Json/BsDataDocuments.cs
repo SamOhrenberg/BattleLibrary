@@ -96,6 +96,15 @@ internal sealed class ProfileNode
     public List<CharacteristicNode> Characteristics { get; set; } = [];
 }
 
+// A free-text rule (detachment rules, army rules); its text is in Description.
+internal sealed class RuleNode
+{
+    public string Id { get; set; } = "";
+    public string Name { get; set; } = "";
+    public string? Description { get; set; }
+    public bool Hidden { get; set; }
+}
+
 // Selection entries, groups, and links share the same child-bearing shape.
 internal abstract class SelectionNode
 {
@@ -104,6 +113,7 @@ internal abstract class SelectionNode
     public bool Hidden { get; set; }
     public List<Cost> Costs { get; set; } = [];
     public List<ProfileNode> Profiles { get; set; } = [];
+    public List<RuleNode> Rules { get; set; } = [];
     public List<CategoryLink> CategoryLinks { get; set; } = [];
     public List<SelectionEntryNode> SelectionEntries { get; set; } = [];
     public List<SelectionEntryGroupNode> SelectionEntryGroups { get; set; } = [];

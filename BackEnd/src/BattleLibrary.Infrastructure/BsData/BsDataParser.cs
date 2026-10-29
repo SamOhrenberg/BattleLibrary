@@ -135,13 +135,13 @@ public sealed class BsDataParser
             }
         }
 
-        var options = new List<(string Id, string Name, int Dp)>();
-        var enhancements = new List<(string Det, string Id, string Name, int Points)>();
+        var options = new List<(string Id, string Name, int Dp, List<Ability> Rules)>();
+        var enhancements = new List<(string Det, string Id, string Name, int Points, string Text)>();
         foreach (var doc in docs)
         {
             foreach (var root in doc.SharedSelectionEntryGroups.Cast<SelectionNode>().Concat(doc.SharedSelectionEntries))
             {
-                CollectDetachments(root, null, DetachmentMaxDepth, [], schema.DetachmentGroupName, enhCostId, dpCostId, ptsTypeId, options, enhancements);
+                CollectDetachments(root, null, DetachmentMaxDepth, [], schema.DetachmentGroupName, enhCostId, dpCostId, ptsTypeId, schema.AbilityTypes, options, enhancements);
             }
         }
 
@@ -150,7 +150,7 @@ public sealed class BsDataParser
             .ToDictionary(
                 g => g.Key,
                 g => g.DistinctBy(e => e.Name, StringComparer.OrdinalIgnoreCase)
-                      .Select(e => new Enhancement(e.Id, e.Name, e.Points))
+                      .Select(e => new Enhancement(e.Id, e.Name, e.Points, e.Text))
                       .ToList(),
                 StringComparer.OrdinalIgnoreCase);
 
@@ -159,7 +159,8 @@ public sealed class BsDataParser
             .Where(o => !string.IsNullOrWhiteSpace(o.Name))
             .Select(o => new Detachment(
                 o.Id, o.Name, o.Dp,
-                byDetachment.TryGetValue(o.Name, out var es) ? es : []))
+                byDetachment.TryGetValue(o.Name, out var es) ? es : [],
+                o.Rules))
             .OrderBy(d => d.Name, StringComparer.OrdinalIgnoreCase)
             .ToList();
     }
@@ -167,8 +168,9 @@ public sealed class BsDataParser
     private static void CollectDetachments(
         SelectionNode node, string? groupName, int depth, HashSet<string> visited,
         string detachmentGroupName, string enhCostId, string dpCostId, string ptsTypeId,
-        List<(string Id, string Name, int Dp)> options,
-        List<(string Det, string Id, string Name, int Points)> enhancements)
+        IReadOnlySet<string> abilityTypes,
+        List<(string Id, string Name, int Dp, List<Ability> Rules)> options,
+        List<(string Det, string Id, string Name, int Points, string Text)> enhancements)
     {
         if (depth < 0 || (!string.IsNullOrEmpty(node.Id) && !visited.Add(node.Id)))
         {
@@ -176,7 +178,8 @@ public sealed class BsDataParser
         }
 
         // Detachment options: the direct child entries of a "Detachment" group,
-        // each with its Detachment Points cost (default 1 when unpriced).
+        // each with its Detachment Points cost (default 1 when unpriced) and its
+        // detachment rules.
         if (node is SelectionEntryGroupNode && string.Equals(node.Name, detachmentGroupName, StringComparison.OrdinalIgnoreCase))
         {
             foreach (var child in node.SelectionEntries)
@@ -186,13 +189,14 @@ public sealed class BsDataParser
                     var dp = string.IsNullOrEmpty(dpCostId)
                         ? 1
                         : child.Costs.Where(c => c.TypeId == dpCostId).Select(c => (int)Math.Round(c.Value)).DefaultIfEmpty(1).First();
-                    options.Add((child.Id, child.Name, dp));
+                    options.Add((child.Id, child.Name, dp, CollectAbilities(child, abilityTypes, 4)));
                 }
             }
         }
 
         // Enhancement entries: carry the enhancement counter cost; the enclosing
-        // group is named "<Detachment> Enhancements".
+        // group is named "<Detachment> Enhancements". The effect text is on the
+        // entry's ability profile.
         if (!string.IsNullOrEmpty(enhCostId)
             && node.Costs.Any(c => c.TypeId == enhCostId && c.Value != 0)
             && !string.IsNullOrWhiteSpace(node.Name))
@@ -203,16 +207,20 @@ public sealed class BsDataParser
             {
                 det = det[..^suffix.Length];
             }
-            enhancements.Add((det, node.Id, node.Name, PointsOf(node, ptsTypeId)));
+            var text = node.Profiles
+                .Where(p => abilityTypes.Contains(p.TypeName))
+                .Select(DescriptionOf)
+                .FirstOrDefault(t => !string.IsNullOrWhiteSpace(t)) ?? "";
+            enhancements.Add((det, node.Id, node.Name, PointsOf(node, ptsTypeId), text));
         }
 
         foreach (var child in node.SelectionEntries)
         {
-            CollectDetachments(child, groupName, depth - 1, visited, detachmentGroupName, enhCostId, dpCostId, ptsTypeId, options, enhancements);
+            CollectDetachments(child, groupName, depth - 1, visited, detachmentGroupName, enhCostId, dpCostId, ptsTypeId, abilityTypes, options, enhancements);
         }
         foreach (var group in node.SelectionEntryGroups)
         {
-            CollectDetachments(group, group.Name, depth - 1, visited, detachmentGroupName, enhCostId, dpCostId, ptsTypeId, options, enhancements);
+            CollectDetachments(group, group.Name, depth - 1, visited, detachmentGroupName, enhCostId, dpCostId, ptsTypeId, abilityTypes, options, enhancements);
         }
     }
 
@@ -353,10 +361,9 @@ public sealed class BsDataParser
         var innateProfiles = new List<ProfileNode>();
         Gather(entry, MaxDepth, [], innateProfiles, index, descendGroups: false);
         var abilities = innateProfiles
-            .Where(p => schema.AbilityTypes.Contains(p.TypeName))
-            .Select(p => p.Name)
-            .Where(n => !string.IsNullOrWhiteSpace(n))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Where(p => schema.AbilityTypes.Contains(p.TypeName) && !string.IsNullOrWhiteSpace(p.Name))
+            .Select(p => new Ability(p.Name, DescriptionOf(p)))
+            .DistinctBy(a => a.Name, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
         var options = ExtractOptions(entry, schema, ptsTypeId, index);
@@ -501,6 +508,58 @@ public sealed class BsDataParser
         profile.Characteristics
             .Select(c => new Characteristic(c.Name, c.Text ?? ""))
             .ToList();
+
+    // An ability's rules text: the "Description" characteristic if present, else
+    // all non-empty characteristic texts joined.
+    private static string DescriptionOf(ProfileNode profile)
+    {
+        var desc = profile.Characteristics
+            .FirstOrDefault(c => string.Equals(c.Name, "Description", StringComparison.OrdinalIgnoreCase))?.Text;
+        if (!string.IsNullOrWhiteSpace(desc))
+        {
+            return desc.Trim();
+        }
+        return string.Join(" ", profile.Characteristics
+            .Select(c => c.Text)
+            .Where(t => !string.IsNullOrWhiteSpace(t))).Trim();
+    }
+
+    // Detachment rules: ability-type profiles on the detachment entry and its
+    // nested entries/groups, excluding the "<Detachment> Enhancements" subtree.
+    private static List<Ability> CollectAbilities(SelectionNode node, IReadOnlySet<string> abilityTypes, int depth)
+    {
+        var result = new List<Ability>();
+        Walk(node, depth);
+        return result.DistinctBy(a => a.Name, StringComparer.OrdinalIgnoreCase).ToList();
+
+        void Walk(SelectionNode n, int d)
+        {
+            if (d < 0)
+            {
+                return;
+            }
+            foreach (var p in n.Profiles.Where(p => abilityTypes.Contains(p.TypeName) && !string.IsNullOrWhiteSpace(p.Name)))
+            {
+                result.Add(new Ability(p.Name, DescriptionOf(p)));
+            }
+            // Detachment rules are free-text rule nodes, not ability profiles.
+            foreach (var r in n.Rules.Where(r => !r.Hidden && !string.IsNullOrWhiteSpace(r.Name)))
+            {
+                result.Add(new Ability(r.Name, (r.Description ?? "").Trim()));
+            }
+            foreach (var child in n.SelectionEntries)
+            {
+                Walk(child, d - 1);
+            }
+            foreach (var group in n.SelectionEntryGroups)
+            {
+                if (!group.Name.EndsWith(" Enhancements", StringComparison.OrdinalIgnoreCase))
+                {
+                    Walk(group, d - 1);
+                }
+            }
+        }
+    }
 
     private static string ResolvePointsTypeId(GameSystemDocument system, CatalogueSchema schema)
     {

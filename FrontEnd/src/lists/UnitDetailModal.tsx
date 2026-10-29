@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import { getDatasheet, type DatasheetDetail, type DatasheetOption } from '../lib/catalogue'
+import { RuleText } from './RuleText'
 
 interface EnhancementOption {
   id: string
   name: string
   points: number
+  text?: string
 }
 
 interface Props {
@@ -102,11 +104,14 @@ export function UnitDetailModal({
             {detail.abilities.length > 0 && (
               <div className="detail-section">
                 <h4>Abilities</h4>
-                <ul>
+                <dl className="rules-list">
                   {detail.abilities.map((a) => (
-                    <li key={a}>{a}</li>
+                    <div className="rule" key={a.name}>
+                      <dt>{a.name}</dt>
+                      {a.text && <dd><RuleText text={a.text} /></dd>}
+                    </div>
                   ))}
-                </ul>
+                </dl>
               </div>
             )}
 
@@ -177,6 +182,10 @@ export function UnitDetailModal({
                           <option key={o.id} value={o.id}>{o.name} (+{o.points})</option>
                         ))}
                       </select>
+                      {(() => {
+                        const chosen = enhancement.options.find((o) => o.id === enhancement.value)
+                        return chosen?.text ? <p className="enh-text"><RuleText text={chosen.text} /></p> : null
+                      })()}
                     </div>
                   )}
                 </>

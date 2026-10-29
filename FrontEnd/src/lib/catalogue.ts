@@ -27,10 +27,17 @@ export interface CatalogueDatasheet {
   keywords: string[]
 }
 
+// A named rule with its text: a datasheet ability, a detachment rule, etc.
+export interface AbilityText {
+  name: string
+  text: string
+}
+
 export interface CatalogueEnhancement {
   id: string
   name: string
   points: number
+  text: string
 }
 
 export interface CatalogueDetachment {
@@ -38,6 +45,7 @@ export interface CatalogueDetachment {
   name: string
   dp: number
   enhancements: CatalogueEnhancement[]
+  rules: AbilityText[]
 }
 
 export interface FactionDatasheets {
@@ -75,7 +83,7 @@ export interface DatasheetDetail {
   keywords: string[]
   profiles: DatasheetProfile[]
   weapons: DatasheetWeapon[]
-  abilities: string[]
+  abilities: AbilityText[]
   options: DatasheetOption[]
   equipment?: string[]
 }
