@@ -124,7 +124,11 @@ function ListIndex({
       {lists.map((l) => (
         <li key={l.id} onClick={() => onOpen(l.id)}>
           <div>
-            <div className="li-name">{l.name}</div>
+            <div className="li-name">
+              {l.name}
+              {l.usesLegends && <span className="tier-tag legends">Legends</span>}
+              {l.usesCrucible && <span className="tier-tag crucible">Crucible</span>}
+            </div>
             <div className="li-meta">
               {l.factionName} · {l.entryCount} {l.entryCount === 1 ? 'entry' : 'entries'}
             </div>

@@ -48,6 +48,8 @@ public sealed record ArmyListSummaryDto(
     int EntryCount,
     bool Featured,
     string? BattleSize,
+    bool UsesLegends,
+    bool UsesCrucible,
     DateTimeOffset UpdatedAt);
 
 public sealed record ArmyListDto(
@@ -61,6 +63,8 @@ public sealed record ArmyListDto(
     bool IsOverLimit,
     bool Featured,
     string? BattleSize,
+    bool UsesLegends,
+    bool UsesCrucible,
     IReadOnlyList<ListDetachmentDto> Detachments,
     DateTimeOffset UpdatedAt,
     IReadOnlyList<ListEntryDto> Entries);

@@ -17,6 +17,7 @@ import {
 } from '../lib/lists'
 import { validateList, BATTLE_SIZE_RULES } from './validation'
 import { groupByRole } from './roles'
+import { isLegends, isCrucible } from './tiers'
 import { useTour } from '../onboarding/TourContext'
 import { UnitDetailModal } from './UnitDetailModal'
 import { ListAssistant } from './ListAssistant'
@@ -35,6 +36,10 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
   const [equipment, setEquipment] = useState<string[]>([])
   const [detachments, setFactionDetachments] = useState<CatalogueDetachment[]>([])
   const [search, setSearch] = useState('')
+  // Legends is extra, non-standard content, so hide it by default; Crucible is
+  // current, so show it. Toggles below let either be flipped.
+  const [showLegends, setShowLegends] = useState(false)
+  const [showCrucible, setShowCrucible] = useState(true)
   const [tab, setTab] = useState<'catalogue' | 'list'>('catalogue')
   const [detailId, setDetailId] = useState<string | null>(null)
   const [editEntry, setEditEntry] = useState<ListEntry | null>(null)
@@ -67,10 +72,21 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
   const pointless = datasheets.length > 0 && datasheets.every((d) => d.points == null)
   const unitWord = pointless ? 'operatives' : 'units'
 
+  const legendsCount = useMemo(() => datasheets.filter((d) => isLegends(d.name)).length, [datasheets])
+  const crucibleCount = useMemo(
+    () => datasheets.filter((d) => isCrucible(d.name, d.keywords)).length,
+    [datasheets],
+  )
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
-    return q ? datasheets.filter((d) => d.name.toLowerCase().includes(q)) : datasheets
-  }, [datasheets, search])
+    return datasheets.filter((d) => {
+      if (q && !d.name.toLowerCase().includes(q)) return false
+      if (!showLegends && isLegends(d.name)) return false
+      if (!showCrucible && isCrucible(d.name, d.keywords)) return false
+      return true
+    })
+  }, [datasheets, search, showLegends, showCrucible])
 
   async function run(action: () => Promise<ArmyList>) {
     setBusy(true)
@@ -276,17 +292,46 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
                   // One detachment is always allowed; past that, adding can't exceed the budget.
                   const overBudget =
                     !selected && !!rules && list.detachments.length >= 1 && dpUsed + d.dp > rules.dp
+                  const hasPreview = d.rules.length > 0 || d.enhancements.length > 0
                   return (
-                    <button
-                      key={d.id}
-                      type="button"
-                      className={`det-chip${selected ? ' on' : ''}`}
-                      onClick={() => toggleDetachment(d.id)}
-                      disabled={busy || overBudget}
-                      title={overBudget ? 'Not enough Detachment Points left' : undefined}
-                    >
-                      {d.name} <span className="det-dp">{d.dp} DP</span>
-                    </button>
+                    <div className="det-chip-wrap" key={d.id}>
+                      <button
+                        type="button"
+                        className={`det-chip${selected ? ' on' : ''}`}
+                        onClick={() => toggleDetachment(d.id)}
+                        disabled={busy || overBudget}
+                        title={overBudget ? 'Not enough Detachment Points left' : undefined}
+                      >
+                        {d.name} <span className="det-dp">{d.dp} DP</span>
+                      </button>
+                      {hasPreview && (
+                        <div className="det-popover" role="tooltip">
+                          <div className="dp-title">{d.name} · {d.dp} DP</div>
+                          {d.rules.length > 0 && (
+                            <dl className="rules-list">
+                              {d.rules.map((r) => (
+                                <div className="rule" key={r.name}>
+                                  <dt>{r.name}</dt>
+                                  {r.text && <dd><RuleText text={r.text} /></dd>}
+                                </div>
+                              ))}
+                            </dl>
+                          )}
+                          {d.enhancements.length > 0 && (
+                            <div className="dp-enh">
+                              <span className="dp-sub">Enhancements</span>
+                              <ul>
+                                {d.enhancements.map((e) => (
+                                  <li key={e.id}>
+                                    {e.name} <span className="dp-pts">+{e.points}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   )
                 })}
               </div>
@@ -377,6 +422,23 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
             />
           </div>
           <p className="panel-hint">Tap a unit's name for its full datasheet.</p>
+          {(legendsCount > 0 || crucibleCount > 0) && (
+            <div className="tier-toggles">
+              <span className="tier-label">Show</span>
+              {legendsCount > 0 && (
+                <label className="tier-toggle">
+                  <input type="checkbox" checked={showLegends} onChange={(e) => setShowLegends(e.target.checked)} />
+                  Legends <span className="tier-count">{legendsCount}</span>
+                </label>
+              )}
+              {crucibleCount > 0 && (
+                <label className="tier-toggle">
+                  <input type="checkbox" checked={showCrucible} onChange={(e) => setShowCrucible(e.target.checked)} />
+                  Crucible <span className="tier-count">{crucibleCount}</span>
+                </label>
+              )}
+            </div>
+          )}
           <div className="scroll">
             {filtered.length === 0 ? (
               <p className="empty">No units match.</p>

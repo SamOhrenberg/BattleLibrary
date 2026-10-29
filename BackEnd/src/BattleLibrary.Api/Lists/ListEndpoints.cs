@@ -52,6 +52,8 @@ public static class ListEndpoints
             l.Entries.Count,
             l.Featured,
             l.BattleSize,
+            l.Entries.Any(EntryIsLegends),
+            l.Entries.Any(EntryIsCrucible),
             l.UpdatedAt));
         return Results.Ok(summaries);
     }
@@ -476,7 +478,8 @@ public static class ListEndpoints
         return new ArmyListDto(
             list.Id, list.Name, list.GameSystemKey, list.FactionId, list.FactionName,
             list.PointsLimit, total, overLimit, list.Featured,
-            list.BattleSize, detachments, list.UpdatedAt, entries);
+            list.BattleSize, list.Entries.Any(EntryIsLegends), list.Entries.Any(EntryIsCrucible),
+            detachments, list.UpdatedAt, entries);
     }
 
     private static int LineTotal(ListEntry e) =>
@@ -522,6 +525,15 @@ public static class ListEndpoints
 
     private static bool HasKeyword(ListEntry e, string keyword) =>
         e.Keywords.Any(k => string.Equals(k, keyword, StringComparison.OrdinalIgnoreCase));
+
+    // Content-tier checks, so the game screen can tell at a glance whether a list
+    // leans on Legends (a "[Legends]" name suffix) or Crucible content.
+    private static bool EntryIsLegends(ListEntry e) =>
+        e.DatasheetName.Contains("[Legends]", StringComparison.OrdinalIgnoreCase);
+
+    private static bool EntryIsCrucible(ListEntry e) =>
+        e.DatasheetName.Contains("[Crucible]", StringComparison.OrdinalIgnoreCase)
+        || e.Keywords.Any(k => string.Equals(k, "Crucible", StringComparison.OrdinalIgnoreCase));
 
     // Snapshots the chosen options (name + points) against the datasheet's
     // offered options; unknown ids are ignored.

@@ -36,6 +36,8 @@ export interface ArmyListSummary {
   entryCount: number
   featured: boolean
   battleSize: string | null
+  usesLegends: boolean
+  usesCrucible: boolean
   updatedAt: string
 }
 
@@ -56,6 +58,8 @@ export interface ArmyList {
   isOverLimit: boolean
   featured: boolean
   battleSize: string | null
+  usesLegends: boolean
+  usesCrucible: boolean
   detachments: ListDetachment[]
   updatedAt: string
   entries: ListEntry[]
