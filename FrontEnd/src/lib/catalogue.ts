@@ -78,6 +78,16 @@ export interface DatasheetOption {
   weapons: DatasheetWeapon[]
 }
 
+export interface UnitSize {
+  models: number
+  points: number
+}
+
+export interface ModelGroup {
+  label: string
+  weapons: string[]
+}
+
 export interface DatasheetDetail {
   id: string
   name: string
@@ -88,6 +98,8 @@ export interface DatasheetDetail {
   abilities: AbilityText[]
   options: DatasheetOption[]
   equipment?: string[]
+  sizes: UnitSize[]
+  modelGroups: ModelGroup[]
 }
 
 export function getCatalogueSystems(): Promise<CatalogueSystem[]> {

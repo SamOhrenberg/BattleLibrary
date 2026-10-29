@@ -11,7 +11,13 @@ public class ListEntry : Entity
     // when the entry was added so the list total is stable.
     public string DatasheetId { get; set; } = string.Empty;
     public string DatasheetName { get; set; } = string.Empty;
+
+    // Points for the chosen unit size, snapshotted at add-time.
     public int Points { get; set; }
+
+    // Chosen model count (the unit's size); drives Points for multi-size units.
+    public int ModelCount { get; set; } = 1;
+
     public int Quantity { get; set; } = 1;
 
     // Datasheet keywords snapshotted at add-time, for list-legality checks

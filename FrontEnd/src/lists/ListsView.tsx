@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { ApiError } from '../lib/api'
 import { getCatalogueSystems, getFactions, type CatalogueFaction, type CatalogueSystem } from '../lib/catalogue'
-import { BATTLE_SIZES, createList, getList, getLists, type ArmyList, type ArmyListSummary } from '../lib/lists'
+import { BATTLE_SIZES, createList, duplicateList, getList, getLists, type ArmyList, type ArmyListSummary } from '../lib/lists'
 import { BATTLE_SIZE_RULES } from './validation'
 import { useTour } from '../onboarding/TourContext'
 import { ListBuilder } from './ListBuilder'
@@ -38,6 +38,16 @@ export function ListsView() {
       setLists(await getLists())
     } catch {
       setError('Could not load your lists.')
+    }
+  }
+
+  async function onDuplicate(id: string) {
+    setError(null)
+    try {
+      await duplicateList(id)
+      setLists(await getLists())
+    } catch {
+      setError('Could not duplicate the list.')
     }
   }
 
@@ -89,7 +99,12 @@ export function ListsView() {
       {error && <p className="builder-error">{error}</p>}
 
       {view === 'index' && (
-        <ListIndex lists={lists} onOpen={(id) => void openList(id)} onNew={openCreate} />
+        <ListIndex
+          lists={lists}
+          onOpen={(id) => void openList(id)}
+          onNew={openCreate}
+          onDuplicate={(id) => void onDuplicate(id)}
+        />
       )}
 
       {view === 'create' && <CreateForm onCreated={onCreated} onCancel={() => void refreshIndex()} />}
@@ -105,10 +120,12 @@ function ListIndex({
   lists,
   onOpen,
   onNew,
+  onDuplicate,
 }: {
   lists: ArmyListSummary[] | null
   onOpen: (id: string) => void
   onNew: () => void
+  onDuplicate: (id: string) => void
 }) {
   if (lists === null) return <p className="hint">Loading…</p>
   if (lists.length === 0) {
@@ -133,9 +150,22 @@ function ListIndex({
               {l.factionName} · {l.entryCount} {l.entryCount === 1 ? 'entry' : 'entries'}
             </div>
           </div>
-          <div className="li-points">
-            {l.total}
-            {l.pointsLimit != null ? ` / ${l.pointsLimit}` : ''} pts
+          <div className="li-right">
+            <div className="li-points">
+              {l.total}
+              {l.pointsLimit != null ? ` / ${l.pointsLimit}` : ''} pts
+            </div>
+            <button
+              type="button"
+              className="li-dup"
+              title="Duplicate list"
+              onClick={(e) => {
+                e.stopPropagation()
+                onDuplicate(l.id)
+              }}
+            >
+              Duplicate
+            </button>
           </div>
         </li>
       ))}

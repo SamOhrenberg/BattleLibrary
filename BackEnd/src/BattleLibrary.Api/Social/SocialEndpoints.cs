@@ -323,7 +323,7 @@ public static class SocialEndpoints
     }
 
     private static int Total(ListEntry e) =>
-        (e.Points + e.SelectedOptions.Sum(o => o.Points)) * e.Quantity + e.EnhancementPoints;
+        e.Points + e.SelectedOptions.Sum(o => o.Points) + e.EnhancementPoints;
 
     private static Guid? UserId(ClaimsPrincipal principal) =>
         Guid.TryParse(principal.FindFirstValue("sub"), out var id) ? id : null;

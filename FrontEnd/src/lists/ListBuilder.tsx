@@ -8,6 +8,7 @@ import {
   setBattleSize,
   setDetachments,
   setEnhancement,
+  setModelCount,
   setWarlord,
   updateEntry,
   updateList,
@@ -22,6 +23,9 @@ import { useTour } from '../onboarding/TourContext'
 import { UnitDetailModal } from './UnitDetailModal'
 import { ListAssistant } from './ListAssistant'
 import { RuleText } from './RuleText'
+import { listToText } from './exportList'
+import { CompositionBar } from './CompositionBar'
+import { PlayView } from './PlayView'
 
 interface Props {
   initial: ArmyList
@@ -46,6 +50,25 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
   const [detailId, setDetailId] = useState<string | null>(null)
   const [editEntry, setEditEntry] = useState<ListEntry | null>(null)
   const [showAssistant, setShowAssistant] = useState(false)
+  const [copied, setCopied] = useState(false)
+  const [showPlay, setShowPlay] = useState(false)
+  const [exportOpen, setExportOpen] = useState(false)
+  const exportRef = useRef<HTMLDivElement>(null)
+
+  // Close the export menu on an outside click or Escape.
+  useEffect(() => {
+    if (!exportOpen) return
+    const onDown = (e: MouseEvent) => {
+      if (exportRef.current && !exportRef.current.contains(e.target as Node)) setExportOpen(false)
+    }
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setExportOpen(false)
+    window.addEventListener('mousedown', onDown)
+    window.addEventListener('keydown', onKey)
+    return () => {
+      window.removeEventListener('mousedown', onDown)
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [exportOpen])
   const [name, setName] = useState(initial.name)
   const [limit, setLimit] = useState(initial.pointsLimit?.toString() ?? '')
   const [busy, setBusy] = useState(false)
@@ -122,17 +145,41 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
     }
   }
 
-  async function add(datasheetId: string, optionIds: string[] = []) {
-    await run(() => addEntry(list.id, datasheetId, 1, optionIds))
+  async function add(datasheetId: string, optionIds: string[] = [], models?: number) {
+    await run(() => addEntry(list.id, datasheetId, optionIds, models))
     if (!addedOnce.current) {
       addedOnce.current = true
       notify('entry-added')
     }
   }
 
-  async function changeQty(entryId: string, quantity: number) {
-    if (quantity < 1) return
-    await run(() => updateEntry(list.id, entryId, quantity))
+  async function copyText() {
+    try {
+      await navigator.clipboard.writeText(listToText(list, pointless))
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1800)
+    } catch {
+      setError('Could not copy to the clipboard.')
+    }
+  }
+
+  function downloadText() {
+    const safe = list.name.replace(/[^\w.-]+/g, '_').replace(/^_+|_+$/g, '') || 'army-list'
+    const blob = new Blob([listToText(list, pointless)], { type: 'text/plain;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${safe}.txt`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+  }
+
+  // Copies an entry: re-adds the same datasheet, quantity, and wargear options.
+  // Warlord/enhancement are intentionally not copied (each is unique).
+  function duplicateEntry(e: ListEntry) {
+    void run(() => addEntry(list.id, e.datasheetId, e.selectedOptions.map((o) => o.id), e.modelCount))
   }
 
   // Adds a datasheet and sets the new entry as Warlord in one step.
@@ -141,7 +188,7 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
     setError(null)
     try {
       const before = new Set(list.entries.map((e) => e.id))
-      const added = await addEntry(list.id, datasheetId, 1, [])
+      const added = await addEntry(list.id, datasheetId, [])
       const fresh = added.entries.find((e) => !before.has(e.id))
       setList(fresh ? await setWarlord(list.id, fresh.id, true) : added)
     } catch (err) {
@@ -231,7 +278,7 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
           <div className="points-readout" data-tour="list-total">
             {pointless ? (
               <>
-                <div className="pts">{list.entries.reduce((n, e) => n + e.quantity, 0)}</div>
+                <div className="pts">{list.entries.length}</div>
                 <label className="limit-label">operatives</label>
               </>
             ) : (
@@ -259,6 +306,42 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
             )}
           </div>
           <div className="lists-actions">
+            <div className="export-menu" ref={exportRef}>
+              <button
+                type="button"
+                className="btn"
+                onClick={() => setExportOpen((v) => !v)}
+                disabled={list.entries.length === 0}
+                aria-haspopup="menu"
+                aria-expanded={exportOpen}
+              >
+                Export ▾
+              </button>
+              {exportOpen && (
+                <div className="export-dropdown" role="menu">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      void copyText()
+                      setExportOpen(false)
+                    }}
+                  >
+                    {copied ? 'Copied ✓' : 'Copy to clipboard'}
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      downloadText()
+                      setExportOpen(false)
+                    }}
+                  >
+                    Download .txt file
+                  </button>
+                </div>
+              )}
+            </div>
             <button
               type="button"
               className={`btn btn-primary${saved ? ' is-saved' : ''}`}
@@ -345,6 +428,10 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
             </div>
           )}
         </div>
+      )}
+
+      {!pointless && list.entries.length > 0 && (
+        <CompositionBar list={list} hasDetachments={hasDetachments} />
       )}
 
       {!pointless && chosenDetachments.some((d) => d.rules.length > 0) && (
@@ -502,7 +589,14 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
         <div className="panel panel-list">
           <div className="panel-head">
             <h3>Your list</h3>
-            <span className="li-points">{list.entries.length} entries</span>
+            <div className="panel-head-actions">
+              <span className="li-points">{list.entries.length} entries</span>
+              {list.entries.length > 0 && (
+                <button type="button" className="play-btn" onClick={() => setShowPlay(true)}>
+                  <span aria-hidden="true">▶</span> Play view
+                </button>
+              )}
+            </div>
           </div>
           <div className="scroll">
             {list.entries.length === 0 ? (
@@ -521,7 +615,8 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
                     </button>
                     {!pointless && (
                       <div className="entry-each">
-                        {e.points + e.optionsPoints} pts each
+                        {e.modelCount > 1 ? `${e.modelCount} models · ` : ''}
+                        {e.points + e.optionsPoints} pts
                         {e.optionsPoints > 0 ? ` (${e.points} + ${e.optionsPoints})` : ''}
                       </div>
                     )}
@@ -556,12 +651,20 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
                       Edit…
                     </button>
                   </div>
-                  <div className="qty">
-                    <button type="button" onClick={() => void changeQty(e.id, e.quantity - 1)} disabled={busy || e.quantity <= 1} aria-label="Decrease">−</button>
-                    <span>{e.quantity}</span>
-                    <button type="button" onClick={() => void changeQty(e.id, e.quantity + 1)} disabled={busy} aria-label="Increase">+</button>
-                  </div>
                   {!pointless && <span className="line-total">{e.lineTotal}</span>}
+                  <button
+                    type="button"
+                    className="icon-btn dup-btn"
+                    onClick={() => duplicateEntry(e)}
+                    disabled={busy}
+                    aria-label="Duplicate"
+                    title="Duplicate"
+                  >
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                      <rect x="9" y="9" width="11" height="11" rx="2" />
+                      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                    </svg>
+                  </button>
                   <button type="button" className="icon-btn" onClick={() => void run(() => removeEntry(list.id, e.id))} disabled={busy} aria-label="Remove">×</button>
                 </div>
                   ))}
@@ -575,8 +678,8 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
       {detailId && (
         <UnitDetailModal
           datasheetId={detailId}
-          onAdd={(optionIds) => {
-            void add(detailId, optionIds)
+          onAdd={(optionIds, models) => {
+            void add(detailId, optionIds, models)
             setDetailId(null)
           }}
           onClose={() => setDetailId(null)}
@@ -588,8 +691,10 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
           key={editEntry.id}
           datasheetId={editEntry.datasheetId}
           initialSelected={editEntry.selectedOptions.map((o) => o.id)}
+          initialModels={editEntry.modelCount}
           submitLabel="Save changes"
           busy={busy}
+          onSizeChange={(m) => void runEntry(editEntry.id, () => setModelCount(list.id, editEntry.id, m))}
           enhancement={
             pointless || list.detachments.length === 0
               ? undefined
@@ -600,7 +705,7 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
                 }
           }
           onAdd={(optionIds) => {
-            void run(() => updateEntry(list.id, editEntry.id, editEntry.quantity, optionIds))
+            void run(() => updateEntry(list.id, editEntry.id, optionIds))
             setEditEntry(null)
           }}
           onClose={() => setEditEntry(null)}
@@ -619,7 +724,6 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
           onSetWarlord={(entryId, value) => void run(() => setWarlord(list.id, entryId, value))}
           onRemoveEnhancement={(entryId) => void run(() => setEnhancement(list.id, entryId, null))}
           onRemoveEntry={(entryId) => void run(() => removeEntry(list.id, entryId))}
-          onChangeQty={(entryId, quantity) => void changeQty(entryId, quantity)}
           onAdd={(datasheetId) => void add(datasheetId)}
           onAddWarlord={(datasheetId) => void addAsWarlord(datasheetId)}
           onGoCatalogue={() => {
@@ -629,6 +733,8 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
           onClose={() => setShowAssistant(false)}
         />
       )}
+
+      {showPlay && <PlayView list={list} onClose={() => setShowPlay(false)} />}
     </section>
   )
 }

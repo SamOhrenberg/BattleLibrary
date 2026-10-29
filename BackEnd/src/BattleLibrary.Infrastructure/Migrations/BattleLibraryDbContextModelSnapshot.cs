@@ -347,6 +347,9 @@ namespace BattleLibrary.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("text[]");
 
+                    b.Property<int>("ModelCount")
+                        .HasColumnType("integer");
+
                     b.Property<int>("Points")
                         .HasColumnType("integer");
 
@@ -660,6 +663,8 @@ namespace BattleLibrary.Infrastructure.Migrations
                             b1.Property<bool>("Destroyed");
 
                             b1.Property<Guid>("Id");
+
+                            b1.Property<int>("MaxModels");
 
                             b1.Property<string>("Name")
                                 .IsRequired();

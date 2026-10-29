@@ -102,6 +102,40 @@
   font-size: 0.85rem;
 }
 
+.list-index .li-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: none;
+}
+
+.li-dup {
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.78rem;
+  padding: 5px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.li-dup:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* Duplicate (copy) button on a list entry — accent hover, not the delete red. */
+.icon-btn.dup-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.icon-btn.dup-btn:hover {
+  color: var(--accent);
+}
+
 /* ---- Create form ---- */
 .create-form {
   display: grid;
@@ -812,6 +846,60 @@
   -webkit-overflow-scrolling: touch;
 }
 
+/* Unit size picker */
+.size-pick {
+  display: grid;
+  gap: 6px;
+}
+
+.size-opt {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 0.88rem;
+  cursor: pointer;
+}
+
+.size-opt.on {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+  font-weight: 600;
+}
+
+.size-opt input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+}
+
+/* Model composition list */
+.model-groups {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 7px;
+}
+
+.model-groups li {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.mg-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.mg-weapons {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
 .option-group {
   margin-bottom: 10px;
 }
@@ -956,6 +1044,129 @@
   background: var(--surface);
   color: var(--fg);
   font: inherit;
+}
+
+/* Composition-at-a-glance bar */
+.composition {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+}
+
+.comp-top {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.comp-points {
+  flex: 1;
+  min-width: 180px;
+}
+
+.cp-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.cp-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.cp-val {
+  font-size: 0.92rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.cp-val.over {
+  color: var(--err);
+}
+
+.meter {
+  height: 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--muted) 20%, transparent);
+  overflow: hidden;
+}
+
+.meter-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent);
+  transition: width 0.2s ease;
+}
+
+.meter-fill.over {
+  background: var(--err);
+}
+
+.comp-stats {
+  display: flex;
+  gap: 16px;
+}
+
+.comp-stat {
+  font-size: 0.78rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.comp-stat b {
+  color: var(--fg);
+  font-size: 0.9rem;
+}
+
+.comp-roles {
+  margin-top: 12px;
+  display: grid;
+  gap: 5px;
+}
+
+.comp-role {
+  display: grid;
+  grid-template-columns: 94px 1fr 40px;
+  align-items: center;
+  gap: 10px;
+}
+
+.cr-label {
+  font-size: 0.76rem;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cr-track {
+  height: 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--muted) 15%, transparent);
+  overflow: hidden;
+}
+
+.cr-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent);
+}
+
+.cr-pts {
+  font-size: 0.76rem;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg);
 }
 
 /* List legality summary */
@@ -1154,6 +1365,44 @@
   color: var(--fg);
   font: inherit;
   font-size: 0.74rem;
+}
+
+/* Export dropdown (next to Save / Delete) */
+.export-menu {
+  position: relative;
+  display: inline-flex;
+}
+
+.export-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 70;
+  min-width: 180px;
+  padding: 4px;
+  display: grid;
+  gap: 2px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  box-shadow: 0 8px 24px rgba(10, 15, 22, 0.2);
+}
+
+.export-dropdown button {
+  text-align: left;
+  border: none;
+  background: none;
+  color: var(--fg);
+  font: inherit;
+  font-size: 0.85rem;
+  padding: 9px 10px;
+  min-height: 40px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.export-dropdown button:hover {
+  background: var(--bg);
 }
 
 /* Transient "Saved ✓" confirmation on the Save button */
@@ -1361,6 +1610,188 @@
   background: var(--border);
   color: var(--fg);
   font-weight: 600;
+}
+
+/* Play view trigger button */
+.play-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  min-height: 34px;
+  border: 1px solid var(--accent);
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+  color: var(--accent);
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.play-btn:hover {
+  background: var(--accent);
+  color: #fff;
+}
+
+.play-btn span {
+  font-size: 0.7rem;
+}
+
+/* ---- Play view (printable datasheet cards) ---- */
+.play-view {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  background: var(--bg);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 16px;
+}
+
+.play-head {
+  position: sticky;
+  top: -16px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 0 12px;
+  margin: -16px 0 0;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+}
+
+.play-head h2 {
+  margin: 0;
+  font-size: 1.3rem;
+}
+
+.play-sub {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.play-actions {
+  display: flex;
+  gap: 8px;
+  flex: none;
+}
+
+.play-cards {
+  margin-top: 16px;
+  display: grid;
+  gap: 20px;
+}
+
+.play-role {
+  margin: 0 0 8px;
+  font-size: 0.74rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.play-group-cards {
+  display: grid;
+  gap: 12px;
+}
+
+@media (min-width: 720px) {
+  .play-group-cards {
+    grid-template-columns: 1fr 1fr;
+    align-items: start;
+  }
+}
+
+.play-card {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  padding: 12px 14px;
+  break-inside: avoid;
+}
+
+.pc-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.pc-head h4 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.pc-models {
+  font-weight: 400;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.pc-pts {
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+  flex: none;
+}
+
+.pc-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 5px;
+}
+
+.pc-abilities h5 {
+  margin: 12px 0 6px;
+  font-size: 0.76rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.pc-wargear {
+  margin-top: 10px;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.pc-sub {
+  font-weight: 600;
+  color: var(--fg);
+}
+
+@media print {
+  /* Print only the play view; hide the rest of the app. */
+  body * {
+    visibility: hidden;
+  }
+  .play-view,
+  .play-view * {
+    visibility: visible;
+  }
+  .play-view {
+    position: absolute;
+    inset: 0;
+    padding: 0;
+    overflow: visible;
+  }
+  .play-actions {
+    display: none;
+  }
+  .play-head {
+    position: static;
+    margin: 0;
+  }
+  .play-group-cards {
+    grid-template-columns: 1fr 1fr;
+  }
+  .play-card {
+    break-inside: avoid;
+  }
 }
 
 /* Kill Team faction equipment banner */

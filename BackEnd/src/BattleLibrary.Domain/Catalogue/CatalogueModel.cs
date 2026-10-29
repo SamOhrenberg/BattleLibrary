@@ -32,7 +32,15 @@ public sealed record Datasheet(
     IReadOnlyList<WeaponProfile> Weapons,
     IReadOnlyList<Ability> Abilities,
     IReadOnlyList<DatasheetOption> Options,
-    IReadOnlyList<string> Equipment);
+    IReadOnlyList<string> Equipment,
+    IReadOnlyList<UnitSize> Sizes,
+    IReadOnlyList<ModelLoadout> ModelGroups);
+
+// A selectable unit size: how many models and the points for that size.
+public sealed record UnitSize(int Models, int Points);
+
+// A model type within a unit (e.g. "9-18 Boyz") and its default weapons.
+public sealed record ModelLoadout(string Label, IReadOnlyList<string> Weapons);
 
 // A selectable wargear/upgrade choice. Points is the additive pts cost (0 when
 // the option is free, as most 11e wargear is). Group is the choice set it

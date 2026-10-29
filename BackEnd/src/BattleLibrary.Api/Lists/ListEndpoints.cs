@@ -20,12 +20,14 @@ public static class ListEndpoints
         group.MapPost("", CreateList);
         group.MapGet("/{id:guid}", GetList);
         group.MapPut("/{id:guid}", UpdateList);
+        group.MapPost("/{id:guid}/duplicate", DuplicateList);
         group.MapDelete("/{id:guid}", DeleteList);
         group.MapPost("/{id:guid}/featured", SetFeatured);
         group.MapPost("/{id:guid}/battle-size", SetBattleSize);
         group.MapPost("/{id:guid}/detachments", SetDetachments);
         group.MapPost("/{id:guid}/entries", AddEntry);
         group.MapPut("/{id:guid}/entries/{entryId:guid}", UpdateEntry);
+        group.MapPost("/{id:guid}/entries/{entryId:guid}/size", SetModelCount);
         group.MapPost("/{id:guid}/entries/{entryId:guid}/warlord", SetWarlord);
         group.MapPost("/{id:guid}/entries/{entryId:guid}/enhancement", SetEnhancement);
         group.MapDelete("/{id:guid}/entries/{entryId:guid}", DeleteEntry);
@@ -158,6 +160,55 @@ public static class ListEndpoints
         list.UpdatedAt = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(ct);
         return Results.Ok(ToDto(list));
+    }
+
+    private static async Task<IResult> DuplicateList(Guid id, ClaimsPrincipal principal, BattleLibraryDbContext db, CancellationToken ct)
+    {
+        if (CurrentUserId(principal) is not { } userId)
+        {
+            return Results.Unauthorized();
+        }
+        var source = await LoadOwned(db, id, userId, ct);
+        if (source is null)
+        {
+            return Results.NotFound();
+        }
+
+        // Keep room for the " (copy)" suffix within the 120-char name limit.
+        var baseName = source.Name.Length > 113 ? source.Name[..113] : source.Name;
+        var copy = new ArmyList
+        {
+            UserId = userId,
+            Name = $"{baseName} (copy)",
+            GameSystemKey = source.GameSystemKey,
+            FactionId = source.FactionId,
+            FactionName = source.FactionName,
+            PointsLimit = source.PointsLimit,
+            BattleSize = source.BattleSize,
+            Featured = false,
+            Detachments = source.Detachments
+                .Select(d => new ListDetachment { DetachmentId = d.DetachmentId, Name = d.Name, Dp = d.Dp })
+                .ToList(),
+            Entries = source.Entries.Select(e => new ListEntry
+            {
+                DatasheetId = e.DatasheetId,
+                DatasheetName = e.DatasheetName,
+                Points = e.Points,
+                ModelCount = e.ModelCount,
+                Quantity = e.Quantity,
+                Keywords = e.Keywords.ToList(),
+                IsWarlord = e.IsWarlord,
+                EnhancementId = e.EnhancementId,
+                EnhancementName = e.EnhancementName,
+                EnhancementPoints = e.EnhancementPoints,
+                SelectedOptions = e.SelectedOptions
+                    .Select(o => new SelectedOption { Id = o.Id, Name = o.Name, Points = o.Points })
+                    .ToList(),
+            }).ToList(),
+        };
+        db.ArmyLists.Add(copy);
+        await db.SaveChangesAsync(ct);
+        return Results.Created($"/api/lists/{copy.Id}", ToDto(copy));
     }
 
     private static async Task<IResult> DeleteList(Guid id, ClaimsPrincipal principal, BattleLibraryDbContext db, CancellationToken ct)
@@ -374,11 +425,6 @@ public static class ListEndpoints
         {
             return Problem("datasheetId", "A datasheet is required.");
         }
-        var quantity = request.Quantity ?? 1;
-        if (quantity is < 1 or > 99)
-        {
-            return Problem("quantity", "Quantity must be 1-99.");
-        }
 
         var sheet = await LoadSheet(db, request.DatasheetId, list.GameSystemKey, ct);
         if (sheet is null)
@@ -386,13 +432,15 @@ public static class ListEndpoints
             return Results.NotFound(new { error = "Unknown datasheet for this list's game system." });
         }
 
+        // One entry per unit; multiple units of a datasheet are separate entries.
+        var size = PickSize(sheet.Sizes, request.Models);
         list.Entries.Add(new ListEntry
         {
             ArmyListId = list.Id,
             DatasheetId = request.DatasheetId,
             DatasheetName = sheet.Name,
-            Points = sheet.Points,
-            Quantity = quantity,
+            Points = size?.Points ?? sheet.Points,
+            ModelCount = size?.Models ?? 1,
             Keywords = sheet.Keywords.ToList(),
             SelectedOptions = ResolveOptions(sheet.Options, request.SelectedOptionIds),
         });
@@ -414,17 +462,38 @@ public static class ListEndpoints
         {
             return Results.NotFound();
         }
-        if (request.Quantity is < 1 or > 99)
-        {
-            return Problem("quantity", "Quantity must be 1-99.");
-        }
-
-        entry.Quantity = request.Quantity;
         if (request.SelectedOptionIds is not null)
         {
             var sheet = await LoadSheet(db, entry.DatasheetId, list.GameSystemKey, ct);
             entry.SelectedOptions = ResolveOptions(sheet?.Options ?? [], request.SelectedOptionIds);
         }
+        list.UpdatedAt = DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync(ct);
+        return Results.Ok(ToDto(list));
+    }
+
+    private static async Task<IResult> SetModelCount(
+        Guid id, Guid entryId, SetModelCountRequest request, ClaimsPrincipal principal, BattleLibraryDbContext db, CancellationToken ct)
+    {
+        if (CurrentUserId(principal) is not { } userId)
+        {
+            return Results.Unauthorized();
+        }
+        var list = await LoadOwned(db, id, userId, ct);
+        var entry = list?.Entries.FirstOrDefault(e => e.Id == entryId);
+        if (list is null || entry is null)
+        {
+            return Results.NotFound();
+        }
+
+        var sheet = await LoadSheet(db, entry.DatasheetId, list.GameSystemKey, ct);
+        var size = sheet?.Sizes.FirstOrDefault(s => s.Models == request.Models);
+        if (size is null)
+        {
+            return Problem("models", "That isn't a valid size for this unit.");
+        }
+        entry.ModelCount = size.Models;
+        entry.Points = size.Points;
         list.UpdatedAt = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(ct);
         return Results.Ok(ToDto(list));
@@ -464,8 +533,8 @@ public static class ListEndpoints
             {
                 var optionsPoints = e.SelectedOptions.Sum(o => o.Points);
                 return new ListEntryDto(
-                    e.Id, e.DatasheetId, e.DatasheetName, e.Points, optionsPoints, e.Quantity,
-                    (e.Points + optionsPoints) * e.Quantity + e.EnhancementPoints,
+                    e.Id, e.DatasheetId, e.DatasheetName, e.Points, optionsPoints, e.ModelCount,
+                    e.Points + optionsPoints + e.EnhancementPoints,
                     e.Keywords, e.IsWarlord, e.EnhancementId, e.EnhancementName, e.EnhancementPoints,
                     e.SelectedOptions.Select(o => new SelectedOptionDto(o.Id, o.Name, o.Points)).ToList());
             })
@@ -483,11 +552,12 @@ public static class ListEndpoints
     }
 
     private static int LineTotal(ListEntry e) =>
-        (e.Points + e.SelectedOptions.Sum(o => o.Points)) * e.Quantity + e.EnhancementPoints;
+        e.Points + e.SelectedOptions.Sum(o => o.Points) + e.EnhancementPoints;
 
-    private sealed record SheetInfo(string Name, int Points, IReadOnlyList<string> Keywords, IReadOnlyList<DatasheetOption> Options);
+    private sealed record SheetInfo(
+        string Name, int Points, IReadOnlyList<string> Keywords, IReadOnlyList<DatasheetOption> Options, IReadOnlyList<UnitSize> Sizes);
 
-    // Pulls name/points/keywords/options for a datasheet from the cached slim jsonb.
+    // Pulls name/points/keywords/options/sizes for a datasheet from the cached slim jsonb.
     private static async Task<SheetInfo?> LoadSheet(
         BattleLibraryDbContext db, string datasheetId, string gameSystemKey, CancellationToken ct)
     {
@@ -501,7 +571,21 @@ public static class ListEndpoints
             return null;
         }
         var sheet = JsonSerializer.Deserialize<Datasheet>(json, SlimJson);
-        return sheet is null ? null : new SheetInfo(sheet.Name, sheet.Points ?? 0, sheet.Keywords, sheet.Options);
+        return sheet is null ? null : new SheetInfo(sheet.Name, sheet.Points ?? 0, sheet.Keywords, sheet.Options, sheet.Sizes ?? []);
+    }
+
+    // The chosen size (by model count), or the smallest when unspecified/unknown.
+    private static UnitSize? PickSize(IReadOnlyList<UnitSize> sizes, int? models)
+    {
+        if (sizes.Count == 0)
+        {
+            return null;
+        }
+        if (models is { } m && sizes.FirstOrDefault(s => s.Models == m) is { } exact)
+        {
+            return exact;
+        }
+        return sizes.OrderBy(s => s.Models).First();
     }
 
     // Faction detachments (+ enhancements) from the cached jsonb.

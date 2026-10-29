@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace BattleLibrary.Infrastructure.BsData.Json;
@@ -105,6 +106,33 @@ internal sealed class RuleNode
     public bool Hidden { get; set; }
 }
 
+internal sealed class ConditionNode
+{
+    public string Type { get; set; } = "";
+    public double Value { get; set; }
+    public string Field { get; set; } = "";
+    public string ChildId { get; set; } = "";
+    public string Scope { get; set; } = "";
+}
+
+// A rule modification; for unit sizing, a "set" on the points cost field holds
+// the points for a larger model count (its condition names the threshold).
+internal sealed class ModifierNode
+{
+    public string Type { get; set; } = "";
+    public string Field { get; set; } = "";
+
+    // Value is a number for cost modifiers, a string for name/text ones.
+    public JsonElement Value { get; set; }
+    public List<ConditionNode> Conditions { get; set; } = [];
+}
+
+internal sealed class ModifierGroupNode
+{
+    public List<ModifierNode> Modifiers { get; set; } = [];
+    public List<ModifierGroupNode> ModifierGroups { get; set; } = [];
+}
+
 // Selection entries, groups, and links share the same child-bearing shape.
 internal abstract class SelectionNode
 {
@@ -115,6 +143,8 @@ internal abstract class SelectionNode
     public List<ProfileNode> Profiles { get; set; } = [];
     public List<RuleNode> Rules { get; set; } = [];
     public List<CategoryLink> CategoryLinks { get; set; } = [];
+    public List<ModifierNode> Modifiers { get; set; } = [];
+    public List<ModifierGroupNode> ModifierGroups { get; set; } = [];
     public List<SelectionEntryNode> SelectionEntries { get; set; } = [];
     public List<SelectionEntryGroupNode> SelectionEntryGroups { get; set; } = [];
     public List<EntryLinkNode> EntryLinks { get; set; } = [];

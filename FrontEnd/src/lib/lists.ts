@@ -15,7 +15,7 @@ export interface ListEntry {
   datasheetName: string
   points: number
   optionsPoints: number
-  quantity: number
+  modelCount: number
   lineTotal: number
   keywords: string[]
   isWarlord: boolean
@@ -109,6 +109,10 @@ export function deleteList(id: string): Promise<void> {
   return send<void>(`/api/lists/${id}`, 'DELETE')
 }
 
+export function duplicateList(id: string): Promise<ArmyList> {
+  return send<ArmyList>(`/api/lists/${id}/duplicate`, 'POST')
+}
+
 export function setListFeatured(id: string, featured: boolean): Promise<ArmyList> {
   return send<ArmyList>(`/api/lists/${id}/featured`, 'POST', { featured })
 }
@@ -134,24 +138,26 @@ export function setEnhancement(listId: string, entryId: string, enhancementId: s
 export function addEntry(
   listId: string,
   datasheetId: string,
-  quantity = 1,
   selectedOptionIds: string[] = [],
+  models?: number,
 ): Promise<ArmyList> {
   return send<ArmyList>(`/api/lists/${listId}/entries`, 'POST', {
     datasheetId,
-    quantity,
     selectedOptionIds,
+    models,
   })
+}
+
+export function setModelCount(listId: string, entryId: string, models: number): Promise<ArmyList> {
+  return send<ArmyList>(`/api/lists/${listId}/entries/${entryId}/size`, 'POST', { models })
 }
 
 export function updateEntry(
   listId: string,
   entryId: string,
-  quantity: number,
   selectedOptionIds?: string[],
 ): Promise<ArmyList> {
   return send<ArmyList>(`/api/lists/${listId}/entries/${entryId}`, 'PUT', {
-    quantity,
     selectedOptionIds,
   })
 }

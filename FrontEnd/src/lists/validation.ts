@@ -150,7 +150,7 @@ export function validateList(list: ArmyList, hasDetachments: boolean, pointless:
           ? rules.ruleOfN * 2
           : rules.ruleOfN
     const g = groups.get(e.datasheetId) ?? { n: 0, name: e.datasheetName, max, ids: [] }
-    g.n += e.quantity
+    g.n += 1
     g.ids.push(e.id)
     groups.set(e.datasheetId, g)
   }

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using BattleLibrary.Domain.Catalogue;
 using BattleLibrary.Infrastructure.BsData.Json;
 
@@ -372,7 +373,11 @@ public sealed class BsDataParser
             .Select(p => new UnitProfile(p.Name, ToCharacteristics(p)))
             .ToList();
 
-        return new Datasheet(entry.Id, entry.Name, points, keywords, unit, weapons, abilities, options, equipment);
+        var modelGroups = ExtractModelGroups(entry, schema, index);
+        var sizes = ExtractSizes(entry, ptsTypeId);
+
+        return new Datasheet(
+            entry.Id, entry.Name, points, keywords, unit, weapons, abilities, options, equipment, sizes, modelGroups);
     }
 
     // Collects profiles from a node, its children, and any entries/profiles its
@@ -448,6 +453,116 @@ public sealed class BsDataParser
             .Select(p => new WeaponProfile(p.Name, schema.RangedWeaponTypes.Contains(p.TypeName), ToCharacteristics(p)))
             .DistinctBy(w => (w.Name, w.Ranged))
             .ToList();
+    }
+
+    // Model composition: each model-type group (e.g. "9-18 Boyz") with its
+    // default weapons. Empty for single-model units (the weapons table suffices).
+    private static IReadOnlyList<ModelLoadout> ExtractModelGroups(SelectionEntryNode entry, CatalogueSchema schema, Index index)
+    {
+        var groups = new List<ModelLoadout>();
+        foreach (var g in entry.SelectionEntryGroups)
+        {
+            var model = g.SelectionEntries.FirstOrDefault(s => IsModel(s.Type));
+            if (model is not null)
+            {
+                var label = string.IsNullOrWhiteSpace(g.Name) ? model.Name : g.Name;
+                groups.Add(new ModelLoadout(label, ModelWeapons(model, schema, index)));
+            }
+        }
+        return groups;
+    }
+
+    private static IReadOnlyList<string> ModelWeapons(SelectionNode model, CatalogueSchema schema, Index index)
+    {
+        var profiles = new List<ProfileNode>();
+        Gather(model, 2, [], profiles, index, descendGroups: false);
+        return profiles
+            .Where(p => schema.WeaponTypes.Contains(p.TypeName) && !string.IsNullOrWhiteSpace(p.Name))
+            .Select(p => p.Name)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    // Selectable sizes: the smallest size at the base cost, and (when the unit
+    // scales) the largest size at the highest "set" points modifier. Model totals
+    // come from the model-group name ranges (e.g. "9-18" + "1-2" -> 10..20).
+    private static IReadOnlyList<UnitSize> ExtractSizes(SelectionEntryNode entry, string ptsTypeId)
+    {
+        var basePts = PointsOf(entry, ptsTypeId);
+        var (minTotal, maxTotal) = ModelTotals(entry);
+        var sizes = new List<UnitSize> { new(Math.Max(1, minTotal), basePts) };
+        if (maxTotal > minTotal)
+        {
+            var setVals = CostSetValues(entry, ptsTypeId);
+            var largePts = setVals.Count > 0 ? setVals.Max() : basePts;
+            sizes.Add(new UnitSize(maxTotal, largePts));
+        }
+        return sizes.DistinctBy(s => s.Models).ToList();
+    }
+
+    private static (int Min, int Max) ModelTotals(SelectionEntryNode entry)
+    {
+        int min = 0, max = 0;
+        var any = false;
+        foreach (var g in entry.SelectionEntryGroups)
+        {
+            if (g.SelectionEntries.Any(s => IsModel(s.Type)))
+            {
+                var (lo, hi) = ParseRange(g.Name);
+                min += lo;
+                max += hi;
+                any = true;
+            }
+        }
+        return any ? (min, max) : (1, 1);
+    }
+
+    private static readonly Regex RangeRx = new(@"(\d+)\s*-\s*(\d+)|(\d+)", RegexOptions.Compiled);
+
+    private static (int Lo, int Hi) ParseRange(string text)
+    {
+        var m = RangeRx.Match(text ?? "");
+        if (!m.Success)
+        {
+            return (1, 1);
+        }
+        if (m.Groups[1].Success)
+        {
+            return (int.Parse(m.Groups[1].Value), int.Parse(m.Groups[2].Value));
+        }
+        var n = int.Parse(m.Groups[3].Value);
+        return (n, n);
+    }
+
+    // Values of "set" modifiers targeting the points cost — the price at a larger
+    // model count. Unconditional increments are ignored: the base cost is the
+    // authoritative price for the smallest size.
+    private static List<int> CostSetValues(SelectionEntryNode entry, string ptsTypeId)
+    {
+        var vals = new List<int>();
+        void Collect(IEnumerable<ModifierNode> mods)
+        {
+            foreach (var m in mods)
+            {
+                if (string.Equals(m.Type, "set", StringComparison.OrdinalIgnoreCase)
+                    && m.Field == ptsTypeId
+                    && m.Value.ValueKind == JsonValueKind.Number)
+                {
+                    vals.Add((int)Math.Round(m.Value.GetDouble()));
+                }
+            }
+        }
+        void Walk(IEnumerable<ModifierGroupNode> groups)
+        {
+            foreach (var g in groups)
+            {
+                Collect(g.Modifiers);
+                Walk(g.ModifierGroups);
+            }
+        }
+        Collect(entry.Modifiers);
+        Walk(entry.ModifierGroups);
+        return vals;
     }
 
     private static void CollectOptions(

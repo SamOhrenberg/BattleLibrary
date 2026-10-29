@@ -12,27 +12,34 @@ interface EnhancementOption {
 interface Props {
   datasheetId: string
   initialSelected?: string[]
+  // The entry's current model count (edit mode), to preselect the size.
+  initialModels?: number
   submitLabel?: string
   busy?: boolean
   // Edit-only: assign an enhancement, applied immediately. (Warlord is set from
   // the list overview, not here.)
   enhancement?: { value: string | null; options: EnhancementOption[]; onChange: (id: string | null) => void }
-  onAdd: (selectedOptionIds: string[]) => void
+  // Edit-only: change the unit size, applied immediately.
+  onSizeChange?: (models: number) => void
+  onAdd: (selectedOptionIds: string[], models?: number) => void
   onClose: () => void
 }
 
 export function UnitDetailModal({
   datasheetId,
   initialSelected,
+  initialModels,
   submitLabel,
   busy,
   enhancement,
+  onSizeChange,
   onAdd,
   onClose,
 }: Props) {
   const [detail, setDetail] = useState<DatasheetDetail | null>(null)
   const [error, setError] = useState(false)
   const [selected, setSelected] = useState<Set<string>>(() => new Set(initialSelected ?? []))
+  const [models, setModels] = useState<number | undefined>(initialModels)
 
   useEffect(() => {
     let active = true
@@ -40,7 +47,12 @@ export function UnitDetailModal({
     setError(false)
     setSelected(new Set(initialSelected ?? []))
     getDatasheet(datasheetId)
-      .then((d) => active && setDetail(d))
+      .then((d) => {
+        if (!active) return
+        setDetail(d)
+        // Default the size to the entry's current count, else the smallest.
+        setModels(initialModels ?? d.sizes[0]?.models)
+      })
       .catch(() => active && setError(true))
     return () => {
       active = false
@@ -70,7 +82,13 @@ export function UnitDetailModal({
     })
   }
 
-  const subtotal = (detail?.points ?? 0) + optionsTotal
+  const sizePoints = detail?.sizes.find((s) => s.models === models)?.points ?? detail?.points ?? 0
+  const subtotal = sizePoints + optionsTotal
+
+  function changeSize(m: number) {
+    setModels(m)
+    onSizeChange?.(m)
+  }
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
@@ -94,11 +112,45 @@ export function UnitDetailModal({
               </div>
             )}
 
+            {detail.sizes.length > 1 && (
+              <div className="detail-section">
+                <h4>Unit size</h4>
+                <div className="size-pick">
+                  {detail.sizes.map((s) => (
+                    <label key={s.models} className={`size-opt${models === s.models ? ' on' : ''}`}>
+                      <input
+                        type="radio"
+                        name="unit-size"
+                        checked={models === s.models}
+                        onChange={() => changeSize(s.models)}
+                        disabled={busy}
+                      />
+                      {s.models} models · {s.points} pts
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {detail.profiles.map((p) => (
               <StatTable key={p.name} labels={p.characteristics.map((c) => c.name)} row={p.characteristics} />
             ))}
 
             {detail.weapons.length > 0 && <WeaponTables weapons={detail.weapons} />}
+
+            {detail.modelGroups.length > 0 && (
+              <div className="detail-section">
+                <h4>Models</h4>
+                <ul className="model-groups">
+                  {detail.modelGroups.map((m) => (
+                    <li key={m.label}>
+                      <span className="mg-label">{m.label}</span>
+                      {m.weapons.length > 0 && <span className="mg-weapons">{m.weapons.join(', ')}</span>}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
             {detail.abilities.length > 0 && (
               <div className="detail-section">
@@ -202,7 +254,7 @@ export function UnitDetailModal({
                   Subtotal <b>{subtotal}</b> pts
                 </span>
               )}
-              <button type="button" className="btn btn-primary" onClick={() => onAdd([...selected])}>
+              <button type="button" className="btn btn-primary" onClick={() => onAdd([...selected], models)}>
                 {submitLabel ?? 'Add to list'}
               </button>
             </div>

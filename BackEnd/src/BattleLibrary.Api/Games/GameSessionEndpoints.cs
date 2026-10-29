@@ -234,12 +234,12 @@ public static class GameSessionEndpoints
             {
                 return Problem("list", $"That list can't be used: {problem}");
             }
-            // One unit per entry; the list quantity is the model count you may
-            // bring (default full, capped so you can't field more than the list).
+            // One unit per entry; the entry's model count is what you may bring
+            // (default full, capped so you can't field more than the list).
             var units = new List<GameUnit>();
             foreach (var e in list.Entries.OrderBy(e => e.DatasheetName).Take(MaxUnits))
             {
-                var models = Math.Max(1, e.Quantity);
+                var models = Math.Max(1, e.ModelCount);
                 units.Add(new GameUnit
                 {
                     DatasheetId = e.DatasheetId,

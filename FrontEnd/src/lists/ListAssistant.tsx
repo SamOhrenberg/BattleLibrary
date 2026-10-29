@@ -18,7 +18,6 @@ interface Props {
   onSetWarlord: (entryId: string, value: boolean) => void
   onRemoveEnhancement: (entryId: string) => void
   onRemoveEntry: (entryId: string) => void
-  onChangeQty: (entryId: string, quantity: number) => void
   onAdd: (datasheetId: string) => void
   onAddWarlord: (datasheetId: string) => void
   onGoCatalogue: () => void
@@ -36,7 +35,6 @@ export function ListAssistant({
   onSetWarlord,
   onRemoveEnhancement,
   onRemoveEntry,
-  onChangeQty,
   onAdd,
   onAddWarlord,
   onGoCatalogue,
@@ -78,7 +76,6 @@ export function ListAssistant({
                     onSetWarlord={onSetWarlord}
                     onRemoveEnhancement={onRemoveEnhancement}
                     onRemoveEntry={onRemoveEntry}
-                    onChangeQty={onChangeQty}
                     onAdd={onAdd}
                     onAddWarlord={onAddWarlord}
                     onGoCatalogue={onGoCatalogue}
@@ -108,7 +105,6 @@ interface ActionProps {
   onSetWarlord: (entryId: string, value: boolean) => void
   onRemoveEnhancement: (entryId: string) => void
   onRemoveEntry: (entryId: string) => void
-  onChangeQty: (entryId: string, quantity: number) => void
   onAdd: (datasheetId: string) => void
   onAddWarlord: (datasheetId: string) => void
   onGoCatalogue: () => void
@@ -125,7 +121,6 @@ function IssueActions({
   onSetWarlord,
   onRemoveEnhancement,
   onRemoveEntry,
-  onChangeQty,
   onAdd,
   onAddWarlord,
   onGoCatalogue,
@@ -270,8 +265,8 @@ function IssueActions({
 
     case 'over-points':
     case 'rule-of-n': {
-      // Show the relevant entries with quantity / remove controls. For points,
-      // cap the list so the sheet stays short.
+      // Show the relevant entries with a remove control. For points, cap the
+      // list so the sheet stays short.
       const units = entries(issue.entryIds)
       const shown = issue.code === 'over-points' ? units.slice(0, 6) : units
       return (
@@ -279,14 +274,12 @@ function IssueActions({
           {shown.map((e) => (
             <li key={e.id}>
               <span className="ai-unit-name">
-                {e.datasheetName} <span className="ai-sub">{e.lineTotal} pts · ×{e.quantity}</span>
+                {e.datasheetName}{' '}
+                <span className="ai-sub">
+                  {e.lineTotal} pts{e.modelCount > 1 ? ` · ${e.modelCount} models` : ''}
+                </span>
               </span>
               <div className="ai-unit-actions">
-                {e.quantity > 1 && (
-                  <button type="button" className="btn" onClick={() => onChangeQty(e.id, e.quantity - 1)} disabled={busy}>
-                    −1
-                  </button>
-                )}
                 <button type="button" className="btn btn-danger" onClick={() => onRemoveEntry(e.id)} disabled={busy}>
                   Remove
                 </button>

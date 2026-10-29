@@ -16,9 +16,11 @@ public sealed record SetWarlordRequest(bool IsWarlord);
 
 public sealed record SetEnhancementRequest(string? EnhancementId);
 
-public sealed record AddEntryRequest(string DatasheetId, int? Quantity, IReadOnlyList<string>? SelectedOptionIds);
+public sealed record AddEntryRequest(string DatasheetId, IReadOnlyList<string>? SelectedOptionIds, int? Models = null);
 
-public sealed record UpdateEntryRequest(int Quantity, IReadOnlyList<string>? SelectedOptionIds);
+public sealed record UpdateEntryRequest(IReadOnlyList<string>? SelectedOptionIds);
+
+public sealed record SetModelCountRequest(int Models);
 
 public sealed record SelectedOptionDto(string Id, string Name, int Points);
 
@@ -28,7 +30,7 @@ public sealed record ListEntryDto(
     string DatasheetName,
     int Points,
     int OptionsPoints,
-    int Quantity,
+    int ModelCount,
     int LineTotal,
     IReadOnlyList<string> Keywords,
     bool IsWarlord,

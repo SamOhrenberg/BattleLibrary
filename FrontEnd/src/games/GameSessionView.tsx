@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { ApiError } from '../lib/api'
-import { getLists, type ArmyListSummary } from '../lib/lists'
+import { getLists, getList, type ArmyListSummary, type ArmyList } from '../lib/lists'
+import { PlayView } from '../lists/PlayView'
 import { getFriends, searchUsers, type Friend, type UserSearchResult } from '../lib/social'
 import { joinSessionGroup, leaveSessionGroup, onSessionUpdated } from '../lib/gameHub'
 import {
@@ -25,6 +26,16 @@ import './games.css'
 export function GameSessionView({ sessionId, onExit }: { sessionId: string; onExit: () => void }) {
   const [session, setSession] = useState<GameSession | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [playList, setPlayList] = useState<ArmyList | null>(null)
+
+  async function openPlayView(listId: string) {
+    setError(null)
+    try {
+      setPlayList(await getList(listId))
+    } catch {
+      setError('Could not open the play view.')
+    }
+  }
 
   const reload = useCallback(async () => {
     try {
@@ -73,6 +84,11 @@ export function GameSessionView({ sessionId, onExit }: { sessionId: string; onEx
       <div className="lists-head">
         <h2>{session.name || 'Live game'}</h2>
         <div className="lists-actions">
+          {me?.armyListId && (
+            <button className="play-btn" onClick={() => void openPlayView(me.armyListId!)}>
+              <span aria-hidden="true">▶</span> Play view
+            </button>
+          )}
           <button className="btn" onClick={onExit}>Back</button>
         </div>
       </div>
@@ -88,6 +104,8 @@ export function GameSessionView({ sessionId, onExit }: { sessionId: string; onEx
       {session.status === 'Setup' && <SetupView session={session} me={me} act={act} />}
       {session.status === 'Active' && me && <ActiveView session={session} me={me} act={act} setError={setError} />}
       {(session.status === 'Finished' || session.status === 'Abandoned') && <FinishedView session={session} />}
+
+      {playList && <PlayView list={playList} onClose={() => setPlayList(null)} />}
     </section>
   )
 }
