@@ -57,6 +57,10 @@ internal static class BsDataXmlReader
         {
             doc.CategoryEntries.Add(new CategoryEntry { Id = Attr(c, "id"), Name = Attr(c, "name") });
         }
+        foreach (var f in Children(root, "forceEntries", "forceEntry"))
+        {
+            doc.ForceEntries.Add(new ForceEntry { Id = Attr(f, "id"), Name = Attr(f, "name") });
+        }
         foreach (var p in Children(root, "sharedProfiles", "profile"))
         {
             doc.SharedProfiles.Add(ReadProfile(p));

@@ -17,6 +17,8 @@ public class BattleLibraryDbContext(DbContextOptions<BattleLibraryDbContext> opt
     public DbSet<User> Users => Set<User>();
     public DbSet<Profile> Profiles => Set<Profile>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
+    public DbSet<Invite> Invites => Set<Invite>();
+    public DbSet<AppSetting> AppSettings => Set<AppSetting>();
     public DbSet<Friendship> Friendships => Set<Friendship>();
 
     public DbSet<CachedGameSystem> CachedGameSystems => Set<CachedGameSystem>();
@@ -24,7 +26,9 @@ public class BattleLibraryDbContext(DbContextOptions<BattleLibraryDbContext> opt
     public DbSet<CachedDatasheet> CachedDatasheets => Set<CachedDatasheet>();
 
     public DbSet<ArmyList> ArmyLists => Set<ArmyList>();
+    public DbSet<ListForce> ListForces => Set<ListForce>();
     public DbSet<ListEntry> ListEntries => Set<ListEntry>();
+    public DbSet<LoadoutPreset> LoadoutPresets => Set<LoadoutPreset>();
 
     public DbSet<Game> Games => Set<Game>();
     public DbSet<GameSession> GameSessions => Set<GameSession>();

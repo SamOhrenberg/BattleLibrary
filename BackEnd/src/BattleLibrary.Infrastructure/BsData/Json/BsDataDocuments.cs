@@ -3,7 +3,7 @@ using System.Text.Json.Serialization;
 
 namespace BattleLibrary.Infrastructure.BsData.Json;
 
-// Partial mirror of the BSData JSON schema — only the fields the parser reads.
+// Partial mirror of the BSData JSON schema - only the fields the parser reads.
 
 internal sealed class GameSystemRoot
 {
@@ -23,6 +23,7 @@ internal abstract class DataDocument
     public List<CostType> CostTypes { get; set; } = [];
     public List<ProfileType> ProfileTypes { get; set; } = [];
     public List<CategoryEntry> CategoryEntries { get; set; } = [];
+    public List<ForceEntry> ForceEntries { get; set; } = [];
     public List<ProfileNode> SharedProfiles { get; set; } = [];
     public List<SelectionEntryNode> SharedSelectionEntries { get; set; } = [];
     public List<SelectionEntryGroupNode> SharedSelectionEntryGroups { get; set; } = [];
@@ -51,6 +52,14 @@ internal sealed class ProfileType
 }
 
 internal sealed class CategoryEntry
+{
+    public string Id { get; set; } = "";
+    public string Name { get; set; } = "";
+}
+
+// A roster force slot defined by the game system (e.g. 40k's "Army Roster").
+// A roster's <force> must reference one by its entryId or importers reject it.
+internal sealed class ForceEntry
 {
     public string Id { get; set; } = "";
     public string Name { get; set; } = "";

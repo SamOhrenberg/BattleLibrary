@@ -11,6 +11,19 @@ public sealed class CachedGameSystem
     public bool Enabled { get; set; } = true;
     public DateTimeOffset RefreshedAt { get; set; }
 
+    // BattleScribe roster-header identity: the source gameSystem id/name/revision
+    // and the points cost-type id, so exported .ros files match the right
+    // catalogue and imports can resolve the system. Empty on point-less systems.
+    public string BsDataId { get; set; } = "";
+    public string BsDataName { get; set; } = "";
+    public int Revision { get; set; }
+    public string PointsCostTypeId { get; set; } = "";
+
+    // The system's primary roster force slot (e.g. "Army Roster"); a roster's
+    // <force> must reference it by id or importers reject it.
+    public string ForceEntryId { get; set; } = "";
+    public string ForceEntryName { get; set; } = "";
+
     public List<CachedFaction> Factions { get; set; } = [];
 }
 
@@ -23,6 +36,9 @@ public sealed class CachedFaction
     public string BsDataId { get; set; } = "";
     public string Name { get; set; } = "";
     public int DatasheetCount { get; set; }
+
+    // Source catalogue revision, for the roster force's catalogueRevision.
+    public int Revision { get; set; }
 
     // Faction-wide equipment names (jsonb array); empty for 40k.
     public string EquipmentJson { get; set; } = "[]";

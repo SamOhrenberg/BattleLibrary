@@ -16,6 +16,11 @@ public class ArmyList : Entity
     // 40k battle size (e.g. "Strike Force"); sets the points limit. Null otherwise.
     public string? BattleSize { get; set; }
 
+    // Optional army-wide "Force Disposition" configuration choice, recorded as
+    // part of the list's configuration. Free text until config-group discovery
+    // is validated against live BSData.
+    public string? ForceDisposition { get; set; }
+
     // Chosen detachments (11e Detachment Points budget); each snapshots id/name/dp.
     public List<ListDetachment> Detachments { get; set; } = [];
 
@@ -23,6 +28,9 @@ public class ArmyList : Entity
     public bool Featured { get; set; }
 
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
+
+    // Forces in the list (one per allied faction); the first is the primary one.
+    public List<ListForce> Forces { get; set; } = [];
 
     public List<ListEntry> Entries { get; set; } = [];
 }

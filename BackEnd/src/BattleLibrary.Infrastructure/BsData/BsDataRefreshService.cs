@@ -62,6 +62,17 @@ public sealed class BsDataRefreshService(
         system.Repo = source.Repo;
         system.CommitSha = sha;
         system.RefreshedAt = DateTimeOffset.UtcNow;
+        // Roster-header identity is the same across every catalogue of a system.
+        var systemInfo = models.FirstOrDefault()?.GameSystem;
+        if (systemInfo is not null)
+        {
+            system.BsDataId = systemInfo.Id;
+            system.BsDataName = systemInfo.Name;
+            system.Revision = systemInfo.Revision;
+            system.PointsCostTypeId = systemInfo.PointsCostTypeId;
+            system.ForceEntryId = systemInfo.ForceEntryId;
+            system.ForceEntryName = systemInfo.ForceEntryName;
+        }
         if (existing is null)
         {
             db.CachedGameSystems.Add(system);
@@ -81,6 +92,7 @@ public sealed class BsDataRefreshService(
                 BsDataId = model.FactionId,
                 Name = model.FactionName,
                 DatasheetCount = model.Datasheets.Count,
+                Revision = model.FactionRevision,
                 EquipmentJson = JsonSerializer.Serialize(model.Equipment, CacheJson.Options),
                 DetachmentsJson = JsonSerializer.Serialize(model.Detachments, CacheJson.Options),
             };

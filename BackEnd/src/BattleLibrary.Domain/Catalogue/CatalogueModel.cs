@@ -3,12 +3,19 @@ namespace BattleLibrary.Domain.Catalogue;
 // Slim, GW-agnostic read model produced from BSData. Intentionally minimal:
 // the functional data for list building, no lore or full rules text.
 
-public sealed record GameSystemInfo(string Id, string Name, int Revision);
+// PointsCostTypeId is the BSData cost-type id for list points ("pts"), needed to
+// write roster (.ros) cost nodes; empty on point-less systems. ForceEntryId/Name
+// identify the system's primary roster force slot, which a roster's <force> must
+// reference by id or importers reject it.
+public sealed record GameSystemInfo(
+    string Id, string Name, int Revision, string PointsCostTypeId = "",
+    string ForceEntryId = "", string ForceEntryName = "");
 
 public sealed record CatalogueModel(
     GameSystemInfo GameSystem,
     string FactionId,
     string FactionName,
+    int FactionRevision,
     IReadOnlyList<Datasheet> Datasheets,
     IReadOnlyList<string> Equipment,
     IReadOnlyList<Detachment> Detachments);

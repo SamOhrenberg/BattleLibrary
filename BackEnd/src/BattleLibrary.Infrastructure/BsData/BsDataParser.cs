@@ -127,8 +127,11 @@ public sealed class BsDataParser
         var equipment = ExtractFactionEquipment(catalogue, schema);
         var detachments = ExtractDetachments(system, catalogue, schema, ptsTypeId, cataloguesById);
 
-        var info = new GameSystemInfo(system.Id, system.Name, system.Revision);
-        return new CatalogueModel(info, catalogue.Id, catalogue.Name, datasheets, equipment, detachments);
+        var force = system.ForceEntries.FirstOrDefault();
+        var info = new GameSystemInfo(
+            system.Id, system.Name, system.Revision, ptsTypeId,
+            force?.Id ?? "", force?.Name ?? "");
+        return new CatalogueModel(info, catalogue.Id, catalogue.Name, catalogue.Revision, datasheets, equipment, detachments);
     }
 
     // The catalogue plus every catalogue it pulls in: linked libraries (always)
@@ -163,7 +166,7 @@ public sealed class BsDataParser
     }
 
     // Detachments: child entries of a selection group named per the schema (40k's
-    // "Detachment"), each paired with its enhancements — the entries under a
+    // "Detachment"), each paired with its enhancements - the entries under a
     // "<Detachment> Enhancements" group that carry an enhancement counter cost,
     // snapshotting the enhancement's pts cost. Names only, no rules text.
     private static IReadOnlyList<Detachment> ExtractDetachments(
@@ -584,7 +587,7 @@ public sealed class BsDataParser
 
     // A model type's count in the squad. The group name, when it spells a range
     // (e.g. "9-18 Boyz"), is the datasheet's intended size and wins; otherwise the
-    // model's "selections" min/max constraints (scope parent/self) carry it — the
+    // model's "selections" min/max constraints (scope parent/self) carry it - the
     // only source for models listed directly, without a named group.
     private static (int Lo, int Hi) ModelCountOf(SelectionNode model, string? groupName)
     {
@@ -685,7 +688,7 @@ public sealed class BsDataParser
         return hide;
     }
 
-    // Values of "set" modifiers targeting the points cost — the price at a larger
+    // Values of "set" modifiers targeting the points cost - the price at a larger
     // model count. Unconditional increments are ignored: the base cost is the
     // authoritative price for the smallest size.
     private static List<int> CostSetValues(SelectionEntryNode entry, string ptsTypeId)
