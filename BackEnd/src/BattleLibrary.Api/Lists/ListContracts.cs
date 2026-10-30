@@ -34,6 +34,7 @@ public sealed record ListEntryDto(
     int LineTotal,
     IReadOnlyList<string> Keywords,
     bool IsWarlord,
+    bool ForcedWarlord,
     string? EnhancementId,
     string? EnhancementName,
     int EnhancementPoints,

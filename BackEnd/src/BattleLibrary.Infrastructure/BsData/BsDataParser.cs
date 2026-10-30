@@ -83,8 +83,22 @@ public sealed class BsDataParser
         GameSystemDocument system,
         IReadOnlyList<CatalogueDocument> factions,
         IReadOnlyList<CatalogueDocument> libraries,
-        CatalogueSchema schema) =>
-        factions.Select(f => ParseOne(system, f, libraries, schema)).ToList();
+        CatalogueSchema schema)
+    {
+        // One index and catalogue lookup across every document, so a faction that
+        // imports another catalogue's root entries (a chapter importing the base
+        // Space Marines catalogue) resolves those units and their references.
+        var catalogues = new List<CatalogueDocument>(factions.Count + libraries.Count);
+        catalogues.AddRange(factions);
+        catalogues.AddRange(libraries);
+        var documents = new List<DataDocument> { system };
+        documents.AddRange(catalogues);
+
+        var ptsTypeId = ResolvePointsTypeId(system, schema);
+        var index = Index.Build(documents);
+        var cataloguesById = BuildCatalogueLookup(catalogues);
+        return factions.Select(f => BuildModel(system, f, schema, ptsTypeId, index, cataloguesById)).ToList();
+    }
 
     private static CatalogueModel ParseOne(
         GameSystemDocument system,
@@ -97,13 +111,55 @@ public sealed class BsDataParser
 
         var ptsTypeId = ResolvePointsTypeId(system, schema);
         var index = Index.Build(documents);
-        var librariesById = BuildLibraryLookup(libraries);
-        var datasheets = ExtractDatasheets(catalogue, schema, ptsTypeId, index, librariesById);
+        var cataloguesById = BuildCatalogueLookup(libraries);
+        return BuildModel(system, catalogue, schema, ptsTypeId, index, cataloguesById);
+    }
+
+    private static CatalogueModel BuildModel(
+        GameSystemDocument system,
+        CatalogueDocument catalogue,
+        CatalogueSchema schema,
+        string ptsTypeId,
+        Index index,
+        IReadOnlyDictionary<string, CatalogueDocument> cataloguesById)
+    {
+        var datasheets = ExtractDatasheets(catalogue, schema, ptsTypeId, index, cataloguesById);
         var equipment = ExtractFactionEquipment(catalogue, schema);
-        var detachments = ExtractDetachments(system, catalogue, schema, ptsTypeId, librariesById);
+        var detachments = ExtractDetachments(system, catalogue, schema, ptsTypeId, cataloguesById);
 
         var info = new GameSystemInfo(system.Id, system.Name, system.Revision);
         return new CatalogueModel(info, catalogue.Id, catalogue.Name, datasheets, equipment, detachments);
+    }
+
+    // The catalogue plus every catalogue it pulls in: linked libraries (always)
+    // and catalogues it imports wholesale (importRootEntries), followed
+    // transitively and guarded against cycles.
+    private static List<CatalogueDocument> ImportedCatalogues(
+        CatalogueDocument root, IReadOnlyDictionary<string, CatalogueDocument> cataloguesById)
+    {
+        var result = new List<CatalogueDocument>();
+        var visited = new HashSet<string>();
+
+        void Walk(CatalogueDocument doc)
+        {
+            if (!string.IsNullOrEmpty(doc.Id) && !visited.Add(doc.Id))
+            {
+                return;
+            }
+            result.Add(doc);
+            foreach (var link in doc.CatalogueLinks)
+            {
+                if (!string.IsNullOrEmpty(link.TargetId)
+                    && cataloguesById.TryGetValue(link.TargetId, out var target)
+                    && (target.Library || link.ImportRootEntries))
+                {
+                    Walk(target);
+                }
+            }
+        }
+
+        Walk(root);
+        return result;
     }
 
     // Detachments: child entries of a selection group named per the schema (40k's
@@ -115,7 +171,7 @@ public sealed class BsDataParser
         CatalogueDocument catalogue,
         CatalogueSchema schema,
         string ptsTypeId,
-        IReadOnlyDictionary<string, CatalogueDocument> librariesById)
+        IReadOnlyDictionary<string, CatalogueDocument> cataloguesById)
     {
         if (string.IsNullOrEmpty(schema.DetachmentGroupName))
         {
@@ -127,14 +183,7 @@ public sealed class BsDataParser
         var dpCostId = system.CostTypes
             .FirstOrDefault(c => string.Equals(c.Name, schema.DetachmentPointsCostName, StringComparison.OrdinalIgnoreCase))?.Id ?? "";
 
-        var docs = new List<CatalogueDocument> { catalogue };
-        foreach (var link in catalogue.CatalogueLinks)
-        {
-            if (!string.IsNullOrEmpty(link.TargetId) && librariesById.TryGetValue(link.TargetId, out var library))
-            {
-                docs.Add(library);
-            }
-        }
+        var docs = ImportedCatalogues(catalogue, cataloguesById);
 
         var options = new List<(string Id, string Name, int Dp, List<Ability> Rules)>();
         var enhancements = new List<(string Det, string Id, string Name, int Points, string Text)>();
@@ -142,7 +191,7 @@ public sealed class BsDataParser
         {
             foreach (var root in doc.SharedSelectionEntryGroups.Cast<SelectionNode>().Concat(doc.SharedSelectionEntries))
             {
-                CollectDetachments(root, null, DetachmentMaxDepth, [], schema.DetachmentGroupName, enhCostId, dpCostId, ptsTypeId, schema.AbilityTypes, options, enhancements);
+                CollectDetachments(root, null, DetachmentMaxDepth, [], schema.DetachmentGroupName, enhCostId, dpCostId, ptsTypeId, catalogue.Id, schema.AbilityTypes, options, enhancements);
             }
         }
 
@@ -169,6 +218,7 @@ public sealed class BsDataParser
     private static void CollectDetachments(
         SelectionNode node, string? groupName, int depth, HashSet<string> visited,
         string detachmentGroupName, string enhCostId, string dpCostId, string ptsTypeId,
+        string factionCatalogueId,
         IReadOnlySet<string> abilityTypes,
         List<(string Id, string Name, int Dp, List<Ability> Rules)> options,
         List<(string Det, string Id, string Name, int Points, string Text)> enhancements)
@@ -180,12 +230,13 @@ public sealed class BsDataParser
 
         // Detachment options: the direct child entries of a "Detachment" group,
         // each with its Detachment Points cost (default 1 when unpriced) and its
-        // detachment rules.
+        // detachment rules. A detachment locked to another chapter/legion is
+        // skipped for this faction.
         if (node is SelectionEntryGroupNode && string.Equals(node.Name, detachmentGroupName, StringComparison.OrdinalIgnoreCase))
         {
             foreach (var child in node.SelectionEntries)
             {
-                if (!string.IsNullOrEmpty(child.Id))
+                if (!string.IsNullOrEmpty(child.Id) && !HiddenForFaction(child, factionCatalogueId))
                 {
                     var dp = string.IsNullOrEmpty(dpCostId)
                         ? 1
@@ -217,11 +268,11 @@ public sealed class BsDataParser
 
         foreach (var child in node.SelectionEntries)
         {
-            CollectDetachments(child, groupName, depth - 1, visited, detachmentGroupName, enhCostId, dpCostId, ptsTypeId, abilityTypes, options, enhancements);
+            CollectDetachments(child, groupName, depth - 1, visited, detachmentGroupName, enhCostId, dpCostId, ptsTypeId, factionCatalogueId, abilityTypes, options, enhancements);
         }
         foreach (var group in node.SelectionEntryGroups)
         {
-            CollectDetachments(group, group.Name, depth - 1, visited, detachmentGroupName, enhCostId, dpCostId, ptsTypeId, abilityTypes, options, enhancements);
+            CollectDetachments(group, group.Name, depth - 1, visited, detachmentGroupName, enhCostId, dpCostId, ptsTypeId, factionCatalogueId, abilityTypes, options, enhancements);
         }
     }
 
@@ -268,26 +319,23 @@ public sealed class BsDataParser
     }
 
     // Datasheets come from the faction's own entries, the entries its links
-    // resolve to, and the entries of any library catalogue it imports.
+    // resolve to, and the entries of every catalogue it imports (libraries, and
+    // catalogues imported wholesale such as a chapter's base Space Marines).
     private static List<Datasheet> ExtractDatasheets(
         CatalogueDocument faction,
         CatalogueSchema schema,
         string ptsTypeId,
         Index index,
-        IReadOnlyDictionary<string, CatalogueDocument> librariesById)
+        IReadOnlyDictionary<string, CatalogueDocument> cataloguesById)
     {
         var candidates = new List<SelectionEntryNode>();
-        CollectCandidates(faction, candidates, index);
-
-        foreach (var link in faction.CatalogueLinks)
+        foreach (var doc in ImportedCatalogues(faction, cataloguesById))
         {
-            if (!string.IsNullOrEmpty(link.TargetId) && librariesById.TryGetValue(link.TargetId, out var library))
-            {
-                CollectCandidates(library, candidates, index);
-            }
+            CollectCandidates(doc, candidates, index);
         }
 
         return candidates
+            .Where(entry => !HiddenForFaction(entry, faction.Id))
             .Select(entry => ToDatasheet(entry, schema, ptsTypeId, index))
             .OfType<Datasheet>()
             .DistinctBy(d => d.Id)
@@ -307,14 +355,14 @@ public sealed class BsDataParser
         }
     }
 
-    private static Dictionary<string, CatalogueDocument> BuildLibraryLookup(IEnumerable<CatalogueDocument> libraries)
+    private static Dictionary<string, CatalogueDocument> BuildCatalogueLookup(IEnumerable<CatalogueDocument> catalogues)
     {
         var map = new Dictionary<string, CatalogueDocument>();
-        foreach (var library in libraries)
+        foreach (var catalogue in catalogues)
         {
-            if (!string.IsNullOrEmpty(library.Id))
+            if (!string.IsNullOrEmpty(catalogue.Id))
             {
-                map.TryAdd(library.Id, library);
+                map.TryAdd(catalogue.Id, catalogue);
             }
         }
         return map;
@@ -455,19 +503,39 @@ public sealed class BsDataParser
             .ToList();
     }
 
-    // Model composition: each model-type group (e.g. "9-18 Boyz") with its
-    // default weapons. Empty for single-model units (the weapons table suffices).
+    // Model components of a unit: model-type entries that are direct children or
+    // sit in a selection group (a squad lists each model type separately). The
+    // group name, when present, carries the count range for older-style entries.
+    private static IEnumerable<(SelectionNode Model, string? GroupName)> ModelComponents(SelectionEntryNode entry)
+    {
+        foreach (var s in entry.SelectionEntries)
+        {
+            if (IsModel(s.Type))
+            {
+                yield return (s, null);
+            }
+        }
+        foreach (var g in entry.SelectionEntryGroups)
+        {
+            foreach (var s in g.SelectionEntries)
+            {
+                if (IsModel(s.Type))
+                {
+                    yield return (s, g.Name);
+                }
+            }
+        }
+    }
+
+    // Model composition: each model type with its default weapons. Empty for
+    // single-model units (the weapons table suffices).
     private static IReadOnlyList<ModelLoadout> ExtractModelGroups(SelectionEntryNode entry, CatalogueSchema schema, Index index)
     {
         var groups = new List<ModelLoadout>();
-        foreach (var g in entry.SelectionEntryGroups)
+        foreach (var (model, groupName) in ModelComponents(entry))
         {
-            var model = g.SelectionEntries.FirstOrDefault(s => IsModel(s.Type));
-            if (model is not null)
-            {
-                var label = string.IsNullOrWhiteSpace(g.Name) ? model.Name : g.Name;
-                groups.Add(new ModelLoadout(label, ModelWeapons(model, schema, index)));
-            }
+            var label = !string.IsNullOrWhiteSpace(groupName) ? groupName! : model.Name;
+            groups.Add(new ModelLoadout(label, ModelWeapons(model, schema, index)));
         }
         return groups;
     }
@@ -504,27 +572,59 @@ public sealed class BsDataParser
     {
         int min = 0, max = 0;
         var any = false;
-        foreach (var g in entry.SelectionEntryGroups)
+        foreach (var (model, groupName) in ModelComponents(entry))
         {
-            if (g.SelectionEntries.Any(s => IsModel(s.Type)))
-            {
-                var (lo, hi) = ParseRange(g.Name);
-                min += lo;
-                max += hi;
-                any = true;
-            }
+            var (lo, hi) = ModelCountOf(model, groupName);
+            min += lo;
+            max += hi;
+            any = true;
         }
         return any ? (min, max) : (1, 1);
     }
 
+    // A model type's count in the squad. The group name, when it spells a range
+    // (e.g. "9-18 Boyz"), is the datasheet's intended size and wins; otherwise the
+    // model's "selections" min/max constraints (scope parent/self) carry it — the
+    // only source for models listed directly, without a named group.
+    private static (int Lo, int Hi) ModelCountOf(SelectionNode model, string? groupName)
+    {
+        if (RangeFromName(groupName) is { } named)
+        {
+            return named;
+        }
+        int? min = null, max = null;
+        foreach (var c in model.Constraints)
+        {
+            if (c.Field != "selections" || (c.Scope != "parent" && c.Scope != "self"))
+            {
+                continue;
+            }
+            if (c.Type == "min")
+            {
+                min = (int)c.Value;
+            }
+            else if (c.Type == "max")
+            {
+                max = (int)c.Value;
+            }
+        }
+        return (min.HasValue || max.HasValue) ? (min ?? max ?? 1, max ?? min ?? 1) : (1, 1);
+    }
+
     private static readonly Regex RangeRx = new(@"(\d+)\s*-\s*(\d+)|(\d+)", RegexOptions.Compiled);
 
-    private static (int Lo, int Hi) ParseRange(string text)
+    // A count range spelled in a group name ("9-18 Boyz", "Gore Hound"); null when
+    // the name carries no number, so counting falls through to the constraints.
+    private static (int Lo, int Hi)? RangeFromName(string? text)
     {
-        var m = RangeRx.Match(text ?? "");
+        if (string.IsNullOrEmpty(text))
+        {
+            return null;
+        }
+        var m = RangeRx.Match(text);
         if (!m.Success)
         {
-            return (1, 1);
+            return null;
         }
         if (m.Groups[1].Success)
         {
@@ -532,6 +632,57 @@ public sealed class BsDataParser
         }
         var n = int.Parse(m.Groups[3].Value);
         return (n, n);
+    }
+
+    // A shared entry imported into a faction can be locked to a different
+    // catalogue (a detachment or unit for another chapter/legion). The lock is a
+    // "hidden" modifier set true whose conditions are primary-catalogue membership
+    // tests; it hides the entry for every faction those tests exclude.
+    private static bool HiddenForFaction(SelectionNode node, string factionCatalogueId)
+    {
+        foreach (var m in node.Modifiers)
+        {
+            if (IsFactionLockHidden(m, factionCatalogueId))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static bool IsFactionLockHidden(ModifierNode m, string factionCatalogueId)
+    {
+        if (!string.Equals(m.Type, "set", StringComparison.OrdinalIgnoreCase)
+            || m.Field != "hidden"
+            || m.Value.ValueKind != JsonValueKind.True
+            || m.Conditions.Count == 0)
+        {
+            return false;
+        }
+        // Every condition must be a primary-catalogue membership test; anything
+        // else (roster/selection counts, battle size) is dynamic, not a lock.
+        var hide = true;
+        foreach (var c in m.Conditions)
+        {
+            if (!string.Equals(c.Scope, "primary-catalogue", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+            var isThisFaction = c.ChildId == factionCatalogueId;
+            if (string.Equals(c.Type, "notInstanceOf", StringComparison.OrdinalIgnoreCase))
+            {
+                hide &= !isThisFaction;
+            }
+            else if (string.Equals(c.Type, "instanceOf", StringComparison.OrdinalIgnoreCase))
+            {
+                hide &= isThisFaction;
+            }
+            else
+            {
+                return false;
+            }
+        }
+        return hide;
     }
 
     // Values of "set" modifiers targeting the points cost — the price at a larger

@@ -318,15 +318,27 @@ public static class ListEndpoints
             return Results.NotFound();
         }
 
+        // A unit whose rules force it to be the Warlord can't give up the slot,
+        // and no other unit can take it while such a unit is in the list.
+        if (entry.ForcedWarlord && !request.IsWarlord)
+        {
+            return Problem("warlord", "This unit's rules require it to be your Warlord.");
+        }
+        if (request.IsWarlord && !entry.ForcedWarlord && list.Entries.Any(e => e.ForcedWarlord))
+        {
+            return Problem("warlord", "A unit whose rules require it to be the Warlord is already in this list.");
+        }
+
         if (request.IsWarlord)
         {
             if (!HasKeyword(entry, "Character"))
             {
                 return Problem("warlord", "Only a Character can be the Warlord.");
             }
+            // Clear other non-forced Warlords; a forced Warlord keeps the slot.
             foreach (var e in list.Entries)
             {
-                e.IsWarlord = e.Id == entryId;
+                e.IsWarlord = e.Id == entryId || e.ForcedWarlord;
             }
         }
         else
@@ -434,7 +446,7 @@ public static class ListEndpoints
 
         // One entry per unit; multiple units of a datasheet are separate entries.
         var size = PickSize(sheet.Sizes, request.Models);
-        list.Entries.Add(new ListEntry
+        var entry = new ListEntry
         {
             ArmyListId = list.Id,
             DatasheetId = request.DatasheetId,
@@ -442,8 +454,25 @@ public static class ListEndpoints
             Points = size?.Points ?? sheet.Points,
             ModelCount = size?.Models ?? 1,
             Keywords = sheet.Keywords.ToList(),
+            ForcedWarlord = sheet.ForcedWarlord,
             SelectedOptions = ResolveOptions(sheet.Options, request.SelectedOptionIds),
-        });
+        };
+        list.Entries.Add(entry);
+
+        // An Epic Hero whose rules mandate it takes the Warlord slot outright.
+        // Other non-forced Warlords are cleared; any existing forced one stays
+        // (two forced Warlords is flagged as illegal by validation).
+        if (sheet.ForcedWarlord)
+        {
+            entry.IsWarlord = true;
+            foreach (var e in list.Entries)
+            {
+                if (e.Id != entry.Id && !e.ForcedWarlord)
+                {
+                    e.IsWarlord = false;
+                }
+            }
+        }
         list.UpdatedAt = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(ct);
         return Results.Ok(ToDto(list));
@@ -535,7 +564,7 @@ public static class ListEndpoints
                 return new ListEntryDto(
                     e.Id, e.DatasheetId, e.DatasheetName, e.Points, optionsPoints, e.ModelCount,
                     e.Points + optionsPoints + e.EnhancementPoints,
-                    e.Keywords, e.IsWarlord, e.EnhancementId, e.EnhancementName, e.EnhancementPoints,
+                    e.Keywords, e.IsWarlord, e.ForcedWarlord, e.EnhancementId, e.EnhancementName, e.EnhancementPoints,
                     e.SelectedOptions.Select(o => new SelectedOptionDto(o.Id, o.Name, o.Points)).ToList());
             })
             .ToList();
@@ -555,7 +584,8 @@ public static class ListEndpoints
         e.Points + e.SelectedOptions.Sum(o => o.Points) + e.EnhancementPoints;
 
     private sealed record SheetInfo(
-        string Name, int Points, IReadOnlyList<string> Keywords, IReadOnlyList<DatasheetOption> Options, IReadOnlyList<UnitSize> Sizes);
+        string Name, int Points, IReadOnlyList<string> Keywords, IReadOnlyList<DatasheetOption> Options, IReadOnlyList<UnitSize> Sizes,
+        bool ForcedWarlord);
 
     // Pulls name/points/keywords/options/sizes for a datasheet from the cached slim jsonb.
     private static async Task<SheetInfo?> LoadSheet(
@@ -571,8 +601,17 @@ public static class ListEndpoints
             return null;
         }
         var sheet = JsonSerializer.Deserialize<Datasheet>(json, SlimJson);
-        return sheet is null ? null : new SheetInfo(sheet.Name, sheet.Points ?? 0, sheet.Keywords, sheet.Options, sheet.Sizes ?? []);
+        return sheet is null
+            ? null
+            : new SheetInfo(sheet.Name, sheet.Points ?? 0, sheet.Keywords, sheet.Options, sheet.Sizes ?? [], IsForcedWarlord(sheet));
     }
+
+    // An Epic Hero whose rules force it to be the army's Warlord ("...it must be
+    // your Warlord."). Markup markers (** bold, ^^ keyword) are stripped first.
+    private static bool IsForcedWarlord(Datasheet sheet) =>
+        sheet.Abilities.Any(a =>
+            !string.IsNullOrEmpty(a.Text)
+            && a.Text.Replace("^", "").Replace("*", "").Contains("must be your Warlord", StringComparison.OrdinalIgnoreCase));
 
     // The chosen size (by model count), or the smallest when unspecified/unknown.
     private static UnitSize? PickSize(IReadOnlyList<UnitSize> sizes, int? models)

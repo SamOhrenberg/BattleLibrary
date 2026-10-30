@@ -27,6 +27,10 @@ public class ListEntry : Entity
     // Army's warlord (exactly one CHARACTER across the list).
     public bool IsWarlord { get; set; }
 
+    // Set when the datasheet's rules require this unit to be the Warlord; its
+    // Warlord status is then locked and two such units in one list is illegal.
+    public bool ForcedWarlord { get; set; }
+
     // Enhancement assigned to this character, snapshotting id/name/points.
     public string? EnhancementId { get; set; }
     public string? EnhancementName { get; set; }

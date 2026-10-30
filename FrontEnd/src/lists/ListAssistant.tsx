@@ -246,6 +246,22 @@ function IssueActions({
         </ul>
       )
 
+    case 'too-many-forced-warlords':
+      // Each of these units' rules force it to be Warlord, so the slot can't be
+      // cleared — one of the units has to be removed from the list.
+      return (
+        <ul className="ai-units">
+          {entries(issue.entryIds).map((e) => (
+            <li key={e.id}>
+              <span className="ai-unit-name">★ {e.datasheetName}</span>
+              <button type="button" className="btn btn-danger" onClick={() => onRemoveEntry(e.id)} disabled={busy}>
+                Remove
+              </button>
+            </li>
+          ))}
+        </ul>
+      )
+
     case 'too-many-enhancements':
       return (
         <ul className="ai-units">

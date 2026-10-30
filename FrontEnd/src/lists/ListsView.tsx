@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { ApiError } from '../lib/api'
 import { getCatalogueSystems, getFactions, type CatalogueFaction, type CatalogueSystem } from '../lib/catalogue'
-import { BATTLE_SIZES, createList, duplicateList, getList, getLists, type ArmyList, type ArmyListSummary } from '../lib/lists'
+import { BATTLE_SIZES, createList, deleteList, duplicateList, getList, getLists, type ArmyList, type ArmyListSummary } from '../lib/lists'
 import { BATTLE_SIZE_RULES } from './validation'
 import { useTour } from '../onboarding/TourContext'
 import { ListBuilder } from './ListBuilder'
@@ -48,6 +48,16 @@ export function ListsView() {
       setLists(await getLists())
     } catch {
       setError('Could not duplicate the list.')
+    }
+  }
+
+  async function onDelete(id: string) {
+    setError(null)
+    try {
+      await deleteList(id)
+      setLists(await getLists())
+    } catch {
+      setError('Could not delete the list.')
     }
   }
 
@@ -104,6 +114,7 @@ export function ListsView() {
           onOpen={(id) => void openList(id)}
           onNew={openCreate}
           onDuplicate={(id) => void onDuplicate(id)}
+          onDelete={(id) => void onDelete(id)}
         />
       )}
 
@@ -121,11 +132,13 @@ function ListIndex({
   onOpen,
   onNew,
   onDuplicate,
+  onDelete,
 }: {
   lists: ArmyListSummary[] | null
   onOpen: (id: string) => void
   onNew: () => void
   onDuplicate: (id: string) => void
+  onDelete: (id: string) => void
 }) {
   if (lists === null) return <p className="hint">Loading…</p>
   if (lists.length === 0) {
@@ -166,11 +179,64 @@ function ListIndex({
             >
               Duplicate
             </button>
+            <button
+              type="button"
+              className="li-del"
+              title="Delete list"
+              onClick={(e) => {
+                e.stopPropagation()
+                if (confirm(`Delete "${l.name}"? This cannot be undone.`)) onDelete(l.id)
+              }}
+            >
+              Delete
+            </button>
           </div>
         </li>
       ))}
     </ul>
   )
+}
+
+// Faction names encode a hierarchy with " - " (e.g. "Imperium - Adeptus Astartes
+// - Blood Angels"): alliance, faction, and an optional third level. The tree
+// drives the cascading selects; a flat list (no separators, e.g. Kill Team)
+// leaves `hierarchical` false and the form shows a single faction dropdown.
+const NAME_SEP = ' - '
+const KEY_SEP = '\u0000'
+
+interface FactionLeaf {
+  label: string
+  id: string
+}
+
+interface FactionTree {
+  hierarchical: boolean
+  alliances: string[]
+  groups: Record<string, string[]>
+  leaves: Record<string, FactionLeaf[]>
+}
+
+const leafKey = (alliance: string, group: string) => `${alliance}${KEY_SEP}${group}`
+
+function buildFactionTree(factions: CatalogueFaction[]): FactionTree {
+  const tree: FactionTree = { hierarchical: false, alliances: [], groups: {}, leaves: {} }
+  for (const f of factions) {
+    const parts = f.name.split(NAME_SEP)
+    if (parts.length > 1) tree.hierarchical = true
+    const alliance = parts[0]
+    const group = parts[1] ?? parts[0]
+    const label = parts[2] ?? group
+    if (!tree.alliances.includes(alliance)) {
+      tree.alliances.push(alliance)
+      tree.groups[alliance] = []
+    }
+    if (!tree.groups[alliance].includes(group)) tree.groups[alliance].push(group)
+    ;(tree.leaves[leafKey(alliance, group)] ??= []).push({ label, id: f.id })
+  }
+  tree.alliances.sort()
+  for (const a of tree.alliances) tree.groups[a].sort()
+  for (const key of Object.keys(tree.leaves)) tree.leaves[key].sort((a, b) => a.label.localeCompare(b.label))
+  return tree
 }
 
 function CreateForm({ onCreated, onCancel }: { onCreated: (list: ArmyList) => void; onCancel: () => void }) {
@@ -179,6 +245,8 @@ function CreateForm({ onCreated, onCancel }: { onCreated: (list: ArmyList) => vo
   const [factions, setFactions] = useState<CatalogueFaction[]>([])
   const [systemKey, setSystemKey] = useState('')
   const [factionId, setFactionId] = useState('')
+  const [alliance, setAlliance] = useState('')
+  const [group, setGroup] = useState('')
   const [name, setName] = useState('')
   const [limit, setLimit] = useState('2000')
   const [battleSize, setBattleSize] = useState<string>('Strike Force')
@@ -201,12 +269,38 @@ function CreateForm({ onCreated, onCancel }: { onCreated: (list: ArmyList) => vo
     setFactions([])
     setFactionId('')
     getFactions(systemKey)
-      .then((f) => {
-        setFactions(f)
-        if (f.length > 0) setFactionId(f[0].id)
-      })
+      .then(setFactions)
       .catch(() => setError('Could not load factions.'))
   }, [systemKey])
+
+  const tree = useMemo(() => buildFactionTree(factions), [factions])
+  const leafOptions = tree.leaves[leafKey(alliance, group)] ?? []
+
+  // Seed the cascade (or the flat dropdown) from the first faction once loaded.
+  useEffect(() => {
+    if (factions.length === 0) return
+    if (!tree.hierarchical) {
+      setFactionId(factions[0].id)
+      return
+    }
+    const a = tree.alliances[0]
+    const g = tree.groups[a][0]
+    setAlliance(a)
+    setGroup(g)
+    setFactionId(tree.leaves[leafKey(a, g)][0].id)
+  }, [tree, factions])
+
+  function pickAlliance(a: string) {
+    const g = tree.groups[a][0]
+    setAlliance(a)
+    setGroup(g)
+    setFactionId(tree.leaves[leafKey(a, g)][0].id)
+  }
+
+  function pickGroup(g: string) {
+    setGroup(g)
+    setFactionId(tree.leaves[leafKey(alliance, g)][0].id)
+  }
 
   const pointless = useMemo(
     () => systems.find((s) => s.key === systemKey)?.pointless ?? false,
@@ -256,16 +350,50 @@ function CreateForm({ onCreated, onCancel }: { onCreated: (list: ArmyList) => vo
             ))}
           </select>
         </label>
-        <label>
-          Faction
-          <select value={factionId} onChange={(e) => setFactionId(e.target.value)}>
-            {factions.length === 0 && <option value="">Loading…</option>}
-            {factions.map((f) => (
-              <option key={f.id} value={f.id}>{f.name}</option>
-            ))}
-          </select>
-        </label>
+        {tree.hierarchical ? (
+          <label>
+            Alliance
+            <select value={alliance} onChange={(e) => pickAlliance(e.target.value)}>
+              {tree.alliances.map((a) => (
+                <option key={a} value={a}>{a}</option>
+              ))}
+            </select>
+          </label>
+        ) : (
+          <label>
+            Faction
+            <select value={factionId} onChange={(e) => setFactionId(e.target.value)}>
+              {factions.length === 0 && <option value="">Loading…</option>}
+              {factions.map((f) => (
+                <option key={f.id} value={f.id}>{f.name}</option>
+              ))}
+            </select>
+          </label>
+        )}
       </div>
+
+      {tree.hierarchical && (
+        <div className="create-grid">
+          <label>
+            Faction
+            <select value={group} onChange={(e) => pickGroup(e.target.value)}>
+              {(tree.groups[alliance] ?? []).map((g) => (
+                <option key={g} value={g}>{g}</option>
+              ))}
+            </select>
+          </label>
+          {leafOptions.length > 1 && (
+            <label>
+              Chapter
+              <select value={factionId} onChange={(e) => setFactionId(e.target.value)}>
+                {leafOptions.map((l) => (
+                  <option key={l.id} value={l.id}>{l.label}</option>
+                ))}
+              </select>
+            </label>
+          )}
+        </div>
+      )}
 
       {!pointless && (
         <div className="create-grid" data-tour="create-limit">

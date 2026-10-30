@@ -340,6 +340,9 @@ namespace BattleLibrary.Infrastructure.Migrations
                     b.Property<int>("EnhancementPoints")
                         .HasColumnType("integer");
 
+                    b.Property<bool>("ForcedWarlord")
+                        .HasColumnType("boolean");
+
                     b.Property<bool>("IsWarlord")
                         .HasColumnType("boolean");
 

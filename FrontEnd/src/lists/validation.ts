@@ -42,6 +42,7 @@ export type IssueCode =
   | 'dp-over'
   | 'no-warlord'
   | 'too-many-warlords'
+  | 'too-many-forced-warlords'
   | 'too-many-enhancements'
   | 'rule-of-n'
 
@@ -108,7 +109,16 @@ export function validateList(list: ArmyList, hasDetachments: boolean, pointless:
   }
 
   const warlords = list.entries.filter((e) => e.isWarlord)
-  if (warlords.length === 0) {
+  const forced = list.entries.filter((e) => e.forcedWarlord)
+  if (forced.length > 1) {
+    // Two units that each must be the Warlord can't coexist; one has to go.
+    issues.push({
+      code: 'too-many-forced-warlords',
+      message: 'Two units each require being your Warlord.',
+      fix: 'Only one is allowed — remove one of these units.',
+      entryIds: forced.map((e) => e.id),
+    })
+  } else if (warlords.length === 0) {
     const candidates = list.entries.filter(isCharacter).map((e) => e.id)
     issues.push({
       code: 'no-warlord',

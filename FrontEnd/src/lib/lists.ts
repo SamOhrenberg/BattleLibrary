@@ -19,6 +19,7 @@ export interface ListEntry {
   lineTotal: number
   keywords: string[]
   isWarlord: boolean
+  forcedWarlord: boolean
   enhancementId: string | null
   enhancementName: string | null
   enhancementPoints: number

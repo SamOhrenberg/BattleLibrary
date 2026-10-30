@@ -125,6 +125,22 @@
   color: var(--accent);
 }
 
+.li-del {
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.78rem;
+  padding: 5px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.li-del:hover {
+  border-color: var(--err);
+  color: var(--err);
+}
+
 /* Duplicate (copy) button on a list entry — accent hover, not the delete red. */
 .icon-btn.dup-btn {
   display: inline-flex;
@@ -777,6 +793,12 @@
   white-space: pre-wrap;
 }
 
+/* Rules keywords (^^...^^ in the source): semibold, in the body ink. */
+.kw-text {
+  font-weight: 600;
+  color: var(--fg);
+}
+
 .enh-text {
   margin: 6px 0 0;
   font-size: 0.8rem;
@@ -1354,6 +1376,15 @@
   border-color: var(--planned);
   color: var(--planned);
   font-weight: 600;
+}
+
+/* Forced Warlord: locked on, so it reads as set rather than greyed-out. */
+.warlord-btn.locked:disabled {
+  border-color: var(--planned);
+  color: var(--planned);
+  font-weight: 600;
+  opacity: 1;
+  cursor: not-allowed;
 }
 
 .enh-select {

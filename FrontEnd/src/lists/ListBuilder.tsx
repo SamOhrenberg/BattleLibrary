@@ -232,6 +232,9 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
   const rules = BATTLE_SIZE_RULES[list.battleSize ?? '']
   const dpUsed = list.detachments.reduce((n, d) => n + d.dp, 0)
   const issues = useMemo(() => validateList(list, hasDetachments, pointless), [list, hasDetachments, pointless])
+  // A unit whose rules force the Warlord slot locks it: it can't be cleared and
+  // no other unit can take the slot while it is in the list.
+  const hasForcedWarlord = useMemo(() => list.entries.some((e) => e.forcedWarlord), [list.entries])
 
   const chosenDetachments = useMemo(
     () => detachments.filter((d) => chosenIds.has(d.id)),
@@ -635,9 +638,16 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
                         {!pointless && isCharacter(e) && (
                           <button
                             type="button"
-                            className={`warlord-btn${e.isWarlord ? ' on' : ''}`}
+                            className={`warlord-btn${e.isWarlord ? ' on' : ''}${e.forcedWarlord ? ' locked' : ''}`}
                             onClick={() => void run(() => setWarlord(list.id, e.id, !e.isWarlord))}
-                            disabled={busy}
+                            disabled={busy || e.forcedWarlord || (!e.isWarlord && hasForcedWarlord)}
+                            title={
+                              e.forcedWarlord
+                                ? "This unit's rules require it to be your Warlord."
+                                : hasForcedWarlord
+                                  ? 'Another unit must be your Warlord.'
+                                  : undefined
+                            }
                           >
                             ★ {e.isWarlord ? 'Warlord' : 'Make Warlord'}
                           </button>
