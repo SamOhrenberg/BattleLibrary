@@ -12,6 +12,7 @@ public sealed class GameSessionConfiguration : IEntityTypeConfiguration<GameSess
         builder.Property(s => s.Status).HasConversion<int>();
         builder.Property(s => s.Name).HasMaxLength(120);
         builder.Property(s => s.GameSystemKey).HasMaxLength(100);
+        builder.Property(s => s.BattleSize).HasMaxLength(50);
         builder.HasIndex(s => s.CreatedByUserId);
 
         builder.HasMany(s => s.Participants)

@@ -220,6 +220,10 @@ namespace BattleLibrary.Infrastructure.Migrations
                     b.Property<Guid>("Id")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("BattleSize")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -246,6 +250,9 @@ namespace BattleLibrary.Infrastructure.Migrations
 
                     b.Property<DateTimeOffset?>("StartedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("StartingCp")
+                        .HasColumnType("integer");
 
                     b.Property<int>("Status")
                         .HasColumnType("integer");
@@ -665,14 +672,26 @@ namespace BattleLibrary.Infrastructure.Migrations
 
                             b1.Property<bool>("Destroyed");
 
+                            b1.Property<string>("EnhancementName");
+
                             b1.Property<Guid>("Id");
+
+                            b1.Property<bool>("IsWarlord");
+
+                            b1.PrimitiveCollection<string>("Keywords")
+                                .IsRequired();
 
                             b1.Property<int>("MaxModels");
 
                             b1.Property<string>("Name")
                                 .IsRequired();
 
+                            b1.Property<int>("Points");
+
                             b1.Property<int>("StartingModels");
+
+                            b1.PrimitiveCollection<string>("Wargear")
+                                .IsRequired();
 
                             b1.HasKey("GameParticipantId", "__synthesizedOrdinal");
 

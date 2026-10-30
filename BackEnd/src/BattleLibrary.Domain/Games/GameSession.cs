@@ -12,6 +12,14 @@ public class GameSession : Entity
     public string GameSystemKey { get; set; } = string.Empty;
     public int? PointsLimit { get; set; }
 
+    // Battle size (Incursion / Strike Force / Onslaught); null for a custom or
+    // point-less game. Sets the points cap and filters the lists players can bring.
+    public string? BattleSize { get; set; }
+
+    // CP each player begins the game with. CP gained is tracked per round; CP
+    // spent is the sum of each player's logged stratagem/ability costs.
+    public int StartingCp { get; set; }
+
     public GameSessionStatus Status { get; set; } = GameSessionStatus.Setup;
     public int CurrentRound { get; set; }
 

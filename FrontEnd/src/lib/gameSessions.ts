@@ -15,6 +15,11 @@ export interface SessionUnit {
   startingModels: number
   currentModels: number
   destroyed: boolean
+  keywords: string[]
+  isWarlord: boolean
+  enhancementName: string | null
+  points: number
+  wargear: string[]
 }
 
 export interface SessionSecondary {
@@ -57,6 +62,8 @@ export interface SessionParticipant {
   units: SessionUnit[]
   rounds: SessionRound[]
   actions: SessionAction[]
+  // Setup-only: why this player's chosen list can't be used, else null.
+  listIssue: string | null
 }
 
 export interface GameSession {
@@ -64,6 +71,8 @@ export interface GameSession {
   name: string | null
   gameSystemKey: string
   pointsLimit: number | null
+  battleSize: string | null
+  startingCp: number
   status: SessionStatus
   currentRound: number
   createdByUserId: string
@@ -108,8 +117,13 @@ export const getMySessions = () => send<SessionSummary[]>(base, 'GET')
 
 export const getSession = (id: string) => send<GameSession>(`${base}/${id}`, 'GET')
 
-export const createSession = (body: { name: string | null; gameSystemKey: string | null; pointsLimit: number | null }) =>
-  send<GameSession>(base, 'POST', body)
+export const createSession = (body: {
+  name: string | null
+  gameSystemKey: string | null
+  pointsLimit: number | null
+  battleSize: string | null
+  startingCp: number
+}) => send<GameSession>(base, 'POST', body)
 
 export const inviteToSession = (id: string, username: string) =>
   send<GameSession>(`${base}/${id}/invite`, 'POST', { username })
@@ -129,7 +143,7 @@ export const advanceSession = (id: string) => send<GameSession>(`${base}/${id}/a
 export const setSessionRound = (
   id: string,
   round: number,
-  body: { primaryScore: number; cpGained: number; cpSpent: number; secondaries: SessionSecondary[] },
+  body: { primaryScore: number; cpGained: number; secondaries: SessionSecondary[] },
 ) => send<GameSession>(`${base}/${id}/rounds/${round}`, 'PUT', body)
 
 export const updateSessionUnit = (

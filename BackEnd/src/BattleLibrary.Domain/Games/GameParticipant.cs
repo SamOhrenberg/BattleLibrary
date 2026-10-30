@@ -28,6 +28,8 @@ public class GameParticipant : Entity
 
 // A unit on the board with a model counter. Destroyed is set when models hit 0.
 // MaxModels is the count the army list allows — you can bring fewer, never more.
+// Keywords/warlord/enhancement/wargear/points are snapshotted from the list entry
+// so the in-game tracker mirrors the list builder without re-fetching the list.
 public class GameUnit
 {
     public Guid Id { get; set; } = Guid.CreateVersion7();
@@ -37,6 +39,12 @@ public class GameUnit
     public int StartingModels { get; set; } = 1;
     public int CurrentModels { get; set; } = 1;
     public bool Destroyed { get; set; }
+
+    public List<string> Keywords { get; set; } = [];
+    public bool IsWarlord { get; set; }
+    public string? EnhancementName { get; set; }
+    public int Points { get; set; }
+    public List<string> Wargear { get; set; } = [];
 }
 
 // One player's scoring and CP for a single battle round.

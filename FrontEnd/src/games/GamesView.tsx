@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { ApiError } from '../lib/api'
 import { getCatalogueSystems, type CatalogueSystem } from '../lib/catalogue'
-import { getLists, type ArmyListSummary } from '../lib/lists'
+import { getLists, BATTLE_SIZES, type ArmyListSummary } from '../lib/lists'
+import { BATTLE_SIZE_RULES } from '../lists/validation'
 import { getFriends, searchUsers, type Friend } from '../lib/social'
 import {
   deleteGame,
@@ -124,7 +125,9 @@ function CreateSessionForm({ onCreated, onCancel }: { onCreated: (id: string) =>
   const [name, setName] = useState('')
   const [systems, setSystems] = useState<CatalogueSystem[]>([])
   const [systemKey, setSystemKey] = useState('')
+  const [battleSize, setBattleSize] = useState('Strike Force')
   const [limit, setLimit] = useState('2000')
+  const [startingCp, setStartingCp] = useState('0')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -138,6 +141,7 @@ function CreateSessionForm({ onCreated, onCancel }: { onCreated: (id: string) =>
   }, [])
 
   const pointless = systems.find((s) => s.key === systemKey)?.pointless ?? false
+  const custom = battleSize === 'Custom'
 
   async function submit(e: FormEvent) {
     e.preventDefault()
@@ -145,10 +149,13 @@ function CreateSessionForm({ onCreated, onCancel }: { onCreated: (id: string) =>
     setError(null)
     try {
       const parsed = limit.trim() === '' ? null : Number(limit)
+      // A named battle size sets its cap server-side; Custom keeps a raw limit.
       const session = await createSession({
         name: name.trim() || null,
         gameSystemKey: systemKey || null,
-        pointsLimit: pointless || Number.isNaN(parsed as number) ? null : parsed,
+        battleSize: pointless || custom ? null : battleSize,
+        pointsLimit: pointless ? null : custom ? (Number.isNaN(parsed as number) ? null : parsed) : null,
+        startingCp: pointless ? 0 : Number(startingCp) || 0,
       })
       onCreated(session.id)
     } catch (err) {
@@ -175,8 +182,27 @@ function CreateSessionForm({ onCreated, onCancel }: { onCreated: (id: string) =>
       )}
       {!pointless && (
         <label>
+          Battle size
+          <select value={battleSize} onChange={(e) => setBattleSize(e.target.value)}>
+            {BATTLE_SIZES.map((s) => (
+              <option key={s} value={s}>
+                {s} ({BATTLE_SIZE_RULES[s].cap} pts)
+              </option>
+            ))}
+            <option value="Custom">Custom</option>
+          </select>
+        </label>
+      )}
+      {!pointless && custom && (
+        <label>
           Points limit (optional)
           <input inputMode="numeric" value={limit} onChange={(e) => setLimit(e.target.value.replace(/[^0-9]/g, ''))} placeholder="e.g. 2000" />
+        </label>
+      )}
+      {!pointless && (
+        <label>
+          Starting CP
+          <input inputMode="numeric" value={startingCp} onChange={(e) => setStartingCp(e.target.value.replace(/[^0-9]/g, ''))} placeholder="0" />
         </label>
       )}
       {error && <p className="builder-error">{error}</p>}
@@ -193,6 +219,7 @@ function HistoryTab() {
   const [stats, setStats] = useState<GameStats | null>(null)
   const [view, setView] = useState<'index' | 'form'>('index')
   const [editing, setEditing] = useState<Game | null>(null)
+  const [sessionView, setSessionView] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const reload = useCallback(async () => {
@@ -236,6 +263,18 @@ function HistoryTab() {
     }
   }
 
+  if (sessionView) {
+    return (
+      <GameSessionView
+        sessionId={sessionView}
+        onExit={() => {
+          setSessionView(null)
+          void reload()
+        }}
+      />
+    )
+  }
+
   if (view === 'form') {
     return <GameForm initial={editing} onSaved={onSaved} onCancel={() => setView('index')} />
   }
@@ -255,7 +294,13 @@ function HistoryTab() {
 
       {stats && stats.total > 0 && <StatsBar stats={stats} />}
 
-      <GameHistory games={games} onEdit={openEdit} onDelete={remove} onNew={openNew} />
+      <GameHistory
+        games={games}
+        onEdit={openEdit}
+        onDelete={remove}
+        onNew={openNew}
+        onDetails={(g) => g.gameSessionId && setSessionView(g.gameSessionId)}
+      />
     </section>
   )
 }
@@ -286,11 +331,13 @@ function GameHistory({
   onEdit,
   onDelete,
   onNew,
+  onDetails,
 }: {
   games: Game[] | null
   onEdit: (g: Game) => void
   onDelete: (g: Game) => void
   onNew: () => void
+  onDetails: (g: Game) => void
 }) {
   if (games === null) return <p className="hint">Loading…</p>
   if (games.length === 0) {
@@ -307,13 +354,23 @@ function GameHistory({
   return (
     <ul className="game-list">
       {games.map((g) => (
-        <GameRow key={g.id} game={g} onEdit={() => onEdit(g)} onDelete={() => onDelete(g)} />
+        <GameRow key={g.id} game={g} onEdit={() => onEdit(g)} onDelete={() => onDelete(g)} onDetails={() => onDetails(g)} />
       ))}
     </ul>
   )
 }
 
-function GameRow({ game, onEdit, onDelete }: { game: Game; onEdit: () => void; onDelete: () => void }) {
+function GameRow({
+  game,
+  onEdit,
+  onDelete,
+  onDetails,
+}: {
+  game: Game
+  onEdit: () => void
+  onDelete: () => void
+  onDetails: () => void
+}) {
   const [confirming, setConfirming] = useState(false)
   const r = game.result.toLowerCase()
   const score =
@@ -349,9 +406,16 @@ function GameRow({ game, onEdit, onDelete }: { game: Game; onEdit: () => void; o
             </button>
           </>
         ) : (
-          <button className="btn-sm ghost" onClick={() => setConfirming(true)}>
-            Delete
-          </button>
+          <>
+            {game.gameSessionId && (
+              <button className="btn-sm ghost" onClick={onDetails}>
+                Details
+              </button>
+            )}
+            <button className="btn-sm ghost" onClick={() => setConfirming(true)}>
+              Delete
+            </button>
+          </>
         )}
       </div>
     </li>

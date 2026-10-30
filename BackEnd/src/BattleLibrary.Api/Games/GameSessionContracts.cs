@@ -2,7 +2,7 @@ namespace BattleLibrary.Api.Games;
 
 // ---- Requests ----
 
-public sealed record CreateSessionRequest(string? Name, string? GameSystemKey, int? PointsLimit);
+public sealed record CreateSessionRequest(string? Name, string? GameSystemKey, int? PointsLimit, string? BattleSize, int? StartingCp);
 
 public sealed record InviteRequest(string Username);
 
@@ -17,7 +17,6 @@ public sealed record SecondaryInput(string Name, int Score);
 public sealed record RoundScoreRequest(
     int PrimaryScore,
     int CpGained,
-    int CpSpent,
     IReadOnlyList<SecondaryInput>? Secondaries);
 
 public sealed record LogActionRequest(int? RoundNumber, string Kind, string Name, int? CpCost, string? Note);
@@ -43,7 +42,12 @@ public sealed record UnitDto(
     int MaxModels,
     int StartingModels,
     int CurrentModels,
-    bool Destroyed);
+    bool Destroyed,
+    IReadOnlyList<string> Keywords,
+    bool IsWarlord,
+    string? EnhancementName,
+    int Points,
+    IReadOnlyList<string> Wargear);
 
 public sealed record SecondaryDto(string Name, int Score);
 
@@ -73,13 +77,17 @@ public sealed record ParticipantDto(
     int UnitsDestroyed,
     IReadOnlyList<UnitDto> Units,
     IReadOnlyList<RoundDto> Rounds,
-    IReadOnlyList<ActionDto> Actions);
+    IReadOnlyList<ActionDto> Actions,
+    // Setup-only: why this player's chosen list can't be used, else null.
+    string? ListIssue);
 
 public sealed record SessionDto(
     Guid Id,
     string? Name,
     string GameSystemKey,
     int? PointsLimit,
+    string? BattleSize,
+    int StartingCp,
     string Status,
     int CurrentRound,
     Guid CreatedByUserId,
