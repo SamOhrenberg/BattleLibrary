@@ -8,33 +8,78 @@ public sealed record SetFeaturedRequest(bool Featured);
 
 public sealed record SetBattleSizeRequest(string? BattleSize);
 
+public sealed record SetDispositionRequest(string? ForceDisposition);
+
 public sealed record SetDetachmentsRequest(IReadOnlyList<string> DetachmentIds);
 
 public sealed record ListDetachmentDto(string Id, string Name, int Dp);
 
 public sealed record SetWarlordRequest(bool IsWarlord);
 
+// Attach a Leader (this entry) to a Bodyguard entry; null detaches.
+public sealed record AttachEntryRequest(Guid? AttachToEntryId);
+
 public sealed record SetEnhancementRequest(string? EnhancementId);
 
-public sealed record AddEntryRequest(string DatasheetId, IReadOnlyList<string>? SelectedOptionIds, int? Models = null);
+// ForceId picks which force the unit joins; null uses the primary force.
+public sealed record AddEntryRequest(string DatasheetId, IReadOnlyList<string>? SelectedOptionIds, int? Models = null, Guid? ForceId = null);
 
-public sealed record UpdateEntryRequest(IReadOnlyList<string>? SelectedOptionIds);
+// Add an allied force (a faction) to the list.
+public sealed record AddForceRequest(string FactionId);
+
+public sealed record ListForceDto(Guid Id, string FactionId, string FactionName, int SortOrder);
+
+// Each field is optional: a null field is left unchanged, so option edits and
+// name/notes edits can be sent independently. For CustomName/Notes an empty or
+// whitespace string clears the value.
+public sealed record UpdateEntryRequest(
+    IReadOnlyList<string>? SelectedOptionIds,
+    string? CustomName = null,
+    string? Notes = null);
 
 public sealed record SetModelCountRequest(int Models);
 
+// The owner's full custom ordering of a list's entries, by entry id.
+public sealed record SetEntryOrderRequest(IReadOnlyList<Guid> EntryIds);
+
 public sealed record SelectedOptionDto(string Id, string Name, int Points);
+
+// A saved loadout for one datasheet, reusable across the owner's lists.
+public sealed record CreatePresetRequest(
+    string GameSystemKey,
+    string DatasheetId,
+    string Name,
+    int? Models,
+    IReadOnlyList<string>? SelectedOptionIds);
+
+public sealed record LoadoutPresetDto(
+    Guid Id,
+    string GameSystemKey,
+    string DatasheetId,
+    string DatasheetName,
+    string Name,
+    int ModelCount,
+    int Points,
+    int Total,
+    IReadOnlyList<SelectedOptionDto> SelectedOptions,
+    DateTimeOffset UpdatedAt);
 
 public sealed record ListEntryDto(
     Guid Id,
+    Guid ForceId,
     string DatasheetId,
     string DatasheetName,
+    string? CustomName,
+    string? Notes,
     int Points,
     int OptionsPoints,
     int ModelCount,
+    int SortOrder,
     int LineTotal,
     IReadOnlyList<string> Keywords,
     bool IsWarlord,
     bool ForcedWarlord,
+    Guid? AttachedToEntryId,
     string? EnhancementId,
     string? EnhancementName,
     int EnhancementPoints,
@@ -55,6 +100,10 @@ public sealed record ArmyListSummaryDto(
     bool UsesCrucible,
     DateTimeOffset UpdatedAt);
 
+// Result of importing a BattleScribe roster: the created list plus the names of
+// any selections that couldn't be matched to a cached datasheet/option.
+public sealed record ImportRosterResultDto(ArmyListDto List, IReadOnlyList<string> Unmatched);
+
 public sealed record ArmyListDto(
     Guid Id,
     string Name,
@@ -66,8 +115,10 @@ public sealed record ArmyListDto(
     bool IsOverLimit,
     bool Featured,
     string? BattleSize,
+    string? ForceDisposition,
     bool UsesLegends,
     bool UsesCrucible,
     IReadOnlyList<ListDetachmentDto> Detachments,
+    IReadOnlyList<ListForceDto> Forces,
     DateTimeOffset UpdatedAt,
     IReadOnlyList<ListEntryDto> Entries);

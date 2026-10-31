@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using BattleLibrary.Api.Admin;
 using BattleLibrary.Domain.Accounts;
 using BattleLibrary.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Identity;
@@ -13,6 +14,7 @@ public static class AuthEndpoints
         var group = routes.MapGroup("/api/auth");
 
         group.MapPost("/register", Register);
+        group.MapGet("/registration-status", RegistrationStatus);
         group.MapPost("/login", Login);
         group.MapPost("/refresh", Refresh);
         group.MapPost("/logout", Logout);
@@ -21,11 +23,18 @@ public static class AuthEndpoints
         return group;
     }
 
+    private static async Task<IResult> RegistrationStatus(BattleLibraryDbContext db, CancellationToken ct)
+    {
+        var open = await db.AppSettings.Select(s => s.RegistrationOpen).FirstOrDefaultAsync(ct);
+        return Results.Ok(new RegistrationStatusDto(open));
+    }
+
     private static async Task<IResult> Register(
         RegisterRequest request,
         BattleLibraryDbContext db,
         IPasswordHasher<User> hasher,
         TokenService tokens,
+        IConfiguration config,
         CancellationToken ct)
     {
         var username = request.Username?.Trim() ?? string.Empty;
@@ -44,6 +53,38 @@ public static class AuthEndpoints
             return Problem("password", "Password must be at least 8 characters.");
         }
 
+        // Access gate. The seed admin and the very first account can always
+        // register and become admin; otherwise registration must be open, or a
+        // valid invite (matching the email, if the invite is email-bound) given.
+        var isSeed = AdminEndpoints.SeedEmails(config).Contains(email);
+        var isFirstUser = !await db.Users.AnyAsync(ct);
+        var now = DateTimeOffset.UtcNow;
+
+        Invite? invite = null;
+        var allowed = isSeed || isFirstUser;
+        if (!allowed)
+        {
+            allowed = await db.AppSettings.Select(s => s.RegistrationOpen).FirstOrDefaultAsync(ct);
+        }
+        if (!allowed && !string.IsNullOrWhiteSpace(request.InviteToken))
+        {
+            invite = await db.Invites.FirstOrDefaultAsync(i => i.Token == request.InviteToken, ct);
+            if (invite is not null
+                && invite.IsUsable(now)
+                && (invite.Email is null || string.Equals(invite.Email, email, StringComparison.OrdinalIgnoreCase)))
+            {
+                allowed = true;
+            }
+            else
+            {
+                return Problem("invite", "This invite link is invalid, expired, or already used.");
+            }
+        }
+        if (!allowed)
+        {
+            return Problem("registration", "Sign-ups are invite-only right now. Ask for an invite to join.");
+        }
+
         var taken = await db.Users.AnyAsync(u => u.Username == username || u.Email == email, ct);
         if (taken)
         {
@@ -54,10 +95,15 @@ public static class AuthEndpoints
         {
             Username = username,
             Email = email,
+            IsAdmin = isSeed || isFirstUser,
             Profile = new Profile { Visibility = ProfileVisibility.Private },
         };
         user.PasswordHash = hasher.HashPassword(user, request.Password);
         db.Users.Add(user);
+        if (invite is not null)
+        {
+            invite.UseCount++;
+        }
 
         var response = IssueTokens(db, tokens, user);
         await db.SaveChangesAsync(ct);
@@ -179,7 +225,7 @@ public static class AuthEndpoints
     }
 
     private static UserDto ToDto(User user) =>
-        new(user.Id, user.Username, user.Email, (user.Profile?.Visibility ?? ProfileVisibility.Private).ToString());
+        new(user.Id, user.Username, user.Email, (user.Profile?.Visibility ?? ProfileVisibility.Private).ToString(), user.IsAdmin);
 
     private static IResult Problem(string field, string message) =>
         Results.ValidationProblem(new Dictionary<string, string[]> { [field] = [message] });

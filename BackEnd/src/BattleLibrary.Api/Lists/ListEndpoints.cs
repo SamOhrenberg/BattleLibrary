@@ -3,11 +3,12 @@ using System.Text.Json;
 using BattleLibrary.Domain.Catalogue;
 using BattleLibrary.Domain.Lists;
 using BattleLibrary.Infrastructure.Persistence;
+using BattleLibrary.Infrastructure.Rosters;
 using Microsoft.EntityFrameworkCore;
 
 namespace BattleLibrary.Api.Lists;
 
-public static class ListEndpoints
+public static partial class ListEndpoints
 {
     // Cached datasheet jsonb is serialized with web defaults (camelCase).
     private static readonly JsonSerializerOptions SlimJson = new(JsonSerializerDefaults.Web);
@@ -18,17 +19,24 @@ public static class ListEndpoints
 
         group.MapGet("", GetLists);
         group.MapPost("", CreateList);
+        group.MapPost("/import", ImportRoster).DisableAntiforgery();
+        group.MapGet("/{id:guid}/export", ExportRoster);
         group.MapGet("/{id:guid}", GetList);
         group.MapPut("/{id:guid}", UpdateList);
         group.MapPost("/{id:guid}/duplicate", DuplicateList);
         group.MapDelete("/{id:guid}", DeleteList);
         group.MapPost("/{id:guid}/featured", SetFeatured);
         group.MapPost("/{id:guid}/battle-size", SetBattleSize);
+        group.MapPost("/{id:guid}/disposition", SetDisposition);
         group.MapPost("/{id:guid}/detachments", SetDetachments);
+        group.MapPost("/{id:guid}/forces", AddForce);
+        group.MapDelete("/{id:guid}/forces/{forceId:guid}", RemoveForce);
         group.MapPost("/{id:guid}/entries", AddEntry);
+        group.MapPost("/{id:guid}/entries/order", ReorderEntries);
         group.MapPut("/{id:guid}/entries/{entryId:guid}", UpdateEntry);
         group.MapPost("/{id:guid}/entries/{entryId:guid}/size", SetModelCount);
         group.MapPost("/{id:guid}/entries/{entryId:guid}/warlord", SetWarlord);
+        group.MapPost("/{id:guid}/entries/{entryId:guid}/attach", AttachEntry);
         group.MapPost("/{id:guid}/entries/{entryId:guid}/enhancement", SetEnhancement);
         group.MapDelete("/{id:guid}/entries/{entryId:guid}", DeleteEntry);
 
@@ -117,6 +125,8 @@ public static class ListEndpoints
             PointsLimit = pointsLimit,
             BattleSize = battleSize,
         };
+        // Every list starts with one primary force, mirroring its faction.
+        list.Forces.Add(new ListForce { FactionId = request.FactionId, FactionName = factionName, SortOrder = 0 });
         db.ArmyLists.Add(list);
         await db.SaveChangesAsync(ct);
         return Results.Created($"/api/lists/{list.Id}", ToDto(list));
@@ -176,6 +186,57 @@ public static class ListEndpoints
 
         // Keep room for the " (copy)" suffix within the 120-char name limit.
         var baseName = source.Name.Length > 113 ? source.Name[..113] : source.Name;
+
+        // Copy forces, keeping a source-id -> new-force map so entries can be
+        // reassigned to the copies.
+        var forceBySource = new Dictionary<Guid, ListForce>();
+        foreach (var f in source.Forces)
+        {
+            forceBySource[f.Id] = new ListForce
+            {
+                FactionId = f.FactionId,
+                FactionName = f.FactionName,
+                SortOrder = f.SortOrder,
+            };
+        }
+
+        // Copy entries, keeping a source-id -> new-entry map so Leader attachments
+        // can be rewired to the copies' new ids.
+        var entryBySource = new Dictionary<Guid, ListEntry>();
+        foreach (var e in source.Entries)
+        {
+            entryBySource[e.Id] = new ListEntry
+            {
+                DatasheetId = e.DatasheetId,
+                DatasheetName = e.DatasheetName,
+                CustomName = e.CustomName,
+                Notes = e.Notes,
+                Points = e.Points,
+                ModelCount = e.ModelCount,
+                Quantity = e.Quantity,
+                SortOrder = e.SortOrder,
+                Keywords = e.Keywords.ToList(),
+                IsWarlord = e.IsWarlord,
+                EnhancementId = e.EnhancementId,
+                EnhancementName = e.EnhancementName,
+                EnhancementPoints = e.EnhancementPoints,
+                SelectedOptions = e.SelectedOptions
+                    .Select(o => new SelectedOption { Id = o.Id, Name = o.Name, Points = o.Points })
+                    .ToList(),
+            };
+            if (forceBySource.TryGetValue(e.ListForceId, out var copyForce))
+            {
+                entryBySource[e.Id].ListForceId = copyForce.Id;
+            }
+        }
+        foreach (var e in source.Entries)
+        {
+            if (e.AttachedToEntryId is { } target && entryBySource.TryGetValue(target, out var copyTarget))
+            {
+                entryBySource[e.Id].AttachedToEntryId = copyTarget.Id;
+            }
+        }
+
         var copy = new ArmyList
         {
             UserId = userId,
@@ -185,26 +246,13 @@ public static class ListEndpoints
             FactionName = source.FactionName,
             PointsLimit = source.PointsLimit,
             BattleSize = source.BattleSize,
+            ForceDisposition = source.ForceDisposition,
             Featured = false,
             Detachments = source.Detachments
                 .Select(d => new ListDetachment { DetachmentId = d.DetachmentId, Name = d.Name, Dp = d.Dp })
                 .ToList(),
-            Entries = source.Entries.Select(e => new ListEntry
-            {
-                DatasheetId = e.DatasheetId,
-                DatasheetName = e.DatasheetName,
-                Points = e.Points,
-                ModelCount = e.ModelCount,
-                Quantity = e.Quantity,
-                Keywords = e.Keywords.ToList(),
-                IsWarlord = e.IsWarlord,
-                EnhancementId = e.EnhancementId,
-                EnhancementName = e.EnhancementName,
-                EnhancementPoints = e.EnhancementPoints,
-                SelectedOptions = e.SelectedOptions
-                    .Select(o => new SelectedOption { Id = o.Id, Name = o.Name, Points = o.Points })
-                    .ToList(),
-            }).ToList(),
+            Forces = source.Forces.Select(f => forceBySource[f.Id]).ToList(),
+            Entries = source.Entries.Select(e => entryBySource[e.Id]).ToList(),
         };
         db.ArmyLists.Add(copy);
         await db.SaveChangesAsync(ct);
@@ -262,6 +310,123 @@ public static class ListEndpoints
         {
             return Problem("battleSize", "Unknown battle size.");
         }
+        list.UpdatedAt = DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync(ct);
+        return Results.Ok(ToDto(list));
+    }
+
+    // Returns the list's primary force, creating one from the list's faction if
+    // (defensively) none exists yet.
+    private static ListForce PrimaryForce(ArmyList list)
+    {
+        var existing = list.Forces.OrderBy(f => f.SortOrder).FirstOrDefault();
+        if (existing is not null)
+        {
+            return existing;
+        }
+        var force = new ListForce { ArmyListId = list.Id, FactionId = list.FactionId, FactionName = list.FactionName, SortOrder = 0 };
+        list.Forces.Add(force);
+        return force;
+    }
+
+    private static async Task<IResult> AddForce(
+        Guid id, AddForceRequest request, ClaimsPrincipal principal, BattleLibraryDbContext db, CancellationToken ct)
+    {
+        if (CurrentUserId(principal) is not { } userId)
+        {
+            return Results.Unauthorized();
+        }
+        var list = await LoadOwned(db, id, userId, ct);
+        if (list is null)
+        {
+            return Results.NotFound();
+        }
+        if (string.IsNullOrWhiteSpace(request.FactionId))
+        {
+            return Problem("faction", "A faction is required.");
+        }
+
+        var factionName = await db.CachedFactions
+            .Where(f => f.BsDataId == request.FactionId && f.GameSystemKey == list.GameSystemKey)
+            .Where(f => db.CachedGameSystems.Any(s => s.Key == list.GameSystemKey && s.Enabled))
+            .Select(f => f.Name)
+            .FirstOrDefaultAsync(ct);
+        if (factionName is null)
+        {
+            return Results.NotFound(new { error = "Unknown faction for this list's game system." });
+        }
+
+        PrimaryForce(list); // ensure the list has its primary force before appending
+        var nextOrder = list.Forces.Count == 0 ? 0 : list.Forces.Max(f => f.SortOrder) + 1;
+        list.Forces.Add(new ListForce
+        {
+            ArmyListId = list.Id,
+            FactionId = request.FactionId,
+            FactionName = factionName,
+            SortOrder = nextOrder,
+        });
+        list.UpdatedAt = DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync(ct);
+        return Results.Ok(ToDto(list));
+    }
+
+    private static async Task<IResult> RemoveForce(
+        Guid id, Guid forceId, ClaimsPrincipal principal, BattleLibraryDbContext db, CancellationToken ct)
+    {
+        if (CurrentUserId(principal) is not { } userId)
+        {
+            return Results.Unauthorized();
+        }
+        var list = await LoadOwned(db, id, userId, ct);
+        if (list is null)
+        {
+            return Results.NotFound();
+        }
+        var force = list.Forces.FirstOrDefault(f => f.Id == forceId);
+        if (force is null)
+        {
+            return Results.NotFound();
+        }
+        if (list.Forces.Count <= 1)
+        {
+            return Problem("force", "A list must keep at least one force.");
+        }
+
+        // Remove the force and every entry assigned to it.
+        var removed = list.Entries.Where(e => e.ListForceId == forceId).ToList();
+        foreach (var e in removed)
+        {
+            // Detach any Leaders that were attached to a removed unit.
+            foreach (var leader in list.Entries.Where(l => l.AttachedToEntryId == e.Id))
+            {
+                leader.AttachedToEntryId = null;
+            }
+            list.Entries.Remove(e);
+        }
+        list.Forces.Remove(force);
+        list.UpdatedAt = DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync(ct);
+        return Results.Ok(ToDto(list));
+    }
+
+    private static async Task<IResult> SetDisposition(
+        Guid id, SetDispositionRequest request, ClaimsPrincipal principal, BattleLibraryDbContext db, CancellationToken ct)
+    {
+        if (CurrentUserId(principal) is not { } userId)
+        {
+            return Results.Unauthorized();
+        }
+        var list = await LoadOwned(db, id, userId, ct);
+        if (list is null)
+        {
+            return Results.NotFound();
+        }
+        var value = request.ForceDisposition?.Trim();
+        if (value is { Length: > 100 })
+        {
+            return Problem("forceDisposition", "Force disposition must be 100 characters or fewer.");
+        }
+        list.ForceDisposition = string.IsNullOrEmpty(value) ? null : value;
         list.UpdatedAt = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(ct);
         return Results.Ok(ToDto(list));
@@ -345,6 +510,50 @@ public static class ListEndpoints
         {
             entry.IsWarlord = false;
         }
+        list.UpdatedAt = DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync(ct);
+        return Results.Ok(ToDto(list));
+    }
+
+    // Attaches a Leader (a Character) to a Bodyguard (a non-Character unit) so the
+    // two are grouped as one attached unit. A null target detaches.
+    private static async Task<IResult> AttachEntry(
+        Guid id, Guid entryId, AttachEntryRequest request, ClaimsPrincipal principal, BattleLibraryDbContext db, CancellationToken ct)
+    {
+        if (CurrentUserId(principal) is not { } userId)
+        {
+            return Results.Unauthorized();
+        }
+        var list = await LoadOwned(db, id, userId, ct);
+        var entry = list?.Entries.FirstOrDefault(e => e.Id == entryId);
+        if (list is null || entry is null)
+        {
+            return Results.NotFound();
+        }
+
+        if (request.AttachToEntryId is null)
+        {
+            entry.AttachedToEntryId = null;
+            list.UpdatedAt = DateTimeOffset.UtcNow;
+            await db.SaveChangesAsync(ct);
+            return Results.Ok(ToDto(list));
+        }
+
+        if (!HasKeyword(entry, "Character"))
+        {
+            return Problem("attach", "Only a Character (Leader) can be attached to a unit.");
+        }
+        var target = list.Entries.FirstOrDefault(e => e.Id == request.AttachToEntryId);
+        if (target is null || target.Id == entry.Id)
+        {
+            return Problem("attach", "Choose a unit in this list to attach to.");
+        }
+        if (HasKeyword(target, "Character"))
+        {
+            return Problem("attach", "A Leader attaches to a non-Character unit, not another Character.");
+        }
+
+        entry.AttachedToEntryId = target.Id;
         list.UpdatedAt = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(ct);
         return Results.Ok(ToDto(list));
@@ -444,17 +653,28 @@ public static class ListEndpoints
             return Results.NotFound(new { error = "Unknown datasheet for this list's game system." });
         }
 
+        // The force the unit joins: the requested one, else the primary force.
+        var force = request.ForceId is { } fid
+            ? list.Forces.FirstOrDefault(f => f.Id == fid)
+            : PrimaryForce(list);
+        if (force is null)
+        {
+            return Problem("force", "That force isn't part of this list.");
+        }
+
         // One entry per unit; multiple units of a datasheet are separate entries.
         var size = PickSize(sheet.Sizes, request.Models);
         var entry = new ListEntry
         {
             ArmyListId = list.Id,
+            ListForceId = force.Id,
             DatasheetId = request.DatasheetId,
             DatasheetName = sheet.Name,
             Points = size?.Points ?? sheet.Points,
             ModelCount = size?.Models ?? 1,
             Keywords = sheet.Keywords.ToList(),
             ForcedWarlord = sheet.ForcedWarlord,
+            SortOrder = list.Entries.Count == 0 ? 0 : list.Entries.Max(e => e.SortOrder) + 1,
             SelectedOptions = ResolveOptions(sheet.Options, request.SelectedOptionIds),
         };
         list.Entries.Add(entry);
@@ -495,6 +715,54 @@ public static class ListEndpoints
         {
             var sheet = await LoadSheet(db, entry.DatasheetId, list.GameSystemKey, ct);
             entry.SelectedOptions = ResolveOptions(sheet?.Options ?? [], request.SelectedOptionIds);
+        }
+        // A null field is left as is; a sent value (including "") updates, with
+        // blank clearing the value. Lengths match the column limits.
+        if (request.CustomName is not null)
+        {
+            var name = request.CustomName.Trim();
+            if (name.Length > 200)
+            {
+                return Problem("customName", "Custom name must be 200 characters or fewer.");
+            }
+            entry.CustomName = name.Length == 0 ? null : name;
+        }
+        if (request.Notes is not null)
+        {
+            var notes = request.Notes.Trim();
+            if (notes.Length > 2000)
+            {
+                return Problem("notes", "Notes must be 2000 characters or fewer.");
+            }
+            entry.Notes = notes.Length == 0 ? null : notes;
+        }
+        list.UpdatedAt = DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync(ct);
+        return Results.Ok(ToDto(list));
+    }
+
+    // Applies the owner's custom entry ordering: SortOrder follows the given id
+    // sequence; any entries not listed keep a stable order after those listed.
+    private static async Task<IResult> ReorderEntries(
+        Guid id, SetEntryOrderRequest request, ClaimsPrincipal principal, BattleLibraryDbContext db, CancellationToken ct)
+    {
+        if (CurrentUserId(principal) is not { } userId)
+        {
+            return Results.Unauthorized();
+        }
+        var list = await LoadOwned(db, id, userId, ct);
+        if (list is null)
+        {
+            return Results.NotFound();
+        }
+
+        var position = (request.EntryIds ?? [])
+            .Select((entryId, index) => (entryId, index))
+            .ToDictionary(x => x.entryId, x => x.index);
+        var next = request.EntryIds?.Count ?? 0;
+        foreach (var e in list.Entries.OrderBy(e => e.SortOrder).ThenBy(e => e.DatasheetName))
+        {
+            e.SortOrder = position.TryGetValue(e.Id, out var p) ? p : next++;
         }
         list.UpdatedAt = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(ct);
@@ -542,14 +810,399 @@ public static class ListEndpoints
             return Results.NotFound();
         }
 
+        // Detach any Leaders attached to the unit being removed.
+        foreach (var leader in list.Entries.Where(e => e.AttachedToEntryId == entry.Id))
+        {
+            leader.AttachedToEntryId = null;
+        }
         list.Entries.Remove(entry);
         list.UpdatedAt = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(ct);
         return Results.Ok(ToDto(list));
     }
 
+    // Exports the list as a BattleScribe .rosz (zipped roster), referencing the
+    // stable BSData ids so it opens in BattleScribe / NewRecruit.
+    private static async Task<IResult> ExportRoster(Guid id, ClaimsPrincipal principal, BattleLibraryDbContext db, CancellationToken ct)
+    {
+        if (CurrentUserId(principal) is not { } userId)
+        {
+            return Results.Unauthorized();
+        }
+        var list = await LoadOwned(db, id, userId, ct);
+        if (list is null)
+        {
+            return Results.NotFound();
+        }
+
+        var header = await db.CachedGameSystems
+            .Where(s => s.Key == list.GameSystemKey && s.Enabled)
+            .Select(s => new { s.BsDataId, s.BsDataName, s.Revision, s.PointsCostTypeId, s.ForceEntryId, s.ForceEntryName })
+            .FirstOrDefaultAsync(ct);
+        if (header is null)
+        {
+            return Results.NotFound(new { error = "This list's game system is no longer available." });
+        }
+        var revisionByFaction = await db.CachedFactions
+            .Where(f => f.GameSystemKey == list.GameSystemKey)
+            .Select(f => new { f.BsDataId, f.Revision })
+            .ToDictionaryAsync(f => f.BsDataId, f => f.Revision, ct);
+
+        static RosterSelection ToSelection(ListEntry e)
+        {
+            var children = e.SelectedOptions
+                .Select(o => new RosterSelection(o.Id, o.Name, 1, "upgrade", o.Points, []))
+                .ToList();
+            if (e.EnhancementId is not null)
+            {
+                children.Add(new RosterSelection(e.EnhancementId, e.EnhancementName ?? "", 1, "upgrade", e.EnhancementPoints, []));
+            }
+            return new RosterSelection(e.DatasheetId, e.DatasheetName, Math.Max(1, e.Quantity), "unit", e.Points, children, e.CustomName);
+        }
+
+        PrimaryForce(list); // ensure at least one force exists
+        var orderedForces = list.Forces.OrderBy(f => f.SortOrder).ToList();
+        var primaryForceId = orderedForces[0].Id;
+
+        // One roster <force> per ListForce; entries bucket by ListForceId, and the
+        // army's detachments ride on the primary force.
+        var rosterForces = new List<RosterForce>();
+        foreach (var f in orderedForces)
+        {
+            var selections = list.Entries
+                .Where(e => e.ListForceId == f.Id)
+                .Select(ToSelection)
+                .ToList();
+            if (f.Id == primaryForceId)
+            {
+                selections.AddRange(list.Detachments
+                    .Select(d => new RosterSelection(d.DetachmentId, d.Name, 1, "upgrade", 0, [])));
+            }
+            revisionByFaction.TryGetValue(f.FactionId, out var revision);
+            rosterForces.Add(new RosterForce(
+                f.FactionId, f.FactionName, revision, selections,
+                header.ForceEntryId, header.ForceEntryName));
+        }
+        // Any entry not matched to a force (defensive) rides on the primary force.
+        var orphanSelections = list.Entries
+            .Where(e => orderedForces.All(f => f.Id != e.ListForceId))
+            .Select(ToSelection)
+            .ToList();
+        if (orphanSelections.Count > 0)
+        {
+            rosterForces[0] = rosterForces[0] with { Selections = [.. rosterForces[0].Selections, .. orphanSelections] };
+        }
+
+        var gameSystemName = string.IsNullOrEmpty(header.BsDataName) ? list.FactionName : header.BsDataName;
+        var roster = new RosterDocument(
+            list.Name, header.BsDataId, gameSystemName, header.Revision, header.PointsCostTypeId, rosterForces);
+
+        var baseName = SafeFileName(list.Name);
+        var bytes = RosterXml.Zip(baseName, RosterXml.Write(roster));
+        return Results.File(bytes, "application/octet-stream", $"{baseName}.rosz");
+    }
+
+    // Imports a BattleScribe roster (.ros or .rosz) into a new list, matching each
+    // selection's source entry id against the cached catalogue. Selections with no
+    // match are reported, not dropped silently.
+    private static async Task<IResult> ImportRoster(
+        IFormFile? file, ClaimsPrincipal principal, BattleLibraryDbContext db, CancellationToken ct)
+    {
+        if (CurrentUserId(principal) is not { } userId)
+        {
+            return Results.Unauthorized();
+        }
+        if (file is null || file.Length == 0)
+        {
+            return Problem("file", "Upload a .ros or .rosz roster file.");
+        }
+        if (file.Length > 5 * 1024 * 1024)
+        {
+            return Problem("file", "Roster file is too large (max 5 MB).");
+        }
+
+        RosterDocument roster;
+        try
+        {
+            await using var stream = file.OpenReadStream();
+            roster = RosterXml.Read(stream);
+        }
+        catch (Exception ex) when (ex is FormatException or System.Xml.XmlException or InvalidDataException)
+        {
+            return Problem("file", "That file isn't a readable BattleScribe roster.");
+        }
+
+        var systemKey = await ResolveSystemKey(db, roster, ct);
+        if (systemKey is null)
+        {
+            return Problem("file", "This roster's game system isn't one Battle Library has loaded.");
+        }
+
+        // Match each roster force's catalogue to a known faction, in order. Forces
+        // whose catalogue isn't loaded are skipped; the first match is primary.
+        var forceFactions = new List<(RosterForce RForce, string FactionId, string FactionName)>();
+        foreach (var f in roster.Forces)
+        {
+            var match = await db.CachedFactions
+                .Where(cf => cf.GameSystemKey == systemKey && cf.BsDataId == f.CatalogueId)
+                .Select(cf => new { cf.BsDataId, cf.Name })
+                .FirstOrDefaultAsync(ct);
+            if (match is not null)
+            {
+                forceFactions.Add((f, match.BsDataId, match.Name));
+            }
+        }
+        if (forceFactions.Count == 0)
+        {
+            return Problem("file", "Couldn't match this roster's catalogue to a known faction.");
+        }
+
+        var primaryFactionId = forceFactions[0].FactionId;
+        var list = new ArmyList
+        {
+            UserId = userId,
+            Name = ClampName(roster.Name),
+            GameSystemKey = systemKey,
+            FactionId = primaryFactionId,
+            FactionName = forceFactions[0].FactionName,
+        };
+
+        // One ListForce per distinct faction, in first-seen order.
+        var forceByFaction = new Dictionary<string, ListForce>();
+        var forceOrder = 0;
+        foreach (var ff in forceFactions)
+        {
+            if (!forceByFaction.ContainsKey(ff.FactionId))
+            {
+                var lf = new ListForce
+                {
+                    ArmyListId = list.Id,
+                    FactionId = ff.FactionId,
+                    FactionName = ff.FactionName,
+                    SortOrder = forceOrder++,
+                };
+                forceByFaction[ff.FactionId] = lf;
+                list.Forces.Add(lf);
+            }
+        }
+
+        // Detachments + enhancements belong to the army's primary faction.
+        var detachments = await LoadDetachments(db, systemKey, primaryFactionId, ct);
+        var enhancementsById = detachments.SelectMany(d => d.Enhancements)
+            .GroupBy(e => e.Id).ToDictionary(g => g.Key, g => g.First());
+        var detachmentsById = detachments.GroupBy(d => d.Id).ToDictionary(g => g.Key, g => g.First());
+        var detachmentIds = detachmentsById.Keys.ToHashSet();
+
+        // Datasheet ids per matched faction, to classify a selection without a DB
+        // round-trip per node.
+        var sheetIdsByFaction = new Dictionary<string, HashSet<string>>();
+        foreach (var fid in forceByFaction.Keys)
+        {
+            sheetIdsByFaction[fid] = (await db.CachedDatasheets
+                .Where(d => d.Faction.GameSystemKey == systemKey && d.Faction.BsDataId == fid)
+                .Select(d => d.BsDataId)
+                .ToListAsync(ct)).ToHashSet();
+        }
+
+        var unmatched = new List<string>();
+        var chosenDetachments = new List<ListDetachment>();
+        var unitHits = new List<(string SheetId, RosterSelection Selection, ListForce Force)>();
+
+        // Walk the selection tree for one force. BattleScribe/NewRecruit nest units
+        // among config wrappers and bury the detachment inside a "Detachment"
+        // wrapper, so this recurses; a datasheet/detachment match stops the descent.
+        void Walk(RosterSelection sel, HashSet<string> sheetIds, ListForce force)
+        {
+            if (MatchId(sel.EntryId, sheetIds) is { } sheetId)
+            {
+                unitHits.Add((sheetId, sel, force));
+                return;
+            }
+            if (MatchId(sel.EntryId, detachmentIds) is { } detId)
+            {
+                if (chosenDetachments.All(c => c.DetachmentId != detId))
+                {
+                    var det = detachmentsById[detId];
+                    chosenDetachments.Add(new ListDetachment { DetachmentId = det.Id, Name = det.Name, Dp = det.Dp });
+                }
+                return;
+            }
+            // An unknown unit (priced, or typed as a unit/model) - report it rather
+            // than dig into its wargear. Config wrappers (battle size, disposition)
+            // are unpriced upgrades: recurse into them for nested content instead.
+            if (sel.Points > 0 || sel.Type is "unit" or "model")
+            {
+                unmatched.Add(string.IsNullOrWhiteSpace(sel.Name) ? sel.EntryId : sel.Name);
+                return;
+            }
+            foreach (var child in sel.Selections)
+            {
+                Walk(child, sheetIds, force);
+            }
+        }
+        foreach (var ff in forceFactions)
+        {
+            var force = forceByFaction[ff.FactionId];
+            var sheetIds = sheetIdsByFaction[ff.FactionId];
+            foreach (var sel in ff.RForce.Selections)
+            {
+                Walk(sel, sheetIds, force);
+            }
+        }
+
+        var importOrder = 0;
+        foreach (var (sheetId, sel, force) in unitHits)
+        {
+            var sheet = await LoadSheet(db, sheetId, systemKey, ct);
+            if (sheet is null)
+            {
+                unmatched.Add(string.IsNullOrWhiteSpace(sel.Name) ? sel.EntryId : sel.Name);
+                continue;
+            }
+
+            var size = PickSizeByPoints(sheet.Sizes, sel.Points);
+            var entry = new ListEntry
+            {
+                ArmyListId = list.Id,
+                ListForceId = force.Id,
+                DatasheetId = sheetId,
+                DatasheetName = sheet.Name,
+                CustomName = NormalizeCustomName(sel.CustomName, sheet.Name),
+                Points = size?.Points ?? sheet.Points,
+                ModelCount = size?.Models ?? 1,
+                SortOrder = importOrder++,
+                Keywords = sheet.Keywords.ToList(),
+                ForcedWarlord = sheet.ForcedWarlord,
+            };
+            var optionIds = sheet.Options.Select(o => o.Id).ToHashSet();
+            var selected = new List<string>();
+            foreach (var child in sel.Selections)
+            {
+                if (entry.EnhancementId is null && MatchId(child.EntryId, enhancementsById.Keys.ToHashSet()) is { } enhId)
+                {
+                    var enh = enhancementsById[enhId];
+                    entry.EnhancementId = enh.Id;
+                    entry.EnhancementName = enh.Name;
+                    entry.EnhancementPoints = enh.Points;
+                }
+                else if (string.Equals(child.Name, "Warlord", StringComparison.OrdinalIgnoreCase) && HasKeyword(entry, "Character"))
+                {
+                    entry.IsWarlord = true;
+                }
+                else if (MatchId(child.EntryId, optionIds) is { } optId)
+                {
+                    selected.Add(optId);
+                }
+            }
+            entry.SelectedOptions = ResolveOptions(sheet.Options, selected);
+            list.Entries.Add(entry);
+        }
+        list.Detachments = chosenDetachments;
+
+        db.ArmyLists.Add(list);
+        await db.SaveChangesAsync(ct);
+        return Results.Created($"/api/lists/{list.Id}", new ImportRosterResultDto(ToDto(list), unmatched));
+    }
+
+    // Matches the roster to a loaded system by BattleScribe gameSystemId, then by
+    // game-system name, then by any force's catalogue id (so files with a blank or
+    // mis-spelled system header still resolve). Returns the key, or null.
+    private static async Task<string?> ResolveSystemKey(BattleLibraryDbContext db, RosterDocument roster, CancellationToken ct)
+    {
+        var enabled = db.CachedGameSystems.Where(s => s.Enabled);
+        if (!string.IsNullOrEmpty(roster.GameSystemId))
+        {
+            var byId = await enabled.Where(s => s.BsDataId == roster.GameSystemId).Select(s => s.Key).FirstOrDefaultAsync(ct);
+            if (byId is not null)
+            {
+                return byId;
+            }
+        }
+        if (!string.IsNullOrEmpty(roster.GameSystemName))
+        {
+            var byName = await enabled.Where(s => s.BsDataName == roster.GameSystemName).Select(s => s.Key).FirstOrDefaultAsync(ct);
+            if (byName is not null)
+            {
+                return byName;
+            }
+        }
+        var catalogueIds = roster.Forces.Select(f => f.CatalogueId).Where(id => !string.IsNullOrEmpty(id)).Distinct().ToList();
+        if (catalogueIds.Count > 0)
+        {
+            return await db.CachedFactions
+                .Where(f => catalogueIds.Contains(f.BsDataId) && db.CachedGameSystems.Any(s => s.Key == f.GameSystemKey && s.Enabled))
+                .Select(f => f.GameSystemKey)
+                .FirstOrDefaultAsync(ct);
+        }
+        return null;
+    }
+
+    // BattleScribe/NewRecruit write entry ids as "::"-joined link paths (e.g.
+    // "e2d-…::e651-…"), whose trailing segment is the shared entry id this cache
+    // keys on. Match the whole id first, then each segment from the leaf inward.
+    private static string? MatchId(string entryId, HashSet<string> ids)
+    {
+        if (string.IsNullOrEmpty(entryId))
+        {
+            return null;
+        }
+        if (ids.Contains(entryId))
+        {
+            return entryId;
+        }
+        var parts = entryId.Split("::", StringSplitOptions.RemoveEmptyEntries);
+        for (var i = parts.Length - 1; i >= 0; i--)
+        {
+            if (ids.Contains(parts[i]))
+            {
+                return parts[i];
+            }
+        }
+        return null;
+    }
+
+    // The size whose points match the imported selection, else the smallest.
+    private static UnitSize? PickSizeByPoints(IReadOnlyList<UnitSize> sizes, int points)
+    {
+        if (sizes.Count == 0)
+        {
+            return null;
+        }
+        return sizes.FirstOrDefault(s => s.Points == points) ?? sizes.OrderBy(s => s.Models).First();
+    }
+
+    // A roster selection's customName, kept only when it adds something: blank or
+    // equal to the datasheet name is dropped, and it's capped at the column limit.
+    private static string? NormalizeCustomName(string? customName, string datasheetName)
+    {
+        var trimmed = customName?.Trim();
+        if (string.IsNullOrEmpty(trimmed) || string.Equals(trimmed, datasheetName, StringComparison.Ordinal))
+        {
+            return null;
+        }
+        return trimmed.Length > 200 ? trimmed[..200] : trimmed;
+    }
+
+    private static string ClampName(string? name)
+    {
+        var trimmed = name?.Trim();
+        if (string.IsNullOrEmpty(trimmed))
+        {
+            return "Imported roster";
+        }
+        return trimmed.Length > 120 ? trimmed[..120] : trimmed;
+    }
+
+    // A filesystem-safe base name for the download; falls back when empty.
+    private static string SafeFileName(string name)
+    {
+        var cleaned = new string(name.Select(c => Path.GetInvalidFileNameChars().Contains(c) ? '_' : c).ToArray()).Trim();
+        return string.IsNullOrEmpty(cleaned) ? "roster" : cleaned;
+    }
+
     private static Task<ArmyList?> LoadOwned(BattleLibraryDbContext db, Guid id, Guid userId, CancellationToken ct) =>
-        db.ArmyLists.Include(l => l.Entries).FirstOrDefaultAsync(l => l.Id == id && l.UserId == userId, ct);
+        db.ArmyLists.Include(l => l.Entries).Include(l => l.Forces)
+            .FirstOrDefaultAsync(l => l.Id == id && l.UserId == userId, ct);
 
     private static Guid? CurrentUserId(ClaimsPrincipal principal) =>
         Guid.TryParse(principal.FindFirstValue("sub"), out var id) ? id : null;
@@ -557,14 +1210,16 @@ public static class ListEndpoints
     private static ArmyListDto ToDto(ArmyList list)
     {
         var entries = list.Entries
-            .OrderBy(e => e.DatasheetName)
+            .OrderBy(e => e.SortOrder)
+            .ThenBy(e => e.DatasheetName)
             .Select(e =>
             {
                 var optionsPoints = e.SelectedOptions.Sum(o => o.Points);
                 return new ListEntryDto(
-                    e.Id, e.DatasheetId, e.DatasheetName, e.Points, optionsPoints, e.ModelCount,
+                    e.Id, e.ListForceId, e.DatasheetId, e.DatasheetName, e.CustomName, e.Notes, e.Points, optionsPoints, e.ModelCount,
+                    e.SortOrder,
                     e.Points + optionsPoints + e.EnhancementPoints,
-                    e.Keywords, e.IsWarlord, e.ForcedWarlord, e.EnhancementId, e.EnhancementName, e.EnhancementPoints,
+                    e.Keywords, e.IsWarlord, e.ForcedWarlord, e.AttachedToEntryId, e.EnhancementId, e.EnhancementName, e.EnhancementPoints,
                     e.SelectedOptions.Select(o => new SelectedOptionDto(o.Id, o.Name, o.Points)).ToList());
             })
             .ToList();
@@ -573,11 +1228,15 @@ public static class ListEndpoints
         var detachments = list.Detachments
             .Select(d => new ListDetachmentDto(d.DetachmentId, d.Name, d.Dp))
             .ToList();
+        var forces = list.Forces
+            .OrderBy(f => f.SortOrder)
+            .Select(f => new ListForceDto(f.Id, f.FactionId, f.FactionName, f.SortOrder))
+            .ToList();
         return new ArmyListDto(
             list.Id, list.Name, list.GameSystemKey, list.FactionId, list.FactionName,
             list.PointsLimit, total, overLimit, list.Featured,
-            list.BattleSize, list.Entries.Any(EntryIsLegends), list.Entries.Any(EntryIsCrucible),
-            detachments, list.UpdatedAt, entries);
+            list.BattleSize, list.ForceDisposition, list.Entries.Any(EntryIsLegends), list.Entries.Any(EntryIsCrucible),
+            detachments, forces, list.UpdatedAt, entries);
     }
 
     private static int LineTotal(ListEntry e) =>

@@ -1,4 +1,5 @@
 using System.Text;
+using BattleLibrary.Api.Admin;
 using BattleLibrary.Api.Auth;
 using BattleLibrary.Api.Catalogue;
 using BattleLibrary.Api.Games;
@@ -134,12 +135,28 @@ app.MapGet("/api/game-systems", () => Results.Ok(new[]
 }));
 
 app.MapAuthEndpoints();
+app.MapAdminEndpoints();
 app.MapCatalogueEndpoints();
 app.MapListEndpoints();
+app.MapPresetEndpoints();
 app.MapSocialEndpoints();
 app.MapGameEndpoints();
 app.MapGameSessionEndpoints();
 app.MapHub<GameHub>("/hubs/game");
+
+// Ensure the settings row exists and grant admin to configured seed emails.
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<BattleLibraryDbContext>();
+    try
+    {
+        await AdminEndpoints.SeedAsync(db, app.Configuration);
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogWarning(ex, "Access seeding skipped (database not ready?).");
+    }
+}
 
 app.Run();
 

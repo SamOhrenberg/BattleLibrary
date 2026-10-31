@@ -1,4 +1,5 @@
 using System.Text.Json;
+using BattleLibrary.Domain.Catalogue;
 using BattleLibrary.Infrastructure.BsData;
 using BattleLibrary.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -8,6 +9,9 @@ namespace BattleLibrary.Api.Catalogue;
 public static class CatalogueEndpoints
 {
     private static readonly JsonSerializerOptions WebJson = new(JsonSerializerDefaults.Web);
+
+    // Max results returned from a rule search, so a short query can't flood.
+    private const int SearchLimit = 60;
 
     private sealed record AbilityDto(string Name, string Text);
     private sealed record EnhancementDto(string Id, string Name, int Points, string Text);
@@ -53,6 +57,7 @@ public static class CatalogueEndpoints
         read.MapGet("/{systemKey}/factions", GetFactions);
         read.MapGet("/factions/{factionId}/datasheets", GetDatasheets);
         read.MapGet("/datasheets/{datasheetId}", GetDatasheet);
+        read.MapGet("/{systemKey}/search", Search);
 
         var admin = routes.MapGroup("/api/admin/catalogue").AddEndpointFilter<AdminKeyFilter>();
         admin.MapPost("/refresh", Refresh);
@@ -142,6 +147,109 @@ public static class CatalogueEndpoints
             .FirstOrDefaultAsync(ct);
 
         return json is null ? Results.NotFound() : Results.Content(json, "application/json");
+    }
+
+    // Rows pulled by the search prefilter (the text match runs in Postgres).
+    private sealed record DatasheetSearchRow(string DatasheetId, string DatasheetName, string FactionId, string FactionName, string ModelJson);
+    private sealed record FactionSearchRow(string FactionId, string FactionName, string DetachmentsJson);
+
+    private sealed record SearchResultDto(
+        string Kind, string Title, string? Subtitle, string? Text,
+        string? DatasheetId, string? FactionId, string? FactionName);
+
+    // Rule Search over already-cached content: datasheet names, unit ability
+    // names + text, weapon names, and detachment rules + enhancements. Postgres
+    // does the text match on the jsonb (cast to text); matches are then classified
+    // in memory. No new ingest, no rules text beyond what's already cached.
+    private static async Task<IResult> Search(string systemKey, string? q, BattleLibraryDbContext db, CancellationToken ct)
+    {
+        var term = q?.Trim() ?? "";
+        if (term.Length < 2)
+        {
+            return Results.Ok(Array.Empty<SearchResultDto>());
+        }
+        var enabled = await db.CachedGameSystems.AnyAsync(s => s.Key == systemKey && s.Enabled, ct);
+        if (!enabled)
+        {
+            return Results.NotFound();
+        }
+
+        // Escape ILIKE wildcards so the query is treated literally.
+        var pattern = "%" + term.Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_") + "%";
+        var contains = (string? s) => !string.IsNullOrEmpty(s) && s.Contains(term, StringComparison.OrdinalIgnoreCase);
+
+        var results = new List<SearchResultDto>();
+
+        var sheetRows = await db.Database.SqlQuery<DatasheetSearchRow>($"""
+            SELECT d."BsDataId" AS "DatasheetId", d."Name" AS "DatasheetName",
+                   f."BsDataId" AS "FactionId", f."Name" AS "FactionName", d."ModelJson" AS "ModelJson"
+            FROM "CachedDatasheets" d
+            JOIN "CachedFactions" f ON f."Id" = d."FactionId"
+            JOIN "CachedGameSystems" s ON s."Key" = f."GameSystemKey"
+            WHERE s."Key" = {systemKey} AND s."Enabled" AND d."ModelJson"::text ILIKE {pattern}
+            """).ToListAsync(ct);
+
+        foreach (var row in sheetRows)
+        {
+            Datasheet? sheet;
+            try
+            {
+                sheet = JsonSerializer.Deserialize<Datasheet>(row.ModelJson, WebJson);
+            }
+            catch (JsonException)
+            {
+                continue;
+            }
+            if (sheet is null)
+            {
+                continue;
+            }
+
+            if (contains(sheet.Name))
+            {
+                results.Add(new SearchResultDto("unit", sheet.Name, row.FactionName, null, row.DatasheetId, row.FactionId, row.FactionName));
+            }
+            foreach (var a in sheet.Abilities.Where(a => contains(a.Name) || contains(a.Text)))
+            {
+                results.Add(new SearchResultDto("ability", a.Name, sheet.Name, a.Text, row.DatasheetId, row.FactionId, row.FactionName));
+            }
+            foreach (var w in sheet.Weapons.Where(w => contains(w.Name)).DistinctBy(w => w.Name))
+            {
+                results.Add(new SearchResultDto("weapon", w.Name, sheet.Name, null, row.DatasheetId, row.FactionId, row.FactionName));
+            }
+        }
+
+        var factionRows = await db.Database.SqlQuery<FactionSearchRow>($"""
+            SELECT f."BsDataId" AS "FactionId", f."Name" AS "FactionName", f."DetachmentsJson" AS "DetachmentsJson"
+            FROM "CachedFactions" f
+            JOIN "CachedGameSystems" s ON s."Key" = f."GameSystemKey"
+            WHERE s."Key" = {systemKey} AND s."Enabled" AND f."DetachmentsJson"::text ILIKE {pattern}
+            """).ToListAsync(ct);
+
+        foreach (var row in factionRows)
+        {
+            foreach (var det in DeserializeDetachments(row.DetachmentsJson))
+            {
+                foreach (var rule in det.Rules.Where(r => contains(r.Name) || contains(r.Text)))
+                {
+                    results.Add(new SearchResultDto("detachment-rule", rule.Name, det.Name, rule.Text, null, row.FactionId, row.FactionName));
+                }
+                foreach (var enh in det.Enhancements.Where(e => contains(e.Name) || contains(e.Text)))
+                {
+                    results.Add(new SearchResultDto("enhancement", enh.Name, det.Name, enh.Text, null, row.FactionId, row.FactionName));
+                }
+            }
+        }
+
+        // Exact-ish name matches first, then by kind, capped.
+        var ordered = results
+            .OrderByDescending(r => string.Equals(r.Title, term, StringComparison.OrdinalIgnoreCase))
+            .ThenByDescending(r => r.Title.StartsWith(term, StringComparison.OrdinalIgnoreCase))
+            .ThenBy(r => r.Kind)
+            .ThenBy(r => r.Title)
+            .Take(SearchLimit)
+            .ToList();
+        return Results.Ok(ordered);
     }
 
     // Refresh one system (?system=key) or all configured systems.
