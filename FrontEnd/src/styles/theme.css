@@ -1,0 +1,191 @@
+/* Theme system. Each palette is a complete, committed look selected explicitly
+   (not light/dark auto-switching): the active one is set via data-palette on
+   <html>. Holo-Vox is the default (bare :root). Legacy token names used by the
+   older component CSS (--border/--err/--planned) are aliased onto the new set so
+   the whole app recolours without a per-file rewrite. */
+
+/* ---- Holo-Vox (default) ---- */
+:root {
+  --bg: #070b14;
+  --surface: rgba(23, 33, 54, 0.62);
+  --surface-2: rgba(32, 46, 74, 0.55);
+  /* Opaque surface for overlays (modals, menus) that must not show content behind. */
+  --surface-solid: #141f36;
+  --line: rgba(120, 180, 255, 0.22);
+  --fg: #eaf2ff;
+  --muted: #9fb2d6;
+  --faint: #6a7ea6;
+  --accent: #56e6ff;
+  --accent-ink: #021420;
+  --accent-2: #ff5db1;
+  --ok: #58e6b0;
+  --warn: #ffd15c;
+  --crit: #ff6f8d;
+  --radius: 14px;
+
+  --f-display: "Space Grotesk", system-ui, sans-serif;
+  --f-body: "Inter", system-ui, sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  /* Legacy aliases (do not remove while older CSS references them). */
+  --border: var(--line);
+  --err: var(--crit);
+  --planned: var(--warn);
+
+  color-scheme: dark;
+}
+
+/* ---- Cogitator: industrial slate, cyan signal ---- */
+:root[data-palette="cogitator"] {
+  --bg: #0c1016;
+  --surface: #141b24;
+  --surface-2: #1b2530;
+  --surface-solid: #141b24;
+  --line: #283543;
+  --fg: #e6edf3;
+  --muted: #93a3b4;
+  --faint: #5f7085;
+  --accent: #2fd6d6;
+  --accent-ink: #06171a;
+  --accent-2: #2fd6d6;
+  --ok: #49c98a;
+  --warn: #e4b53e;
+  --crit: #e8695c;
+  --radius: 10px;
+  --f-display: "Rajdhani", system-ui, sans-serif;
+  --f-body: "Inter", system-ui, sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, monospace;
+  color-scheme: dark;
+}
+
+/* ---- Auspex: light tactical, signal orange ---- */
+:root[data-palette="auspex"] {
+  --bg: #e9edf1;
+  --surface: #ffffff;
+  --surface-2: #eef2f6;
+  --surface-solid: #ffffff;
+  --line: #d3dbe3;
+  --fg: #16202b;
+  --muted: #53606d;
+  --faint: #8695a3;
+  --accent: #e2611f;
+  --accent-ink: #ffffff;
+  --accent-2: #e2611f;
+  --ok: #1f8a54;
+  --warn: #b5781a;
+  --crit: #c23b2e;
+  --radius: 8px;
+  --f-display: "Chakra Petch", system-ui, sans-serif;
+  --f-body: "Inter", system-ui, sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, monospace;
+  color-scheme: light;
+}
+
+/* ---- Phosphor: terminal green on black ---- */
+:root[data-palette="phosphor"] {
+  --bg: #050a07;
+  --surface: #0a140d;
+  --surface-2: #0f1d13;
+  --surface-solid: #0a140d;
+  --line: #1d3626;
+  --fg: #c9f7d6;
+  --muted: #6fae82;
+  --faint: #497a59;
+  --accent: #58f08a;
+  --accent-ink: #04140a;
+  --accent-2: #58f08a;
+  --ok: #58f08a;
+  --warn: #e8d35a;
+  --crit: #ff6f5e;
+  --radius: 4px;
+  --f-display: "Share Tech Mono", ui-monospace, monospace;
+  --f-body: "JetBrains Mono", ui-monospace, monospace;
+  --f-mono: "Share Tech Mono", ui-monospace, monospace;
+  color-scheme: dark;
+}
+
+/* ---- Ceramite: brutalist charcoal, amber slab ---- */
+:root[data-palette="ceramite"] {
+  --bg: #14120e;
+  --surface: #1d1a14;
+  --surface-2: #26221a;
+  --surface-solid: #1d1a14;
+  --line: #3a3326;
+  --fg: #f1ebe0;
+  --muted: #a79c88;
+  --faint: #756a57;
+  --accent: #f2a516;
+  --accent-ink: #1a1304;
+  --accent-2: #f2a516;
+  --ok: #8fb53a;
+  --warn: #f2a516;
+  --crit: #e5533a;
+  --radius: 2px;
+  --f-display: "Saira Condensed", system-ui, sans-serif;
+  --f-body: "Inter", system-ui, sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, monospace;
+  color-scheme: dark;
+}
+
+/* ---- Typography from tokens ---- */
+body {
+  font-family: var(--f-body);
+  -webkit-font-smoothing: antialiased;
+}
+h1,
+h2,
+h3,
+.eyebrow,
+.section-title {
+  font-family: var(--f-display);
+}
+h1 {
+  letter-spacing: 0.01em;
+}
+/* Numerals line up in mono wherever figures matter. */
+.li-points,
+.account-details dd,
+.status-pill {
+  font-family: var(--f-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- Per-palette structural flourishes (scoped to the app's panel .card) ---- */
+:root[data-palette="holo"] body,
+:root:not([data-palette]) body {
+  background: radial-gradient(1200px 600px at 80% -10%, #15284a 0%, #070b14 60%);
+  background-attachment: fixed;
+}
+:root[data-palette="holo"] .card {
+  backdrop-filter: blur(9px);
+  -webkit-backdrop-filter: blur(9px);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 10px 30px rgba(0, 0, 0, 0.35);
+}
+
+:root[data-palette="cogitator"] .card {
+  clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 0 100%);
+}
+
+:root[data-palette="ceramite"] .card {
+  border-left: 4px solid var(--accent);
+}
+
+:root[data-palette="phosphor"] h1,
+:root[data-palette="phosphor"] .status-ok .dot {
+  text-shadow: 0 0 12px rgba(88, 240, 138, 0.45);
+}
+:root[data-palette="phosphor"] body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  pointer-events: none;
+  background: repeating-linear-gradient(0deg, rgba(88, 240, 138, 0.05) 0 1px, transparent 1px 3px);
+  mix-blend-mode: overlay;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    scroll-behavior: auto;
+  }
+}

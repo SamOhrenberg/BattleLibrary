@@ -33,6 +33,7 @@ export interface UserDto {
   username: string
   email: string
   visibility: string
+  isAdmin: boolean
 }
 
 export interface AuthResponse {
@@ -47,6 +48,13 @@ export interface RegisterRequest {
   username: string
   email: string
   password: string
+  // Present when joining via an invite (required while sign-ups are closed).
+  inviteToken?: string
+}
+
+// Whether open sign-ups are on (public; drives the register screen's messaging).
+export async function getRegistrationStatus(): Promise<{ open: boolean }> {
+  return apiGet<{ open: boolean }>('/api/auth/registration-status')
 }
 
 export interface LoginRequest {

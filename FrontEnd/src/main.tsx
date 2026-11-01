@@ -1,16 +1,24 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
+import './styles/theme.css'
 import App from './App.tsx'
 import { AuthProvider } from './auth/AuthContext'
 import { TourProvider } from './onboarding/TourContext'
+import { ToastProvider } from './ui/Toast'
+import { initTheme } from './styles/theme'
+
+// Apply the saved (or default) theme before the first paint.
+initTheme()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <AuthProvider>
-      <TourProvider>
-        <App />
-      </TourProvider>
+      <ToastProvider>
+        <TourProvider>
+          <App />
+        </TourProvider>
+      </ToastProvider>
     </AuthProvider>
   </StrictMode>,
 )

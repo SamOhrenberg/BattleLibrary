@@ -9,17 +9,33 @@ export interface SelectedOption {
   points: number
 }
 
+export interface ListForce {
+  id: string
+  factionId: string
+  factionName: string
+  sortOrder: number
+}
+
 export interface ListEntry {
   id: string
+  // The force (faction slice) this entry belongs to.
+  forceId: string
   datasheetId: string
   datasheetName: string
+  // Player-given name for the unit; null shows the datasheet name.
+  customName: string | null
+  // Free-text note the owner keeps against the unit.
+  notes: string | null
   points: number
   optionsPoints: number
   modelCount: number
+  sortOrder: number
   lineTotal: number
   keywords: string[]
   isWarlord: boolean
   forcedWarlord: boolean
+  // Leader attachment: the bodyguard entry this Leader is attached to, or null.
+  attachedToEntryId: string | null
   enhancementId: string | null
   enhancementName: string | null
   enhancementPoints: number
@@ -59,9 +75,11 @@ export interface ArmyList {
   isOverLimit: boolean
   featured: boolean
   battleSize: string | null
+  forceDisposition: string | null
   usesLegends: boolean
   usesCrucible: boolean
   detachments: ListDetachment[]
+  forces: ListForce[]
   updatedAt: string
   entries: ListEntry[]
 }
@@ -114,6 +132,45 @@ export function duplicateList(id: string): Promise<ArmyList> {
   return send<ArmyList>(`/api/lists/${id}/duplicate`, 'POST')
 }
 
+// Downloads the list as a BattleScribe .rosz (opens in BattleScribe / NewRecruit).
+export async function exportRoster(id: string, fileName: string): Promise<void> {
+  const res = await authFetch(`/api/lists/${id}/export`)
+  if (!res.ok) {
+    throw await toError(res)
+  }
+  const blob = await res.blob()
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `${sanitizeFileName(fileName)}.rosz`
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(url)
+}
+
+export interface ImportRosterResult {
+  list: ArmyList
+  // Names of selections in the file that didn't match a cached datasheet/option.
+  unmatched: string[]
+}
+
+// Imports a BattleScribe roster (.ros or .rosz) as a new list.
+export async function importRoster(file: File): Promise<ImportRosterResult> {
+  const form = new FormData()
+  form.append('file', file)
+  const res = await authFetch('/api/lists/import', { method: 'POST', body: form })
+  if (!res.ok) {
+    throw await toError(res)
+  }
+  return res.json() as Promise<ImportRosterResult>
+}
+
+function sanitizeFileName(name: string): string {
+  const cleaned = name.replace(/[\\/:*?"<>|]/g, '_').trim()
+  return cleaned.length > 0 ? cleaned : 'roster'
+}
+
 export function setListFeatured(id: string, featured: boolean): Promise<ArmyList> {
   return send<ArmyList>(`/api/lists/${id}/featured`, 'POST', { featured })
 }
@@ -128,8 +185,17 @@ export function setDetachments(id: string, detachmentIds: string[]): Promise<Arm
   return send<ArmyList>(`/api/lists/${id}/detachments`, 'POST', { detachmentIds })
 }
 
+export function setForceDisposition(id: string, forceDisposition: string | null): Promise<ArmyList> {
+  return send<ArmyList>(`/api/lists/${id}/disposition`, 'POST', { forceDisposition })
+}
+
 export function setWarlord(listId: string, entryId: string, isWarlord: boolean): Promise<ArmyList> {
   return send<ArmyList>(`/api/lists/${listId}/entries/${entryId}/warlord`, 'POST', { isWarlord })
+}
+
+// Attach a Leader (entryId) to a bodyguard unit, or null to detach.
+export function attachEntry(listId: string, entryId: string, attachToEntryId: string | null): Promise<ArmyList> {
+  return send<ArmyList>(`/api/lists/${listId}/entries/${entryId}/attach`, 'POST', { attachToEntryId })
 }
 
 export function setEnhancement(listId: string, entryId: string, enhancementId: string | null): Promise<ArmyList> {
@@ -141,26 +207,45 @@ export function addEntry(
   datasheetId: string,
   selectedOptionIds: string[] = [],
   models?: number,
+  forceId?: string,
 ): Promise<ArmyList> {
   return send<ArmyList>(`/api/lists/${listId}/entries`, 'POST', {
     datasheetId,
     selectedOptionIds,
     models,
+    forceId,
   })
+}
+
+// Add an allied force (a faction) to the list.
+export function addForce(listId: string, factionId: string): Promise<ArmyList> {
+  return send<ArmyList>(`/api/lists/${listId}/forces`, 'POST', { factionId })
+}
+
+// Remove a force and all of its entries. A list must keep at least one force.
+export function removeForce(listId: string, forceId: string): Promise<ArmyList> {
+  return send<ArmyList>(`/api/lists/${listId}/forces/${forceId}`, 'DELETE')
 }
 
 export function setModelCount(listId: string, entryId: string, models: number): Promise<ArmyList> {
   return send<ArmyList>(`/api/lists/${listId}/entries/${entryId}/size`, 'POST', { models })
 }
 
-export function updateEntry(
-  listId: string,
-  entryId: string,
-  selectedOptionIds?: string[],
-): Promise<ArmyList> {
-  return send<ArmyList>(`/api/lists/${listId}/entries/${entryId}`, 'PUT', {
-    selectedOptionIds,
-  })
+// Persist the owner's custom ordering of entries (full id sequence).
+export function reorderEntries(listId: string, entryIds: string[]): Promise<ArmyList> {
+  return send<ArmyList>(`/api/lists/${listId}/entries/order`, 'POST', { entryIds })
+}
+
+// A partial entry edit. An omitted field is left unchanged; for customName/notes
+// an empty string clears the value.
+export interface EntryPatch {
+  selectedOptionIds?: string[]
+  customName?: string | null
+  notes?: string | null
+}
+
+export function updateEntry(listId: string, entryId: string, patch: EntryPatch): Promise<ArmyList> {
+  return send<ArmyList>(`/api/lists/${listId}/entries/${entryId}`, 'PUT', patch)
 }
 
 export function removeEntry(listId: string, entryId: string): Promise<ArmyList> {

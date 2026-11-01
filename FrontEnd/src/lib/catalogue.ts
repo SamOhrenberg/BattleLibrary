@@ -117,3 +117,22 @@ export function getDatasheets(factionId: string): Promise<FactionDatasheets> {
 export function getDatasheet(datasheetId: string): Promise<DatasheetDetail> {
   return apiGet<DatasheetDetail>(`/api/catalogue/datasheets/${encodeURIComponent(datasheetId)}`)
 }
+
+// A Rule Search hit over already-cached content. `kind` is one of unit / ability
+// / weapon / detachment-rule / enhancement; `datasheetId` is set for unit/ability
+// /weapon so the UI can open the datasheet.
+export interface RuleSearchResult {
+  kind: 'unit' | 'ability' | 'weapon' | 'detachment-rule' | 'enhancement'
+  title: string
+  subtitle: string | null
+  text: string | null
+  datasheetId: string | null
+  factionId: string | null
+  factionName: string | null
+}
+
+export function searchRules(systemKey: string, q: string): Promise<RuleSearchResult[]> {
+  return apiGet<RuleSearchResult[]>(
+    `/api/catalogue/${encodeURIComponent(systemKey)}/search?q=${encodeURIComponent(q)}`,
+  )
+}
