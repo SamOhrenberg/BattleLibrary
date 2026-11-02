@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from 'react'
 import { ApiError } from '../lib/api'
 import { getCatalogueSystems, getFactions, type CatalogueFaction, type CatalogueSystem } from '../lib/catalogue'
-import { BATTLE_SIZES, createList, deleteList, duplicateList, getList, getLists, type ArmyList, type ArmyListSummary } from '../lib/lists'
+import { BATTLE_SIZES, createList, deleteList, duplicateList, exportRoster, getList, getLists, importRoster, type ArmyList, type ArmyListSummary } from '../lib/lists'
 import { BATTLE_SIZE_RULES } from './validation'
 import { useTour } from '../onboarding/TourContext'
+import { useToast } from '../ui/Toast'
 import { ListBuilder } from './ListBuilder'
 import './builder.css'
 
@@ -14,14 +15,15 @@ export function ListsView() {
   const [view, setView] = useState<View>('index')
   const [lists, setLists] = useState<ArmyListSummary[] | null>(null)
   const [active, setActive] = useState<ArmyList | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const toast = useToast()
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const autoOffered = useRef(false)
 
   useEffect(() => {
     getLists()
       .then(setLists)
-      .catch(() => setError('Could not load your lists.'))
-  }, [])
+      .catch(() => toast.push('Could not load your lists.', 'error'))
+  }, [toast])
 
   // Offer the tour automatically, once, to a brand-new user with no lists yet.
   useEffect(() => {
@@ -37,43 +39,66 @@ export function ListsView() {
     try {
       setLists(await getLists())
     } catch {
-      setError('Could not load your lists.')
+      toast.push('Could not load your lists.', 'error')
     }
   }
 
   async function onDuplicate(id: string) {
-    setError(null)
     try {
       await duplicateList(id)
       setLists(await getLists())
     } catch {
-      setError('Could not duplicate the list.')
+      toast.push('Could not duplicate the list.', 'error')
     }
   }
 
   async function onDelete(id: string) {
-    setError(null)
     try {
       await deleteList(id)
       setLists(await getLists())
     } catch {
-      setError('Could not delete the list.')
+      toast.push('Could not delete the list.', 'error')
+    }
+  }
+
+  async function onExport(id: string, name: string) {
+    try {
+      await exportRoster(id, name)
+    } catch {
+      toast.push('Could not export that list.', 'error')
+    }
+  }
+
+  async function onImportFile(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = '' // let the same file be re-picked later
+    if (!file) return
+    try {
+      const result = await importRoster(file)
+      setLists(await getLists())
+      const n = result.unmatched.length
+      toast.push(
+        n > 0
+          ? `Imported “${result.list.name}”. ${n} ${n === 1 ? 'entry' : 'entries'} couldn’t be matched and ${n === 1 ? 'was' : 'were'} skipped: ${result.unmatched.join(', ')}`
+          : `Imported “${result.list.name}”.`,
+        n > 0 ? 'info' : 'success',
+      )
+    } catch (err) {
+      toast.push(err instanceof ApiError ? err.message : 'Could not import that roster.', 'error')
     }
   }
 
   function openCreate() {
-    setError(null)
     setView('create')
     tour.notify('open-create')
   }
 
   async function openList(id: string) {
-    setError(null)
     try {
       setActive(await getList(id))
       setView('builder')
     } catch {
-      setError('Could not open that list.')
+      toast.push('Could not open that list.', 'error')
     }
   }
 
@@ -98,6 +123,9 @@ export function ListsView() {
               <button type="button" className="btn" onClick={tour.start}>
                 {tour.hasRun ? 'Replay tour' : 'Take the tour'}
               </button>
+              <button type="button" className="btn" onClick={() => fileInputRef.current?.click()}>
+                Import .rosz
+              </button>
               <button type="button" className="btn btn-primary" data-tour="new-list" onClick={openCreate}>
                 New list
               </button>
@@ -106,7 +134,13 @@ export function ListsView() {
         </div>
       </div>
 
-      {error && <p className="builder-error">{error}</p>}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".ros,.rosz"
+        hidden
+        onChange={(e) => void onImportFile(e)}
+      />
 
       {view === 'index' && (
         <ListIndex
@@ -115,6 +149,7 @@ export function ListsView() {
           onNew={openCreate}
           onDuplicate={(id) => void onDuplicate(id)}
           onDelete={(id) => void onDelete(id)}
+          onExport={(id, name) => void onExport(id, name)}
         />
       )}
 
@@ -133,19 +168,21 @@ function ListIndex({
   onNew,
   onDuplicate,
   onDelete,
+  onExport,
 }: {
   lists: ArmyListSummary[] | null
   onOpen: (id: string) => void
   onNew: () => void
   onDuplicate: (id: string) => void
   onDelete: (id: string) => void
+  onExport: (id: string, name: string) => void
 }) {
   if (lists === null) return <p className="hint">Loading…</p>
   if (lists.length === 0) {
     return (
       <p className="hint">
         No lists yet. Press <button type="button" className="link-button" onClick={onNew}>New list</button> to build
-        your first — or take the tour.
+        your first - or take the tour.
       </p>
     )
   }
@@ -178,6 +215,17 @@ function ListIndex({
               }}
             >
               Duplicate
+            </button>
+            <button
+              type="button"
+              className="li-dup"
+              title="Export as BattleScribe .rosz"
+              onClick={(e) => {
+                e.stopPropagation()
+                onExport(l.id, l.name)
+              }}
+            >
+              Export
             </button>
             <button
               type="button"

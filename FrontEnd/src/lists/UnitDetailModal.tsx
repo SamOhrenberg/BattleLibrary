@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { getDatasheet, type DatasheetDetail, type DatasheetOption } from '../lib/catalogue'
+import type { LoadoutPreset } from '../lib/presets'
 import { RuleText } from './RuleText'
 
 interface EnhancementOption {
@@ -21,6 +22,10 @@ interface Props {
   enhancement?: { value: string | null; options: EnhancementOption[]; onChange: (id: string | null) => void }
   // Edit-only: change the unit size, applied immediately.
   onSizeChange?: (models: number) => void
+  // Saved loadouts for this datasheet, plus callbacks to save/delete them.
+  presets?: LoadoutPreset[]
+  onSavePreset?: (name: string, optionIds: string[], models?: number) => void
+  onDeletePreset?: (id: string) => void
   onAdd: (selectedOptionIds: string[], models?: number) => void
   onClose: () => void
 }
@@ -33,6 +38,9 @@ export function UnitDetailModal({
   busy,
   enhancement,
   onSizeChange,
+  presets,
+  onSavePreset,
+  onDeletePreset,
   onAdd,
   onClose,
 }: Props) {
@@ -40,6 +48,7 @@ export function UnitDetailModal({
   const [error, setError] = useState(false)
   const [selected, setSelected] = useState<Set<string>>(() => new Set(initialSelected ?? []))
   const [models, setModels] = useState<number | undefined>(initialModels)
+  const [presetName, setPresetName] = useState('')
 
   useEffect(() => {
     let active = true
@@ -90,9 +99,27 @@ export function UnitDetailModal({
     onSizeChange?.(m)
   }
 
+  // Applies a saved loadout's options + size to the current selection.
+  function applyPreset(p: LoadoutPreset) {
+    setSelected(new Set(p.selectedOptions.map((o) => o.id)))
+    if (p.modelCount !== models) changeSize(p.modelCount)
+  }
+
+  function saveCurrentPreset() {
+    const name = presetName.trim()
+    if (!name || !onSavePreset) return
+    onSavePreset(name, [...selected], models)
+    setPresetName('')
+  }
+
+  // Presets are worth showing only when there's something to vary.
+  const canConfigure = (detail?.options.length ?? 0) > 0 || (detail?.sizes.length ?? 0) > 1
+  const showPresets = (presets?.length ?? 0) > 0 || (!!onSavePreset && canConfigure)
+
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <div className="sheet-grip" aria-hidden="true" />
         {error ? (
           <p className="builder-error">Could not load this unit.</p>
         ) : !detail ? (
@@ -218,6 +245,58 @@ export function UnitDetailModal({
               </div>
             )}
 
+            {showPresets && (
+              <div className="detail-section">
+                <h4>Saved loadouts</h4>
+                {(presets?.length ?? 0) > 0 ? (
+                  <div className="preset-list">
+                    {presets!.map((p) => (
+                      <div className="preset-chip" key={p.id}>
+                        <button type="button" className="preset-apply" onClick={() => applyPreset(p)}>
+                          <span className="preset-name">{p.name}</span>
+                          {detail.points != null && <span className="preset-pts">{p.total} pts</span>}
+                        </button>
+                        {onDeletePreset && (
+                          <button
+                            type="button"
+                            className="preset-del"
+                            aria-label={`Delete preset ${p.name}`}
+                            title="Delete preset"
+                            onClick={() => onDeletePreset(p.id)}
+                          >
+                            ×
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="panel-hint">No saved loadouts for this unit yet.</p>
+                )}
+                {onSavePreset && (
+                  <div className="preset-save">
+                    <input
+                      className="preset-input"
+                      value={presetName}
+                      maxLength={80}
+                      placeholder="Save current as…"
+                      aria-label="Preset name"
+                      onChange={(e) => setPresetName(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && saveCurrentPreset()}
+                    />
+                    <button
+                      type="button"
+                      className="btn btn-sm"
+                      onClick={saveCurrentPreset}
+                      disabled={presetName.trim().length === 0}
+                    >
+                      Save
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
             {(() => {
               const kw = new Set(detail.keywords.map((k) => k.toLowerCase()))
               const isChar = kw.has('character')
@@ -293,7 +372,7 @@ function StatTable({ labels, row }: { labels: string[]; row: { name: string; val
           <tr>{labels.map((l) => <th key={l}>{l}</th>)}</tr>
         </thead>
         <tbody>
-          <tr>{row.map((c) => <td key={c.name}>{c.value || '—'}</td>)}</tr>
+          <tr>{row.map((c) => <td key={c.name}>{c.value || '-'}</td>)}</tr>
         </tbody>
       </table>
     </div>
@@ -316,7 +395,7 @@ function WeaponTables({ weapons }: { weapons: DatasheetDetail['weapons'] }) {
             <tbody>
               <tr>
                 <td>{w.ranged ? 'Ranged' : 'Melee'}</td>
-                {w.characteristics.map((c) => <td key={c.name}>{c.value || '—'}</td>)}
+                {w.characteristics.map((c) => <td key={c.name}>{c.value || '-'}</td>)}
               </tr>
             </tbody>
           </table>

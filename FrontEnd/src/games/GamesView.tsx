@@ -607,7 +607,7 @@ function GameForm({
               inputMode="numeric"
               value={playerScore}
               onChange={(e) => setPlayerScore(e.target.value.replace(/[^0-9]/g, ''))}
-              placeholder="—"
+              placeholder="-"
             />
           </label>
           <label>
@@ -616,7 +616,7 @@ function GameForm({
               inputMode="numeric"
               value={opponentScore}
               onChange={(e) => setOpponentScore(e.target.value.replace(/[^0-9]/g, ''))}
-              placeholder="—"
+              placeholder="-"
             />
           </label>
         </div>

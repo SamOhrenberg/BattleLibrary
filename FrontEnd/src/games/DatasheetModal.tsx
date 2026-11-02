@@ -3,7 +3,7 @@ import { getDatasheet, type DatasheetDetail, type DatasheetProfile, type Datashe
 import { RuleText } from '../lists/RuleText'
 
 // Read-only datasheet lookup for play: the stat line, weapons and abilities of a
-// single unit, fetched on open. No editing — the list builder handles that.
+// single unit, fetched on open. No editing: the list builder handles that.
 export function DatasheetModal({
   datasheetId,
   title,
@@ -94,7 +94,7 @@ function ProfileTable({ profile }: { profile: DatasheetProfile }) {
           <tr>{profile.characteristics.map((c) => <th key={c.name}>{c.name}</th>)}</tr>
         </thead>
         <tbody>
-          <tr>{profile.characteristics.map((c) => <td key={c.name}>{c.value || '—'}</td>)}</tr>
+          <tr>{profile.characteristics.map((c) => <td key={c.name}>{c.value || '-'}</td>)}</tr>
         </tbody>
       </table>
     </div>
@@ -117,7 +117,7 @@ function WeaponTable({ title, weapons }: { title: string; weapons: DatasheetWeap
           {weapons.map((w) => (
             <tr key={w.name}>
               <td>{w.name}</td>
-              {w.characteristics.map((c) => <td key={c.name}>{c.value || '—'}</td>)}
+              {w.characteristics.map((c) => <td key={c.name}>{c.value || '-'}</td>)}
             </tr>
           ))}
         </tbody>

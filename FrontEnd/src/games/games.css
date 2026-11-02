@@ -39,6 +39,7 @@
 
 .stat-n {
   display: block;
+  font-family: var(--f-mono);
   font-size: 1.3rem;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
@@ -243,7 +244,7 @@
   margin: 2px 0 12px;
 }
 
-.status-pill.s-active { color: #fff; background: var(--accent); }
+.status-pill.s-active { color: var(--accent-ink); background: var(--accent); }
 .status-pill.s-setup,
 .status-pill.s-invited { color: var(--planned); background: rgba(169, 116, 31, 0.16); }
 .status-pill.s-accepted { color: var(--ok); background: rgba(47, 125, 83, 0.16); }
@@ -324,7 +325,7 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
-  /* button reset — the main area opens the unit's datasheet */
+  /* button reset: the main area opens the unit's datasheet */
   background: none;
   border: none;
   padding: 0;
@@ -406,6 +407,7 @@
 .step-value {
   min-width: 2.6ch;
   text-align: center;
+  font-family: var(--f-mono);
   font-variant-numeric: tabular-nums;
   font-weight: 600;
   font-size: 0.9rem;
@@ -434,7 +436,7 @@
 }
 .round-chip.active {
   background: var(--accent);
-  color: #fff;
+  color: var(--accent-ink);
   border-color: var(--accent);
 }
 
@@ -459,6 +461,7 @@
 }
 .score-name { font-weight: 600; }
 .score-bits { font-size: 0.82rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.score-bits b { font-family: var(--f-mono); color: var(--accent); }
 
 /* My panel */
 .my-panel {
@@ -634,7 +637,7 @@
   justify-content: center;
 }
 .ds-modal {
-  background: var(--surface);
+  background: var(--surface-solid);
   border: 1px solid var(--border);
   border-bottom: none;
   border-radius: 16px 16px 0 0;
@@ -707,11 +710,12 @@
 
 /* Read-only score cell (CP spent is derived from logged stratagems/abilities) */
 .cell-derived {
+  font-family: var(--f-mono);
   font-variant-numeric: tabular-nums;
   font-weight: 700;
   font-size: 1.05rem;
   line-height: 36px;
-  color: var(--fg);
+  color: var(--accent);
 }
 
 /* Finished-game round breakdown */

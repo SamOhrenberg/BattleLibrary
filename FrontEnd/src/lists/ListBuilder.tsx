@@ -1,13 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ApiError } from '../lib/api'
-import { getDatasheets, type CatalogueDatasheet, type CatalogueDetachment } from '../lib/catalogue'
+import { getDatasheets, getFactions, type CatalogueDatasheet, type CatalogueDetachment, type CatalogueFaction, type FactionDatasheets } from '../lib/catalogue'
 import {
   addEntry,
+  addForce,
+  attachEntry,
   deleteList,
   removeEntry,
+  removeForce,
+  reorderEntries,
   setBattleSize,
   setDetachments,
   setEnhancement,
+  setForceDisposition,
   setModelCount,
   setWarlord,
   updateEntry,
@@ -16,11 +21,14 @@ import {
   type ArmyList,
   type ListEntry,
 } from '../lib/lists'
+import { getPresets, createPreset, deletePreset, type LoadoutPreset } from '../lib/presets'
 import { validateList, isCharacter, BATTLE_SIZE_RULES } from './validation'
 import { groupByRole } from './roles'
 import { isLegends, isCrucible } from './tiers'
 import { useTour } from '../onboarding/TourContext'
+import { useToast } from '../ui/Toast'
 import { UnitDetailModal } from './UnitDetailModal'
+import { RuleSearch } from './RuleSearch'
 import { ListAssistant } from './ListAssistant'
 import { RuleText } from './RuleText'
 import { listToText } from './exportList'
@@ -36,22 +44,40 @@ interface Props {
 export function ListBuilder({ initial, onBack, onDeleted }: Props) {
   const { notify } = useTour()
   const [list, setList] = useState<ArmyList>(initial)
-  const [datasheets, setDatasheets] = useState<CatalogueDatasheet[]>([])
-  const [equipment, setEquipment] = useState<string[]>([])
-  const [detachments, setFactionDetachments] = useState<CatalogueDetachment[]>([])
+  // Catalogue data cached per faction, so each force shows its own units.
+  const [factionData, setFactionData] = useState<Record<string, FactionDatasheets>>({})
+  // Which force the catalogue + "Add" target. Defaults to the primary force.
+  const [activeForceId, setActiveForceId] = useState(initial.forces[0]?.id ?? '')
+  // Factions available to add as an allied force (loaded on demand).
+  const [allFactions, setAllFactions] = useState<CatalogueFaction[] | null>(null)
+  const [addingForce, setAddingForce] = useState(false)
   const [search, setSearch] = useState('')
+  // Catalogue ordering: by role (grouped), name, or points (cheapest first).
+  const [sort, setSort] = useState<'role' | 'name' | 'points'>('role')
   // Legends is extra, non-standard content, so hide it by default; Crucible is
   // current, so show it. Toggles below let either be flipped.
   const [showLegends, setShowLegends] = useState(false)
   const [showCrucible, setShowCrucible] = useState(true)
   const [tab, setTab] = useState<'catalogue' | 'list'>('catalogue')
+  // How the list panel groups entries: by role (default) or the owner's custom order.
+  const [listView, setListView] = useState<'role' | 'custom'>('role')
   // Role groups collapsed in the catalogue panel.
   const [catCollapsed, setCatCollapsed] = useState<Set<string>>(new Set())
   const [detailId, setDetailId] = useState<string | null>(null)
   const [editEntry, setEditEntry] = useState<ListEntry | null>(null)
+  // The owner's saved loadouts for this game system, indexed by datasheet.
+  const [presets, setPresets] = useState<LoadoutPreset[]>([])
+  // Inline custom-name / notes editors, keyed by the entry being edited.
+  const [renameId, setRenameId] = useState<string | null>(null)
+  const [nameDraft, setNameDraft] = useState('')
+  const [notesId, setNotesId] = useState<string | null>(null)
+  const [notesDraft, setNotesDraft] = useState('')
+  // Set by Escape so the blur that follows discards the edit instead of saving.
+  const cancelEdit = useRef(false)
   const [showAssistant, setShowAssistant] = useState(false)
   const [copied, setCopied] = useState(false)
   const [showPlay, setShowPlay] = useState(false)
+  const [showSearch, setShowSearch] = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
   const exportRef = useRef<HTMLDivElement>(null)
 
@@ -71,26 +97,91 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
   }, [exportOpen])
   const [name, setName] = useState(initial.name)
   const [limit, setLimit] = useState(initial.pointsLimit?.toString() ?? '')
+  const [disposition, setDisposition] = useState(initial.forceDisposition ?? '')
   const [busy, setBusy] = useState(false)
   const [saved, setSaved] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const toast = useToast()
   // Fire the 'entry-added' tour milestone only on the first add.
   const addedOnce = useRef(initial.entries.length > 0)
 
+  // The active force (falls back to the primary) and the factions in play.
+  const activeForce = list.forces.find((f) => f.id === activeForceId) ?? list.forces[0]
+  const activeFactionId = activeForce?.factionId ?? list.factionId
+  const primaryFactionId = list.forces[0]?.factionId ?? list.factionId
+
+  // Load catalogue data for the active and primary factions when not cached.
   useEffect(() => {
+    const needed = [activeFactionId, primaryFactionId].filter((f) => f && !factionData[f])
+    if (needed.length === 0) return
     let active = true
-    getDatasheets(list.factionId)
-      .then((d) => {
+    Promise.all(needed.map((f) => getDatasheets(f).then((d) => [f, d] as const)))
+      .then((pairs) => {
         if (!active) return
-        setDatasheets(d.datasheets)
-        setEquipment(d.faction.equipment ?? [])
-        setFactionDetachments(d.faction.detachments ?? [])
+        setFactionData((prev) => {
+          const next = { ...prev }
+          for (const [f, d] of pairs) next[f] = d
+          return next
+        })
       })
-      .catch(() => active && setError('Could not load the faction catalogue.'))
+      .catch(() => active && toast.push('Could not load the faction catalogue.', 'error'))
     return () => {
       active = false
     }
-  }, [list.factionId])
+  }, [activeFactionId, primaryFactionId, factionData, toast])
+
+  // Catalogue from the active force's faction; detachments from the primary.
+  const datasheets: CatalogueDatasheet[] = factionData[activeFactionId]?.datasheets ?? []
+  const equipment: string[] = factionData[activeFactionId]?.faction.equipment ?? []
+  const detachments: CatalogueDetachment[] = factionData[primaryFactionId]?.faction.detachments ?? []
+
+  // Load the owner's saved loadouts for this system (presets are per datasheet).
+  useEffect(() => {
+    let active = true
+    getPresets(list.gameSystemKey)
+      .then((p) => active && setPresets(p))
+      .catch(() => undefined)
+    return () => {
+      active = false
+    }
+  }, [list.gameSystemKey])
+
+  const presetsBySheet = useMemo(() => {
+    const map = new Map<string, LoadoutPreset[]>()
+    for (const p of presets) {
+      const arr = map.get(p.datasheetId)
+      if (arr) arr.push(p)
+      else map.set(p.datasheetId, [p])
+    }
+    return map
+  }, [presets])
+
+  async function refreshPresets() {
+    try {
+      setPresets(await getPresets(list.gameSystemKey))
+    } catch {
+      // Keep the current presets if the refresh fails.
+    }
+  }
+
+  // Save a datasheet's current wargear + size as a named, reusable preset.
+  async function savePreset(datasheetId: string, name: string, optionIds: string[], models?: number) {
+    try {
+      await createPreset({ gameSystemKey: list.gameSystemKey, datasheetId, name, models, selectedOptionIds: optionIds })
+      await refreshPresets()
+      toast.push(`Saved loadout "${name}".`, 'success')
+    } catch (err) {
+      toast.push(err instanceof ApiError ? err.message : 'Could not save the preset.', 'error')
+    }
+  }
+
+  async function removePreset(id: string) {
+    try {
+      await deletePreset(id)
+      await refreshPresets()
+    } catch (err) {
+      toast.push(err instanceof ApiError ? err.message : 'Could not delete the preset.', 'error')
+    }
+  }
 
   // A point-less system (e.g. Kill Team 2024): operatives carry no points, so
   // show operative counts instead of points and drop the limit controls.
@@ -114,17 +205,26 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
   }, [datasheets, search, showLegends, showCrucible])
 
   const catalogueGroups = useMemo(() => groupByRole(filtered, (d) => d.keywords), [filtered])
+  // Flat ordering for the name/points sorts (role uses the grouped view).
+  const sortedFlat = useMemo(() => {
+    const arr = [...filtered]
+    if (sort === 'name') {
+      arr.sort((a, b) => a.name.localeCompare(b.name))
+    } else if (sort === 'points') {
+      arr.sort((a, b) => (a.points ?? Infinity) - (b.points ?? Infinity) || a.name.localeCompare(b.name))
+    }
+    return arr
+  }, [filtered, sort])
   const allCollapsed = catalogueGroups.length > 0 && catalogueGroups.every((g) => catCollapsed.has(g.role))
   const toggleAllGroups = () =>
     setCatCollapsed(allCollapsed ? new Set() : new Set(catalogueGroups.map((g) => g.role)))
 
   async function run(action: () => Promise<ArmyList>) {
     setBusy(true)
-    setError(null)
     try {
       setList(await action())
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Something went wrong.')
+      toast.push(err instanceof ApiError ? err.message : 'Something went wrong.', 'error')
     } finally {
       setBusy(false)
     }
@@ -133,23 +233,62 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
   // Applies an entry change and keeps the open edit modal in sync.
   async function runEntry(entryId: string, action: () => Promise<ArmyList>) {
     setBusy(true)
-    setError(null)
     try {
       const next = await action()
       setList(next)
       setEditEntry(next.entries.find((x) => x.id === entryId) ?? null)
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Something went wrong.')
+      toast.push(err instanceof ApiError ? err.message : 'Something went wrong.', 'error')
     } finally {
       setBusy(false)
     }
   }
 
   async function add(datasheetId: string, optionIds: string[] = [], models?: number) {
-    await run(() => addEntry(list.id, datasheetId, optionIds, models))
+    await run(() => addEntry(list.id, datasheetId, optionIds, models, activeForce?.id))
     if (!addedOnce.current) {
       addedOnce.current = true
       notify('entry-added')
+    }
+  }
+
+  // Add an allied force (a faction) and switch the catalogue to it.
+  async function addAlliedForce(factionId: string) {
+    setBusy(true)
+    try {
+      const before = new Set(list.forces.map((f) => f.id))
+      const next = await addForce(list.id, factionId)
+      setList(next)
+      const added = next.forces.find((f) => !before.has(f.id))
+      if (added) setActiveForceId(added.id)
+    } catch (err) {
+      toast.push(err instanceof ApiError ? err.message : 'Could not add the force.', 'error')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function dropForce(forceId: string) {
+    const force = list.forces.find((f) => f.id === forceId)
+    if (!force) return
+    if (!confirm(`Remove the ${force.factionName} force and its units?`)) return
+    try {
+      const next = await run(() => removeForce(list.id, forceId))
+      // Switching away from a removed force is handled by activeForce's fallback.
+      if (activeForceId === forceId) setActiveForceId(list.forces[0]?.id ?? '')
+      return next
+    } catch {
+      // run() already surfaced the error.
+    }
+  }
+
+  // Factions available to add, loaded once, excluding those already in the list.
+  async function ensureFactions() {
+    if (allFactions) return
+    try {
+      setAllFactions(await getFactions(list.gameSystemKey))
+    } catch {
+      toast.push('Could not load factions.', 'error')
     }
   }
 
@@ -159,7 +298,7 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
       setCopied(true)
       setTimeout(() => setCopied(false), 1800)
     } catch {
-      setError('Could not copy to the clipboard.')
+      toast.push('Could not copy to the clipboard.', 'error')
     }
   }
 
@@ -182,17 +321,50 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
     void run(() => addEntry(list.id, e.datasheetId, e.selectedOptions.map((o) => o.id), e.modelCount))
   }
 
+  // Inline custom-name editing: open with the current name, save on blur/Enter.
+  function startRename(e: ListEntry) {
+    setNotesId(null)
+    setRenameId(e.id)
+    setNameDraft(e.customName ?? '')
+  }
+  async function commitRename(e: ListEntry) {
+    setRenameId(null)
+    if (cancelEdit.current) {
+      cancelEdit.current = false
+      return
+    }
+    const next = nameDraft.trim()
+    if (next === (e.customName ?? '')) return
+    await run(() => updateEntry(list.id, e.id, { customName: next }))
+  }
+
+  // Inline notes editing: open with the current note, save on blur.
+  function startNotes(e: ListEntry) {
+    setRenameId(null)
+    setNotesId(e.id)
+    setNotesDraft(e.notes ?? '')
+  }
+  async function commitNotes(e: ListEntry) {
+    setNotesId(null)
+    if (cancelEdit.current) {
+      cancelEdit.current = false
+      return
+    }
+    const next = notesDraft.trim()
+    if (next === (e.notes ?? '')) return
+    await run(() => updateEntry(list.id, e.id, { notes: next }))
+  }
+
   // Adds a datasheet and sets the new entry as Warlord in one step.
   async function addAsWarlord(datasheetId: string) {
     setBusy(true)
-    setError(null)
     try {
       const before = new Set(list.entries.map((e) => e.id))
       const added = await addEntry(list.id, datasheetId, [])
       const fresh = added.entries.find((e) => !before.has(e.id))
       setList(fresh ? await setWarlord(list.id, fresh.id, true) : added)
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Something went wrong.')
+      toast.push(err instanceof ApiError ? err.message : 'Something went wrong.', 'error')
     } finally {
       setBusy(false)
     }
@@ -200,7 +372,6 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
 
   async function save() {
     setBusy(true)
-    setError(null)
     try {
       const parsed = limit.trim() === '' ? null : Number(limit)
       setList(await updateList(list.id, name.trim() || list.name, Number.isNaN(parsed!) ? null : parsed))
@@ -208,7 +379,7 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
       setTimeout(() => setSaved(false), 1800)
       notify('saved')
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not save the list.')
+      toast.push(err instanceof ApiError ? err.message : 'Could not save the list.', 'error')
     } finally {
       setBusy(false)
     }
@@ -221,7 +392,7 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
       await deleteList(list.id)
       onDeleted()
     } catch {
-      setError('Could not delete the list.')
+      toast.push('Could not delete the list.', 'error')
       setBusy(false)
     }
   }
@@ -248,8 +419,65 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
   )
 
   const changeBattleSize = (b: string | null) => run(() => setBattleSize(list.id, b))
+  const saveDisposition = () => {
+    const next = disposition.trim()
+    if (next === (list.forceDisposition ?? '')) return
+    void run(() => setForceDisposition(list.id, next || null))
+  }
   const toggleDetachment = (id: string) =>
     run(() => setDetachments(list.id, chosenIds.has(id) ? [...chosenIds].filter((x) => x !== id) : [...chosenIds, id]))
+
+  const attach = (entryId: string, targetId: string | null) => run(() => attachEntry(list.id, entryId, targetId))
+
+  // Leader attachment grouping: each bodyguard entry id -> the Leaders attached
+  // to it, plus the set of leader ids that render nested (their bodyguard still
+  // exists). A leader whose bodyguard is gone falls back to a normal row.
+  const { leadersByBodyguard, nestedLeaderIds } = useMemo(() => {
+    const ids = new Set(list.entries.map((e) => e.id))
+    const byBodyguard = new Map<string, ListEntry[]>()
+    const nested = new Set<string>()
+    for (const e of list.entries) {
+      if (e.attachedToEntryId && ids.has(e.attachedToEntryId)) {
+        const arr = byBodyguard.get(e.attachedToEntryId)
+        if (arr) arr.push(e)
+        else byBodyguard.set(e.attachedToEntryId, [e])
+        nested.add(e.id)
+      }
+    }
+    return { leadersByBodyguard: byBodyguard, nestedLeaderIds: nested }
+  }, [list.entries])
+
+  // Non-Character units in the same force a given Leader can be attached to.
+  const bodyguardsFor = (leader: ListEntry) =>
+    list.entries.filter((e) => !isCharacter(e) && e.forceId === leader.forceId)
+
+  // Top-level entries (attached Leaders fold into their Bodyguard) for one force.
+  const topLevelOf = (forceId: string) =>
+    list.entries.filter((e) => e.forceId === forceId && !nestedLeaderIds.has(e.id))
+
+  // Full id sequence across all forces, with each top-level entry's Leaders right
+  // after it; `override` supplies a reordered top-level list for one force.
+  function fullOrder(overrideForceId: string, overrideTop: ListEntry[]): string[] {
+    const ids: string[] = []
+    for (const f of list.forces) {
+      const top = f.id === overrideForceId ? overrideTop : topLevelOf(f.id)
+      for (const e of top) {
+        ids.push(e.id)
+        for (const l of leadersByBodyguard.get(e.id) ?? []) ids.push(l.id)
+      }
+    }
+    return ids
+  }
+
+  // Move a top-level entry up/down within its force, carrying its Leaders, and
+  // persist the full id sequence.
+  function moveTopLevel(forceId: string, index: number, dir: -1 | 1) {
+    const top = topLevelOf(forceId)
+    const next = index + dir
+    if (next < 0 || next >= top.length) return
+    ;[top[index], top[next]] = [top[next], top[index]]
+    void run(() => reorderEntries(list.id, fullOrder(forceId, top)))
+  }
 
   // Enhancements still free to take (plus the entry's own current one).
   function enhancementsFor(e: ListEntry) {
@@ -257,6 +485,248 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
       list.entries.filter((x) => x.id !== e.id && x.enhancementId).map((x) => x.enhancementId),
     )
     return availableEnhancements.filter((en) => !usedByOthers.has(en.id))
+  }
+
+  const renderUnit = (d: CatalogueDatasheet, tourFirst: boolean) => (
+    <div className="unit-row" key={d.id}>
+      <button type="button" className="unit-name" onClick={() => setDetailId(d.id)}>
+        {d.name}
+      </button>
+      {!pointless && <span className="unit-pts">{d.points != null ? `${d.points}` : '-'}</span>}
+      <button
+        type="button"
+        className="add-btn"
+        data-tour={tourFirst ? 'catalogue-add' : undefined}
+        onClick={() => void add(d.id)}
+        disabled={busy}
+      >
+        Add
+      </button>
+    </div>
+  )
+
+  // One list entry. Variant: 'normal' standalone; 'leader' the attached Leader
+  // shown on top (with a detach control); 'embedded' the Bodyguard inset beneath
+  // its Leader.
+  const renderEntryRow = (e: ListEntry, variant: 'normal' | 'leader' | 'embedded' = 'normal') => {
+    const embedded = variant === 'embedded'
+    const leaderRow = variant === 'leader'
+    return (
+    <div className={`entry-row${embedded ? ' entry-embedded' : ''}${leaderRow ? ' entry-leader' : ''}`} key={e.id}>
+      <div className="entry-main">
+        {renameId === e.id ? (
+          <input
+            className="entry-name-input"
+            autoFocus
+            value={nameDraft}
+            maxLength={200}
+            placeholder={e.datasheetName}
+            aria-label="Custom unit name"
+            onChange={(ev) => setNameDraft(ev.target.value)}
+            onBlur={() => void commitRename(e)}
+            onKeyDown={(ev) => {
+              if (ev.key === 'Enter') ev.currentTarget.blur()
+              else if (ev.key === 'Escape') {
+                cancelEdit.current = true
+                ev.currentTarget.blur()
+              }
+            }}
+          />
+        ) : (
+          <button type="button" className="entry-name entry-edit" onClick={() => setEditEntry(e)} title="View / edit options">
+            {embedded && <span className="lead-marker" aria-hidden="true">↳ </span>}
+            {e.customName || e.datasheetName}
+          </button>
+        )}
+        {e.customName && renameId !== e.id && <div className="entry-sub">{e.datasheetName}</div>}
+        {!pointless && (
+          <div className="entry-each">
+            {e.modelCount > 1 ? `${e.modelCount} models · ` : ''}
+            {e.points + e.optionsPoints} pts
+            {e.optionsPoints > 0 ? ` (${e.points} + ${e.optionsPoints})` : ''}
+          </div>
+        )}
+        {e.selectedOptions.length > 0 && (
+          <ul className="entry-opts">
+            {e.selectedOptions.map((o) => (
+              <li key={o.id}>
+                {o.name}
+                {o.points > 0 ? ` (+${o.points})` : ''}
+              </li>
+            ))}
+          </ul>
+        )}
+        {((!pointless && isCharacter(e)) || e.enhancementName) && (
+          <div className="entry-badges">
+            {!pointless && isCharacter(e) && (
+              <button
+                type="button"
+                className={`warlord-btn${e.isWarlord ? ' on' : ''}${e.forcedWarlord ? ' locked' : ''}`}
+                onClick={() => void run(() => setWarlord(list.id, e.id, !e.isWarlord))}
+                disabled={busy || e.forcedWarlord || (!e.isWarlord && hasForcedWarlord)}
+                title={
+                  e.forcedWarlord
+                    ? "This unit's rules require it to be your Warlord."
+                    : hasForcedWarlord
+                      ? 'Another unit must be your Warlord.'
+                      : undefined
+                }
+              >
+                ★ {e.isWarlord ? 'Warlord' : 'Make Warlord'}
+              </button>
+            )}
+            {e.enhancementName && (
+              <span className="badge-enh">{e.enhancementName} (+{e.enhancementPoints})</span>
+            )}
+          </div>
+        )}
+        {notesId === e.id ? (
+          <textarea
+            className="entry-notes-input"
+            autoFocus
+            value={notesDraft}
+            maxLength={2000}
+            rows={3}
+            placeholder="Notes for this unit"
+            aria-label="Unit notes"
+            onChange={(ev) => setNotesDraft(ev.target.value)}
+            onBlur={() => void commitNotes(e)}
+            onKeyDown={(ev) => {
+              if (ev.key === 'Escape') {
+                cancelEdit.current = true
+                ev.currentTarget.blur()
+              }
+            }}
+          />
+        ) : (
+          e.notes && (
+            <button type="button" className="entry-note" onClick={() => startNotes(e)} title="Edit note">
+              {e.notes}
+            </button>
+          )
+        )}
+        <div className="entry-links">
+          <button type="button" className="entry-edit-link" onClick={() => setEditEntry(e)}>
+            Edit…
+          </button>
+          <button type="button" className="entry-edit-link" onClick={() => startRename(e)}>
+            {e.customName ? 'Rename' : 'Name'}
+          </button>
+          {notesId !== e.id && !e.notes && (
+            <button type="button" className="entry-edit-link" onClick={() => startNotes(e)}>
+              Add note
+            </button>
+          )}
+          {!pointless && leaderRow && (
+            <button type="button" className="entry-edit-link" onClick={() => void attach(e.id, null)} disabled={busy}>
+              Detach
+            </button>
+          )}
+          {!pointless && variant === 'normal' && isCharacter(e) && (() => {
+            const options = bodyguardsFor(e)
+            return options.length > 0 ? (
+              <select
+                className="attach-select"
+                value={e.attachedToEntryId ?? ''}
+                onChange={(ev) => void attach(e.id, ev.target.value || null)}
+                disabled={busy}
+                aria-label="Attach this Leader to a unit"
+              >
+                <option value="">Attach to…</option>
+                {options.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.customName || b.datasheetName}
+                  </option>
+                ))}
+              </select>
+            ) : null
+          })()}
+        </div>
+      </div>
+      {!pointless && <span className="line-total">{e.lineTotal}</span>}
+      <button
+        type="button"
+        className="icon-btn dup-btn"
+        onClick={() => duplicateEntry(e)}
+        disabled={busy}
+        aria-label="Duplicate"
+        title="Duplicate"
+      >
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+          <rect x="9" y="9" width="11" height="11" rx="2" />
+          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+        </svg>
+      </button>
+      <button type="button" className="icon-btn" onClick={() => void run(() => removeEntry(list.id, e.id))} disabled={busy} aria-label="Remove">×</button>
+    </div>
+    )
+  }
+
+  // A top-level list item: either a plain entry row, or an attached unit with the
+  // Leader(s) on top and the Bodyguard embedded beneath.
+  const renderListItem = (e: ListEntry) => {
+    const leaders = leadersByBodyguard.get(e.id)
+    if (leaders && leaders.length > 0) {
+      const combined = e.lineTotal + leaders.reduce((n, l) => n + l.lineTotal, 0)
+      return (
+        <div className="attached-unit" key={e.id}>
+          <div className="attached-head">
+            <span className="attached-label">Attached unit</span>
+            {!pointless && <span className="attached-pts">{combined} pts</span>}
+          </div>
+          {leaders.map((l) => renderEntryRow(l, 'leader'))}
+          {renderEntryRow(e, 'embedded')}
+        </div>
+      )
+    }
+    return renderEntryRow(e, 'normal')
+  }
+
+  // The entries of one force, grouped by role or shown in custom order.
+  const renderForceEntries = (forceId: string) => {
+    const top = topLevelOf(forceId)
+    if (top.length === 0) {
+      return <p className="empty">No units in this force yet.</p>
+    }
+    if (listView === 'custom') {
+      return (
+        <div className="custom-list">
+          {top.map((e, i) => (
+            <div className="custom-item" key={e.id}>
+              <div className="reorder">
+                <button
+                  type="button"
+                  className="reorder-btn"
+                  onClick={() => moveTopLevel(forceId, i, -1)}
+                  disabled={busy || i === 0}
+                  aria-label="Move up"
+                >
+                  ↑
+                </button>
+                <button
+                  type="button"
+                  className="reorder-btn"
+                  onClick={() => moveTopLevel(forceId, i, 1)}
+                  disabled={busy || i === top.length - 1}
+                  aria-label="Move down"
+                >
+                  ↓
+                </button>
+              </div>
+              <div className="custom-body">{renderListItem(e)}</div>
+            </div>
+          ))}
+        </div>
+      )
+    }
+    return groupByRole(top, (e) => e.keywords).map((group) => (
+      <details className="role-group" key={group.role} open>
+        <summary className="role-summary">
+          {group.role} <span className="role-count">{group.items.length}</span>
+        </summary>
+        {group.items.map((e) => renderListItem(e))}
+      </details>
+    ))
   }
 
   return (
@@ -361,10 +831,69 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
         </div>
       </div>
 
-      {error && <p className="builder-error">{error}</p>}
+
+      {!pointless && list.forces.length > 0 && (
+        <div className="force-bar">
+          <span className="force-bar-label">Forces</span>
+          <div className="force-tabs">
+            {list.forces.map((f) => (
+              <button
+                key={f.id}
+                type="button"
+                className={`force-tab${activeForce?.id === f.id ? ' on' : ''}`}
+                onClick={() => setActiveForceId(f.id)}
+              >
+                {f.factionName}
+              </button>
+            ))}
+          </div>
+          {addingForce ? (
+            <span className="add-force-pick">
+              <select
+                className="attach-select"
+                defaultValue=""
+                disabled={busy}
+                aria-label="Choose a faction to add"
+                onChange={(e) => {
+                  const fid = e.target.value
+                  if (fid) {
+                    void addAlliedForce(fid)
+                    setAddingForce(false)
+                  }
+                }}
+              >
+                <option value="">Choose faction…</option>
+                {(allFactions ?? [])
+                  .filter((f) => !list.forces.some((lf) => lf.factionId === f.id))
+                  .map((f) => (
+                    <option key={f.id} value={f.id}>
+                      {f.name}
+                    </option>
+                  ))}
+              </select>
+              <button type="button" className="entry-edit-link" onClick={() => setAddingForce(false)}>
+                Cancel
+              </button>
+            </span>
+          ) : (
+            <button
+              type="button"
+              className="btn btn-sm add-force-btn"
+              onClick={() => {
+                void ensureFactions()
+                setAddingForce(true)
+              }}
+              disabled={busy}
+            >
+              + Add force
+            </button>
+          )}
+        </div>
+      )}
 
       {!pointless && (
         <div className="list-setup">
+          <div className="setup-title">Configuration</div>
           <label className="setup-field battle-size">
             <span>Battle size</span>
             <select value={list.battleSize ?? ''} onChange={(e) => changeBattleSize(e.target.value || null)} disabled={busy}>
@@ -373,6 +902,18 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
                 <option key={b} value={b}>{b} · {BATTLE_SIZE_RULES[b].cap} pts</option>
               ))}
             </select>
+          </label>
+          <label className="setup-field disposition">
+            <span>Force disposition</span>
+            <input
+              className="disposition-input"
+              value={disposition}
+              maxLength={100}
+              placeholder="Optional"
+              onChange={(e) => setDisposition(e.target.value)}
+              onBlur={saveDisposition}
+              disabled={busy}
+            />
           </label>
           {hasDetachments && (
             <div className="setup-field">
@@ -443,7 +984,7 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
             .filter((d) => d.rules.length > 0)
             .map((d) => (
               <details className="det-rules" key={d.id} open>
-                <summary>{d.name} — detachment rule{d.rules.length > 1 ? 's' : ''}</summary>
+                <summary>{d.name} - detachment rule{d.rules.length > 1 ? 's' : ''}</summary>
                 <dl className="rules-list">
                   {d.rules.map((r) => (
                     <div className="rule" key={r.name}>
@@ -486,6 +1027,32 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
         </div>
       )}
 
+      <div className="builder-hud">
+        <div className="hud-metrics">
+          {pointless ? (
+            <>
+              <span className="hud-total">{list.entries.length}</span>
+              <span className="hud-lim">operatives</span>
+            </>
+          ) : (
+            <>
+              <span className={`hud-total${over ? ' over' : ''}`}>{list.total}</span>
+              {list.pointsLimit != null && <span className="hud-lim">/ {list.pointsLimit}</span>}
+              <span className="hud-unit">pts</span>
+              {rules && dpUsed > 0 && <span className="hud-dp">{dpUsed}/{rules.dp} DP</span>}
+            </>
+          )}
+        </div>
+        {!pointless &&
+          (issues.length === 0 ? (
+            <span className="hud-status ok">Legal</span>
+          ) : (
+            <button type="button" className="hud-status bad" onClick={() => setShowAssistant(true)}>
+              {issues.length} to fix
+            </button>
+          ))}
+      </div>
+
       <div className="builder-tabs" role="tablist" aria-label="Builder panels">
         <button
           type="button"
@@ -518,14 +1085,32 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
-              {catalogueGroups.length > 1 && (
+              <select
+                className="catalogue-sort"
+                value={sort}
+                onChange={(e) => setSort(e.target.value as 'role' | 'name' | 'points')}
+                aria-label="Sort catalogue"
+              >
+                <option value="role">By role</option>
+                <option value="name">A to Z</option>
+                {!pointless && <option value="points">By points</option>}
+              </select>
+              {sort === 'role' && catalogueGroups.length > 1 && (
                 <button type="button" className="collapse-all" onClick={toggleAllGroups}>
                   {allCollapsed ? 'Expand all' : 'Collapse all'}
                 </button>
               )}
+              <button type="button" className="collapse-all" onClick={() => setShowSearch(true)}>
+                Rule search
+              </button>
             </div>
           </div>
-          <p className="panel-hint">Tap a unit's name for its full datasheet.</p>
+          <p className="panel-hint">
+            {list.forces.length > 1 && activeForce ? (
+              <>Adding to <b>{activeForce.factionName}</b>. </>
+            ) : null}
+            Tap a unit's name for its full datasheet.
+          </p>
           {(legendsCount > 0 || crucibleCount > 0) && (
             <div className="tier-toggles">
               <span className="tier-label">Show</span>
@@ -546,6 +1131,10 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
           <div className="scroll">
             {filtered.length === 0 ? (
               <p className="empty">No units match.</p>
+            ) : sort !== 'role' ? (
+              <div className="unit-flat">
+                {sortedFlat.map((d, i) => renderUnit(d, i === 0))}
+              </div>
             ) : (
               catalogueGroups.map((group) => (
                 <details
@@ -566,23 +1155,7 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
                   <summary className="role-summary">
                     {group.role} <span className="role-count">{group.items.length}</span>
                   </summary>
-                  {group.items.map((d) => (
-                    <div className="unit-row" key={d.id}>
-                      <button type="button" className="unit-name" onClick={() => setDetailId(d.id)}>
-                        {d.name}
-                      </button>
-                      {!pointless && <span className="unit-pts">{d.points != null ? `${d.points}` : '—'}</span>}
-                      <button
-                        type="button"
-                        className="add-btn"
-                        data-tour={d.id === filtered[0].id ? 'catalogue-add' : undefined}
-                        onClick={() => void add(d.id)}
-                        disabled={busy}
-                      >
-                        Add
-                      </button>
-                    </div>
-                  ))}
+                  {group.items.map((d) => renderUnit(d, d.id === filtered[0].id))}
                 </details>
               ))
             )}
@@ -594,6 +1167,16 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
             <h3>Your list</h3>
             <div className="panel-head-actions">
               <span className="li-points">{list.entries.length} entries</span>
+              {list.entries.length > 1 && (
+                <div className="view-toggle" role="group" aria-label="List grouping">
+                  <button type="button" className={listView === 'role' ? 'on' : ''} onClick={() => setListView('role')}>
+                    Role
+                  </button>
+                  <button type="button" className={listView === 'custom' ? 'on' : ''} onClick={() => setListView('custom')}>
+                    Custom
+                  </button>
+                </div>
+              )}
               {list.entries.length > 0 && (
                 <button type="button" className="play-btn" onClick={() => setShowPlay(true)}>
                   <span aria-hidden="true">▶</span> Play view
@@ -602,84 +1185,30 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
             </div>
           </div>
           <div className="scroll">
-            {list.entries.length === 0 ? (
+            {list.entries.length === 0 && list.forces.length <= 1 ? (
               <p className="empty">No {unitWord} yet. Add some from the catalogue.</p>
-            ) : (
-              groupByRole(list.entries, (e) => e.keywords).map((group) => (
-                <details className="role-group" key={group.role} open>
-                  <summary className="role-summary">
-                    {group.role} <span className="role-count">{group.items.length}</span>
-                  </summary>
-                  {group.items.map((e) => (
-                <div className="entry-row" key={e.id}>
-                  <div style={{ minWidth: 0, flex: 1 }}>
-                    <button type="button" className="entry-name entry-edit" onClick={() => setEditEntry(e)} title="View / edit options">
-                      {e.datasheetName}
-                    </button>
-                    {!pointless && (
-                      <div className="entry-each">
-                        {e.modelCount > 1 ? `${e.modelCount} models · ` : ''}
-                        {e.points + e.optionsPoints} pts
-                        {e.optionsPoints > 0 ? ` (${e.points} + ${e.optionsPoints})` : ''}
-                      </div>
-                    )}
-                    {e.selectedOptions.length > 0 && (
-                      <ul className="entry-opts">
-                        {e.selectedOptions.map((o) => (
-                          <li key={o.id}>
-                            {o.name}
-                            {o.points > 0 ? ` (+${o.points})` : ''}
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                    {((!pointless && isCharacter(e)) || e.enhancementName) && (
-                      <div className="entry-badges">
-                        {!pointless && isCharacter(e) && (
-                          <button
-                            type="button"
-                            className={`warlord-btn${e.isWarlord ? ' on' : ''}${e.forcedWarlord ? ' locked' : ''}`}
-                            onClick={() => void run(() => setWarlord(list.id, e.id, !e.isWarlord))}
-                            disabled={busy || e.forcedWarlord || (!e.isWarlord && hasForcedWarlord)}
-                            title={
-                              e.forcedWarlord
-                                ? "This unit's rules require it to be your Warlord."
-                                : hasForcedWarlord
-                                  ? 'Another unit must be your Warlord.'
-                                  : undefined
-                            }
-                          >
-                            ★ {e.isWarlord ? 'Warlord' : 'Make Warlord'}
-                          </button>
-                        )}
-                        {e.enhancementName && (
-                          <span className="badge-enh">{e.enhancementName} (+{e.enhancementPoints})</span>
-                        )}
-                      </div>
-                    )}
-                    <button type="button" className="entry-edit-link" onClick={() => setEditEntry(e)}>
-                      Edit…
+            ) : list.forces.length > 1 ? (
+              list.forces.map((f) => (
+                <section className="force-section" key={f.id}>
+                  <div className="force-section-head">
+                    <span className="force-name">{f.factionName}</span>
+                    <span className="force-count">
+                      {list.entries.filter((e) => e.forceId === f.id).length}
+                    </span>
+                    <button
+                      type="button"
+                      className="entry-edit-link force-remove"
+                      onClick={() => void dropForce(f.id)}
+                      disabled={busy}
+                    >
+                      Remove force
                     </button>
                   </div>
-                  {!pointless && <span className="line-total">{e.lineTotal}</span>}
-                  <button
-                    type="button"
-                    className="icon-btn dup-btn"
-                    onClick={() => duplicateEntry(e)}
-                    disabled={busy}
-                    aria-label="Duplicate"
-                    title="Duplicate"
-                  >
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-                      <rect x="9" y="9" width="11" height="11" rx="2" />
-                      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                    </svg>
-                  </button>
-                  <button type="button" className="icon-btn" onClick={() => void run(() => removeEntry(list.id, e.id))} disabled={busy} aria-label="Remove">×</button>
-                </div>
-                  ))}
-                </details>
+                  {renderForceEntries(f.id)}
+                </section>
               ))
+            ) : (
+              renderForceEntries(list.forces[0]?.id ?? activeForceId)
             )}
           </div>
         </div>
@@ -688,6 +1217,9 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
       {detailId && (
         <UnitDetailModal
           datasheetId={detailId}
+          presets={presetsBySheet.get(detailId) ?? []}
+          onSavePreset={(name, optionIds, models) => void savePreset(detailId, name, optionIds, models)}
+          onDeletePreset={(presetId) => void removePreset(presetId)}
           onAdd={(optionIds, models) => {
             void add(detailId, optionIds, models)
             setDetailId(null)
@@ -704,6 +1236,9 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
           initialModels={editEntry.modelCount}
           submitLabel="Save changes"
           busy={busy}
+          presets={presetsBySheet.get(editEntry.datasheetId) ?? []}
+          onSavePreset={(name, optionIds, models) => void savePreset(editEntry.datasheetId, name, optionIds, models)}
+          onDeletePreset={(presetId) => void removePreset(presetId)}
           onSizeChange={(m) => void runEntry(editEntry.id, () => setModelCount(list.id, editEntry.id, m))}
           enhancement={
             pointless || list.detachments.length === 0
@@ -715,7 +1250,7 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
                 }
           }
           onAdd={(optionIds) => {
-            void run(() => updateEntry(list.id, editEntry.id, optionIds))
+            void run(() => updateEntry(list.id, editEntry.id, { selectedOptionIds: optionIds }))
             setEditEntry(null)
           }}
           onClose={() => setEditEntry(null)}
@@ -745,6 +1280,17 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
       )}
 
       {showPlay && <PlayView list={list} onClose={() => setShowPlay(false)} />}
+
+      {showSearch && (
+        <RuleSearch
+          systemKey={list.gameSystemKey}
+          onOpenDatasheet={(dsId) => {
+            setShowSearch(false)
+            setDetailId(dsId)
+          }}
+          onClose={() => setShowSearch(false)}
+        />
+      )}
     </section>
   )
 }

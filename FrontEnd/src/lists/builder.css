@@ -26,7 +26,7 @@
 .btn-primary {
   border-color: var(--accent);
   background: var(--accent);
-  color: #fff;
+  color: var(--accent-ink);
   font-weight: 600;
 }
 
@@ -50,13 +50,30 @@
 
 .list-index li {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 10px 12px;
   padding: 12px 14px;
   border: 1px solid var(--border);
   border-radius: 8px;
   cursor: pointer;
+}
+
+/* Mobile-first: name/meta take a full line, actions sit on their own line below
+   with room to lay out. Both share a row again once there is width. */
+.list-index li > div:first-child {
+  flex: 1 1 100%;
+  min-width: 0;
+}
+
+@media (min-width: 560px) {
+  .list-index li {
+    flex-wrap: nowrap;
+  }
+  .list-index li > div:first-child {
+    flex: 1 1 auto;
+  }
 }
 
 .list-index li:hover {
@@ -105,8 +122,19 @@
 .list-index .li-right {
   display: flex;
   align-items: center;
-  gap: 12px;
-  flex: none;
+  flex-wrap: wrap;
+  gap: 8px;
+  flex: 1 1 100%;
+  justify-content: flex-start;
+}
+
+@media (min-width: 560px) {
+  .list-index .li-right {
+    flex: 0 0 auto;
+    flex-wrap: nowrap;
+    gap: 12px;
+    justify-content: flex-end;
+  }
 }
 
 .li-dup {
@@ -141,7 +169,7 @@
   color: var(--err);
 }
 
-/* Duplicate (copy) button on a list entry — accent hover, not the delete red. */
+/* Duplicate (copy) button on a list entry - accent hover, not the delete red. */
 .icon-btn.dup-btn {
   display: inline-flex;
   align-items: center;
@@ -271,13 +299,17 @@
 }
 
 .points-readout .pts {
-  font-size: 1.5rem;
+  font-family: var(--f-mono);
+  font-size: 1.6rem;
   font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.01em;
   font-variant-numeric: tabular-nums;
+  color: var(--accent);
 }
 
 .points-readout .pts.over {
-  color: var(--err);
+  color: var(--crit);
 }
 
 .points-readout .limit-label {
@@ -308,6 +340,86 @@
   text-transform: uppercase;
   color: var(--err);
   background: rgba(184, 68, 58, 0.14);
+}
+
+/* Sticky status strip: running total + legality stay visible while scrolling. */
+.builder-hud {
+  position: sticky;
+  top: env(safe-area-inset-top, 0px);
+  z-index: 15;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 14px;
+  padding: 8px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.hud-metrics {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+
+.hud-total {
+  font-family: var(--f-mono);
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.hud-total.over {
+  color: var(--crit);
+}
+
+.hud-lim,
+.hud-unit {
+  font-family: var(--f-mono);
+  font-size: 0.78rem;
+  color: var(--faint);
+}
+
+.hud-dp {
+  margin-left: 8px;
+  font-family: var(--f-mono);
+  font-size: 0.7rem;
+  color: var(--muted);
+  padding: 2px 7px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+}
+
+.hud-status {
+  flex: none;
+  font-family: var(--f-display);
+  font-weight: 700;
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 5px 11px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+}
+
+.hud-status.ok {
+  color: var(--ok);
+  border-color: var(--ok);
+  background: color-mix(in srgb, var(--ok) 12%, transparent);
+}
+
+.hud-status.bad {
+  color: var(--crit);
+  border-color: var(--crit);
+  background: color-mix(in srgb, var(--crit) 12%, transparent);
+  cursor: pointer;
 }
 
 /* Mobile-first: one panel at a time, chosen by the segmented tabs below.
@@ -344,7 +456,7 @@
 
 .builder-grid {
   display: grid;
-  grid-template-columns: 1fr;
+  grid-template-columns: minmax(0, 1fr);
   gap: 16px;
   margin-top: 12px;
 }
@@ -359,7 +471,7 @@
     display: none;
   }
   .builder-grid {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     margin-top: 16px;
   }
   /* Both panels show side by side; override the single-tab hide rules. */
@@ -376,6 +488,7 @@
   display: flex;
   flex-direction: column;
   min-height: 320px;
+  min-width: 0;
 }
 
 .panel-head {
@@ -446,11 +559,25 @@
   font: inherit;
   font-size: 0.85rem;
   width: 150px;
+  max-width: 100%;
+}
+
+.catalogue-sort {
+  padding: 7px 8px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+  font-size: 0.82rem;
+  cursor: pointer;
 }
 
 .panel-head-actions {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
@@ -542,7 +669,7 @@
 
 .add-btn:hover {
   background: var(--accent);
-  color: #fff;
+  color: var(--accent-ink);
 }
 
 .entry-row {
@@ -664,7 +791,7 @@
 }
 
 .modal {
-  background: var(--surface);
+  background: var(--surface-solid);
   border: 1px solid var(--border);
   border-bottom: none;
   border-radius: 16px 16px 0 0;
@@ -681,6 +808,16 @@
   to { transform: translateY(0); }
 }
 
+/* Drag affordance on the bottom sheet (phones only). */
+.sheet-grip {
+  width: 38px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--faint);
+  opacity: 0.5;
+  margin: 0 auto 12px;
+}
+
 @media (min-width: 640px) {
   .modal-backdrop {
     align-items: center;
@@ -694,6 +831,9 @@
     padding: 20px 22px;
     animation: none;
   }
+  .sheet-grip {
+    display: none;
+  }
 }
 
 .modal-head {
@@ -705,23 +845,40 @@
 
 .modal-head h3 {
   margin: 0;
-  font-size: 1.2rem;
+  font-family: var(--f-display);
+  font-size: 1.35rem;
+  letter-spacing: 0.01em;
+}
+
+.modal-head .unit-pts {
+  flex: none;
+  font-family: var(--f-mono);
+  font-size: 0.78rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+  padding: 4px 9px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  white-space: nowrap;
 }
 
 .modal .keywords {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  margin: 10px 0 0;
+  margin: 12px 0 0;
 }
 
 .modal .kw {
-  font-size: 0.7rem;
-  letter-spacing: 0.05em;
+  font-family: var(--f-mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
-  padding: 2px 7px;
+  padding: 3px 8px;
   border-radius: 5px;
-  background: rgba(127, 127, 127, 0.15);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
   color: var(--muted);
 }
 
@@ -729,32 +886,55 @@
   width: 100%;
   border-collapse: collapse;
   margin-top: 14px;
+  font-family: var(--f-mono);
   font-size: 0.82rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
 }
 
 .stat-table th,
 .stat-table td {
-  padding: 5px 8px;
+  padding: 7px 9px;
   text-align: center;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--line);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
+.stat-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
 .stat-table th {
+  font-size: 0.62rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   color: var(--muted);
-  font-weight: 600;
+  font-weight: 500;
+  background: var(--surface-2);
+}
+
+.stat-table td {
+  color: var(--fg);
 }
 
 .stat-table td:first-child,
 .stat-table th:first-child {
   text-align: left;
+  color: var(--fg);
+  font-family: var(--f-body);
+  font-weight: 600;
 }
 
 .detail-section h4 {
-  margin: 16px 0 6px;
-  font-size: 0.8rem;
-  letter-spacing: 0.06em;
+  margin: 18px 0 8px;
+  padding-bottom: 5px;
+  border-bottom: 1px solid var(--line);
+  font-family: var(--f-display);
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--accent);
 }
@@ -777,6 +957,15 @@
 
 .rules-list .rule {
   margin-bottom: 10px;
+}
+
+/* Ability cards inside the unit sheet. */
+.modal .rules-list .rule {
+  padding: 10px 12px;
+  border-left: 2px solid var(--accent);
+  background: var(--surface-2);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  margin-bottom: 8px;
 }
 
 .rules-list dt {
@@ -846,9 +1035,10 @@
   gap: 10px;
   margin-top: 18px;
   position: sticky;
-  bottom: 0;
-  background: var(--surface);
-  padding-top: 12px;
+  bottom: calc(-1 * env(safe-area-inset-bottom, 0px));
+  background: var(--surface-solid);
+  border-top: 1px solid var(--line);
+  padding: 12px 0 calc(4px + env(safe-area-inset-bottom, 0px));
 }
 
 .modal-subtotal {
@@ -857,8 +1047,9 @@
 }
 
 .modal-subtotal b {
-  color: var(--fg);
-  font-size: 1.1rem;
+  color: var(--accent);
+  font-family: var(--f-mono);
+  font-size: 1.15rem;
   font-variant-numeric: tabular-nums;
 }
 
@@ -1028,7 +1219,6 @@
 }
 
 .entry-edit-link {
-  margin-top: 4px;
   padding: 0;
   border: none;
   background: none;
@@ -1036,6 +1226,371 @@
   font: inherit;
   font-size: 0.74rem;
   cursor: pointer;
+}
+
+.entry-main {
+  min-width: 0;
+  flex: 1;
+}
+
+/* Datasheet name shown beneath a player-given custom name. */
+.entry-sub {
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+/* Row of per-entry actions (edit options, rename, add note). */
+.entry-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin-top: 6px;
+}
+
+.entry-name-input {
+  width: 100%;
+  padding: 5px 8px;
+  border: 1px solid var(--accent);
+  border-radius: 7px;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+  font-weight: 500;
+}
+
+/* Saved note: a tappable block that opens the editor. */
+.entry-note {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  padding: 6px 9px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 7px;
+  background: var(--surface-2, var(--bg));
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.76rem;
+  text-align: left;
+  white-space: pre-wrap;
+  cursor: pointer;
+}
+
+.entry-note:hover {
+  color: var(--fg);
+}
+
+.entry-notes-input {
+  width: 100%;
+  margin-top: 6px;
+  padding: 6px 9px;
+  border: 1px solid var(--accent);
+  border-radius: 7px;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+  font-size: 0.78rem;
+  resize: vertical;
+}
+
+/* Saved loadouts (presets) in the unit-detail sheet. */
+.preset-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.preset-chip {
+  display: flex;
+  align-items: stretch;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.preset-apply {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-height: 40px;
+  padding: 6px 12px;
+  border: none;
+  background: none;
+  color: var(--fg);
+  font: inherit;
+  cursor: pointer;
+}
+
+.preset-apply:hover {
+  background: var(--surface-2, var(--bg));
+  color: var(--accent);
+}
+
+.preset-name { font-weight: 500; }
+
+.preset-pts {
+  font-family: var(--f-mono, inherit);
+  font-size: 0.78rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.preset-del {
+  width: 36px;
+  border: none;
+  border-left: 1px solid var(--border);
+  background: none;
+  color: var(--muted);
+  font-size: 1.2rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.preset-del:hover { color: var(--crit, #b8443a); }
+
+.preset-save {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.preset-input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+}
+
+/* Leader + Bodyguard shown together as one attached unit. */
+.attached-unit {
+  margin: 8px 0;
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--surface-2, var(--bg));
+}
+
+.attached-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 5px 12px;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+.attached-label {
+  font-size: 0.66rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.attached-pts {
+  font-family: var(--f-mono, inherit);
+  font-size: 0.78rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.attached-unit .entry-row {
+  background: var(--surface, var(--bg));
+}
+
+/* The Bodyguard row, embedded beneath its Leader(s). */
+.attached-unit .entry-embedded {
+  border-top: 1px dashed var(--border);
+}
+
+.attached-unit .entry-embedded .entry-main {
+  padding-left: 12px;
+  border-left: 2px solid var(--accent);
+}
+
+.lead-marker { color: var(--accent); }
+
+.attach-select {
+  max-width: 100%;
+  padding: 3px 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--accent);
+  font: inherit;
+  font-size: 0.74rem;
+  cursor: pointer;
+}
+
+/* Role / Custom grouping toggle. */
+.view-toggle {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  overflow: hidden;
+}
+
+.view-toggle button {
+  min-height: 32px;
+  padding: 4px 10px;
+  border: none;
+  background: var(--bg);
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.76rem;
+  cursor: pointer;
+}
+
+.view-toggle button + button {
+  border-left: 1px solid var(--border);
+}
+
+.view-toggle button.on {
+  background: var(--accent);
+  color: var(--surface-solid, #fff);
+  font-weight: 600;
+}
+
+/* Custom-order list with per-item reorder steppers. */
+.custom-list {
+  display: grid;
+  gap: 8px;
+  padding: 4px 0;
+}
+
+.custom-item {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.reorder {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  justify-content: center;
+  flex: none;
+}
+
+.reorder-btn {
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.reorder-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.custom-body {
+  flex: 1;
+  min-width: 0;
+}
+
+/* In custom view the row sits in its own card rather than a divided list. */
+.custom-body > .entry-row {
+  border: 1px solid var(--border);
+  border-radius: 9px;
+}
+
+/* Force selector: tabs for each force + an "Add force" control. */
+.force-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.force-bar-label {
+  font-family: var(--f-display, inherit);
+  font-size: 0.72rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.force-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.force-tab {
+  min-height: 34px;
+  padding: 5px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.force-tab.on {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.add-force-pick {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Per-force sections in the list panel (shown when a list has allied forces). */
+.force-section {
+  margin: 10px 0;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.force-section-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+.force-name {
+  font-family: var(--f-display, inherit);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.force-count {
+  min-width: 22px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--surface-2, var(--bg));
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.force-remove {
+  margin-left: auto;
+  color: var(--crit, #b8443a);
 }
 
 /* Battle size + detachment setup */
@@ -1054,11 +1609,32 @@
   color: var(--muted);
 }
 
+/* "Configuration" heading over the battle size / disposition / detachment controls. */
+.setup-title {
+  font-family: var(--f-display, inherit);
+  font-size: 0.72rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.disposition-input {
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+}
+
 .setup-field.battle-size select {
   max-width: 340px;
 }
 
 .setup-field select {
+  width: 100%;
+  max-width: 100%;
   padding: 10px;
   min-height: 42px;
   border: 1px solid var(--border);
@@ -1413,7 +1989,7 @@
   padding: 4px;
   display: grid;
   gap: 2px;
-  background: var(--surface);
+  background: var(--surface-solid);
   border: 1px solid var(--border);
   border-radius: 9px;
   box-shadow: 0 8px 24px rgba(10, 15, 22, 0.2);
@@ -1440,7 +2016,7 @@
 .btn.is-saved {
   background: var(--ok);
   border-color: var(--ok);
-  color: #fff;
+  color: var(--accent-ink);
   opacity: 1;
 }
 
@@ -1513,7 +2089,7 @@
   padding: 12px 14px;
   border: 1px solid var(--border);
   border-radius: 10px;
-  background: var(--surface);
+  background: var(--surface-solid);
   box-shadow: 0 8px 24px rgba(10, 15, 22, 0.2);
 }
 
@@ -1662,7 +2238,7 @@
 
 .play-btn:hover {
   background: var(--accent);
-  color: #fff;
+  color: var(--accent-ink);
 }
 
 .play-btn span {
@@ -1792,6 +2368,125 @@
 
 .pc-sub {
   font-weight: 600;
+  color: var(--fg);
+}
+
+/* Datasheet name under a custom unit name on a play card. */
+.pc-realname {
+  margin-top: 2px;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.pc-note {
+  margin-top: 10px;
+  padding: 7px 10px;
+  border-left: 3px solid var(--accent);
+  border-radius: 6px;
+  background: var(--surface-2, var(--bg));
+  font-size: 0.82rem;
+  color: var(--fg);
+  white-space: pre-wrap;
+}
+
+/* Leader + Bodyguard cards boxed together in the play view. */
+.play-attached {
+  display: grid;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--accent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+}
+
+.play-attached-label {
+  font-size: 0.66rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* Faction heading above a force's cards in the play view (multi-force lists). */
+.play-force {
+  margin: 18px 0 4px;
+  font-size: 1.05rem;
+  letter-spacing: 0.02em;
+  border-bottom: 2px solid var(--accent);
+  padding-bottom: 4px;
+}
+
+/* Rule search modal. */
+.rs-head {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.rs-input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--accent);
+  border-radius: 9px;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+}
+
+.rs-results {
+  display: grid;
+  gap: 8px;
+  max-height: 60vh;
+}
+
+.rs-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface, var(--bg));
+  color: var(--fg);
+  font: inherit;
+}
+
+.rs-clickable {
+  cursor: pointer;
+}
+
+.rs-clickable:hover {
+  border-color: var(--accent);
+}
+
+.rs-item-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.rs-title {
+  font-weight: 600;
+}
+
+.rs-kind {
+  flex: none;
+  font-size: 0.64rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.rs-sub {
+  font-size: 0.76rem;
+  color: var(--muted);
+  margin-top: 1px;
+}
+
+.rs-text {
+  margin-top: 6px;
+  font-size: 0.84rem;
   color: var(--fg);
 }
 

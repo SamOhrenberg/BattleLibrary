@@ -52,7 +52,7 @@ export function ListAssistant({
         </div>
 
         {issues.length === 0 ? (
-          <p className="assistant-done">✓ This list is battle ready — nothing to fix.</p>
+          <p className="assistant-done">✓ This list is battle ready - nothing to fix.</p>
         ) : (
           <>
             <p className="assistant-intro">
@@ -248,7 +248,7 @@ function IssueActions({
 
     case 'too-many-forced-warlords':
       // Each of these units' rules force it to be Warlord, so the slot can't be
-      // cleared — one of the units has to be removed from the list.
+      // cleared - one of the units has to be removed from the list.
       return (
         <ul className="ai-units">
           {entries(issue.entryIds).map((e) => (

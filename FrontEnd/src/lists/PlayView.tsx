@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   getDatasheet,
+  getDatasheets,
+  type CatalogueDetachment,
   type DatasheetDetail,
   type DatasheetProfile,
   type DatasheetWeapon,
@@ -8,6 +10,7 @@ import {
 import type { ArmyList, ListEntry } from '../lib/lists'
 import { groupByRole } from './roles'
 import { RuleText } from './RuleText'
+import { RuleSearch } from './RuleSearch'
 
 // A read-optimized, printable view of the list: one datasheet card per entry,
 // grouped by role, with the stat line, weapons, abilities (rules text) and the
@@ -16,6 +19,8 @@ export function PlayView({ list, onClose }: { list: ArmyList; onClose: () => voi
   const [details, setDetails] = useState<Record<string, DatasheetDetail>>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
+  const [factionDetachments, setFactionDetachments] = useState<CatalogueDetachment[]>([])
+  const [showSearch, setShowSearch] = useState(false)
 
   const ids = useMemo(() => [...new Set(list.entries.map((e) => e.datasheetId))], [list.entries])
 
@@ -41,7 +46,44 @@ export function PlayView({ list, onClose }: { list: ArmyList; onClose: () => voi
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
 
-  const groups = useMemo(() => groupByRole(list.entries, (e) => e.keywords), [list.entries])
+  // The primary faction's detachments, to show the chosen detachment's rules.
+  useEffect(() => {
+    let active = true
+    getDatasheets(list.factionId)
+      .then((d) => active && setFactionDetachments(d.faction.detachments ?? []))
+      .catch(() => undefined)
+    return () => {
+      active = false
+    }
+  }, [list.factionId])
+
+  // Rules for the detachment(s) the list actually chose.
+  const chosenIds = new Set(list.detachments.map((d) => d.id))
+  const detachmentRules = factionDetachments.filter((d) => chosenIds.has(d.id) && d.rules.length > 0)
+
+  // Attached Leaders render beside their Bodyguard, not in their own role group.
+  const { leadersBy, nested } = useMemo(() => {
+    const entryIds = new Set(list.entries.map((e) => e.id))
+    const by = new Map<string, ListEntry[]>()
+    const nestedIds = new Set<string>()
+    for (const e of list.entries) {
+      if (e.attachedToEntryId && entryIds.has(e.attachedToEntryId)) {
+        const arr = by.get(e.attachedToEntryId)
+        if (arr) arr.push(e)
+        else by.set(e.attachedToEntryId, [e])
+        nestedIds.add(e.id)
+      }
+    }
+    return { leadersBy: by, nested: nestedIds }
+  }, [list.entries])
+
+  const multiForce = list.forces.length > 1
+  const forces = list.forces.length > 0 ? list.forces : [{ id: '', factionName: list.factionName }]
+  const roleGroupsFor = (forceId: string) =>
+    groupByRole(
+      list.entries.filter((e) => (forceId ? e.forceId === forceId : true) && !nested.has(e.id)),
+      (e) => e.keywords,
+    )
 
   return (
     <div className="play-view">
@@ -55,6 +97,7 @@ export function PlayView({ list, onClose }: { list: ArmyList; onClose: () => voi
           </span>
         </div>
         <div className="play-actions">
+          <button type="button" className="btn" onClick={() => setShowSearch(true)}>Rule search</button>
           <button type="button" className="btn" onClick={() => window.print()}>Print</button>
           <button type="button" className="btn btn-primary" onClick={onClose}>Close</button>
         </div>
@@ -65,19 +108,58 @@ export function PlayView({ list, onClose }: { list: ArmyList; onClose: () => voi
       ) : (
         <>
           {error && <p className="builder-error">Some datasheets couldn’t load.</p>}
-          <div className="play-cards">
-            {groups.map((group) => (
-              <section className="play-group" key={group.role}>
-                <h3 className="play-role">{group.role}</h3>
-                <div className="play-group-cards">
-                  {group.items.map((e) => (
-                    <PlayCard key={e.id} entry={e} detail={details[e.datasheetId]} />
-                  ))}
+          {detachmentRules.length > 0 && (
+            <section className="play-group">
+              <h3 className="play-role">Detachment rules</h3>
+              {detachmentRules.map((d) => (
+                <div className="pc-abilities" key={d.id}>
+                  <h5>{d.name}</h5>
+                  <dl className="rules-list">
+                    {d.rules.map((r) => (
+                      <div className="rule" key={r.name}>
+                        <dt>{r.name}</dt>
+                        {r.text && <dd><RuleText text={r.text} /></dd>}
+                      </div>
+                    ))}
+                  </dl>
                 </div>
-              </section>
+              ))}
+            </section>
+          )}
+          <div className="play-cards">
+            {forces.map((force) => (
+              <div className="play-force-section" key={force.id || 'single'}>
+                {multiForce && <h3 className="play-force">{force.factionName}</h3>}
+                {roleGroupsFor(force.id).map((group) => (
+                  <section className="play-group" key={group.role}>
+                    <h3 className="play-role">{group.role}</h3>
+                    <div className="play-group-cards">
+                      {group.items.map((e) => {
+                        const leaders = leadersBy.get(e.id)
+                        if (leaders && leaders.length > 0) {
+                          return (
+                            <div className="play-attached" key={e.id}>
+                              <span className="play-attached-label">Attached unit</span>
+                              {leaders.map((l) => (
+                                <PlayCard key={l.id} entry={l} detail={details[l.datasheetId]} />
+                              ))}
+                              <PlayCard entry={e} detail={details[e.datasheetId]} />
+                            </div>
+                          )
+                        }
+                        return <PlayCard key={e.id} entry={e} detail={details[e.datasheetId]} />
+                      })}
+                    </div>
+                  </section>
+                ))}
+              </div>
             ))}
           </div>
         </>
+      )}
+
+      {showSearch && (
+        <RuleSearch systemKey={list.gameSystemKey} onClose={() => setShowSearch(false)} />
       )}
     </div>
   )
@@ -91,11 +173,12 @@ function PlayCard({ entry, detail }: { entry: ListEntry; detail?: DatasheetDetai
     <article className="play-card">
       <div className="pc-head">
         <h4>
-          {entry.datasheetName}
+          {entry.customName || entry.datasheetName}
           {entry.modelCount > 1 && <span className="pc-models"> · {entry.modelCount} models</span>}
         </h4>
         <span className="pc-pts">{entry.lineTotal} pts</span>
       </div>
+      {entry.customName && <div className="pc-realname">{entry.datasheetName}</div>}
 
       {(entry.isWarlord || entry.enhancementName) && (
         <div className="pc-badges">
@@ -147,6 +230,7 @@ function PlayCard({ entry, detail }: { entry: ListEntry; detail?: DatasheetDetai
               <span className="pc-sub">Wargear:</span> {entry.selectedOptions.map((o) => o.name).join(', ')}
             </div>
           )}
+          {entry.notes && <div className="pc-note">{entry.notes}</div>}
         </>
       )}
     </article>
@@ -161,7 +245,7 @@ function StatTable({ profile }: { profile: DatasheetProfile }) {
           <tr>{profile.characteristics.map((c) => <th key={c.name}>{c.name}</th>)}</tr>
         </thead>
         <tbody>
-          <tr>{profile.characteristics.map((c) => <td key={c.name}>{c.value || '—'}</td>)}</tr>
+          <tr>{profile.characteristics.map((c) => <td key={c.name}>{c.value || '-'}</td>)}</tr>
         </tbody>
       </table>
     </div>
@@ -184,7 +268,7 @@ function WeaponTable({ title, weapons }: { title: string; weapons: DatasheetWeap
           {weapons.map((w) => (
             <tr key={w.name}>
               <td>{w.name}</td>
-              {w.characteristics.map((c) => <td key={c.name}>{c.value || '—'}</td>)}
+              {w.characteristics.map((c) => <td key={c.name}>{c.value || '-'}</td>)}
             </tr>
           ))}
         </tbody>

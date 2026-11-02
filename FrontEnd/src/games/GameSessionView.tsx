@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { ApiError } from '../lib/api'
 import { getLists, getList, type ArmyListSummary, type ArmyList } from '../lib/lists'
 import { PlayView } from '../lists/PlayView'
+import { RuleSearch } from '../lists/RuleSearch'
 import { getFriends, searchUsers, type Friend, type UserSearchResult } from '../lib/social'
 import { joinSessionGroup, leaveSessionGroup, onSessionUpdated } from '../lib/gameHub'
 import { groupByRole } from '../lists/roles'
@@ -33,6 +34,7 @@ export function GameSessionView({ sessionId, onExit }: { sessionId: string; onEx
   const [error, setError] = useState<string | null>(null)
   const [playList, setPlayList] = useState<ArmyList | null>(null)
   const [viewUnit, setViewUnit] = useState<{ datasheetId: string; name: string } | null>(null)
+  const [showSearch, setShowSearch] = useState(false)
   const onViewUnit: ViewUnit = (datasheetId, name) => setViewUnit({ datasheetId, name })
 
   async function openPlayView(listId: string) {
@@ -96,6 +98,9 @@ export function GameSessionView({ sessionId, onExit }: { sessionId: string; onEx
               <span aria-hidden="true">▶</span> Play view
             </button>
           )}
+          {session.gameSystemKey && (
+            <button className="btn" onClick={() => setShowSearch(true)}>Rule search</button>
+          )}
           <button className="btn" onClick={onExit}>Back</button>
         </div>
       </div>
@@ -116,6 +121,9 @@ export function GameSessionView({ sessionId, onExit }: { sessionId: string; onEx
       {playList && <PlayView list={playList} onClose={() => setPlayList(null)} />}
       {viewUnit && (
         <DatasheetModal datasheetId={viewUnit.datasheetId} title={viewUnit.name} onClose={() => setViewUnit(null)} />
+      )}
+      {showSearch && session.gameSystemKey && (
+        <RuleSearch systemKey={session.gameSystemKey} onClose={() => setShowSearch(false)} />
       )}
     </section>
   )
@@ -227,7 +235,7 @@ function SetupView({
           {me.units.length > 0 && (
             <>
               <p className="empty-note">
-                Models default to your list. Bring fewer if you like — you can't bring more than your list allows.
+                Models default to your list. Bring fewer if you like; you can't bring more than your list allows.
               </p>
               <ul className="unit-list">
                 {me.units.map((u) => (
@@ -357,7 +365,7 @@ function InvitePicker({
       )}
 
       {term.length > 0 && friendMatches.length === 0 && publicMatches.length === 0 && (
-        <p className="empty-note">No players found — press Invite to send to that exact username.</p>
+        <p className="empty-note">No players found. Press Invite to send to that exact username.</p>
       )}
     </div>
   )
@@ -641,7 +649,7 @@ function OpponentCard({ p }: { p: SessionParticipant }) {
     <div className="opponent-card">
       <div className="opp-head">
         <span className="person-name">{p.username}</span>
-        <span className="person-sub">{p.factionName ?? '—'}</span>
+        <span className="person-sub">{p.factionName ?? '-'}</span>
       </div>
       <div className="opp-stats">
         <span><b>{p.totalScore}</b> vp</span>
@@ -674,7 +682,7 @@ function FinishedView({ session }: { session: GameSession }) {
         {players.map((p) => (
           <li key={p.id} className={`standing-row ${p.totalScore === best ? 'winner' : ''}`}>
             <span className="score-name">{p.username}{p.isMe ? ' (you)' : ''}</span>
-            <span className="score-bits"><b>{p.totalScore}</b> vp · {p.factionName ?? '—'}</span>
+            <span className="score-bits"><b>{p.totalScore}</b> vp · {p.factionName ?? '-'}</span>
           </li>
         ))}
       </ol>

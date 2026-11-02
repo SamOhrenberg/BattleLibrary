@@ -5,7 +5,7 @@ import type { ArmyList, ListEntry } from '../lib/lists'
 //
 // Per battle size: points cap, Detachment Points budget, enhancement cap, and
 // the "rule of N" datasheet cap. Onslaught's DP/enhancement figures are not yet
-// confirmed by GW (11e launched mid-2026) — the values below are placeholders;
+// confirmed by GW (11e launched mid-2026) - the values below are placeholders;
 // adjust them here when official numbers land.
 
 interface SizeRules {
@@ -64,7 +64,7 @@ export function validateList(list: ArmyList, hasDetachments: boolean, pointless:
     issues.push({
       code: 'empty',
       message: 'Add at least one unit.',
-      fix: 'Battleline units are a solid start — add one below, or browse the full catalogue.',
+      fix: 'Battleline units are a solid start - add one below, or browse the full catalogue.',
     })
   }
   // Point-less systems (Kill Team) have no further legality rules.
@@ -95,7 +95,7 @@ export function validateList(list: ArmyList, hasDetachments: boolean, pointless:
       issues.push({
         code: 'no-detachment',
         message: 'Select a detachment.',
-        fix: 'Pick a detachment below — it sets your detachment rule and the enhancements you can take.',
+        fix: 'Pick a detachment below - it sets your detachment rule and the enhancements you can take.',
       })
     } else if (list.detachments.length > 1 && dpUsed > rules.dp) {
       // A single detachment is always legal even if it exceeds the budget.
@@ -115,7 +115,7 @@ export function validateList(list: ArmyList, hasDetachments: boolean, pointless:
     issues.push({
       code: 'too-many-forced-warlords',
       message: 'Two units each require being your Warlord.',
-      fix: 'Only one is allowed — remove one of these units.',
+      fix: 'Only one is allowed - remove one of these units.',
       entryIds: forced.map((e) => e.id),
     })
   } else if (warlords.length === 0) {
