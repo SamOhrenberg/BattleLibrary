@@ -44,6 +44,7 @@ public sealed class CachedDatasheetConfiguration : IEntityTypeConfiguration<Cach
     {
         builder.Property(d => d.BsDataId).IsRequired().HasMaxLength(100);
         builder.Property(d => d.Name).IsRequired().HasMaxLength(200);
+        builder.Property(d => d.AvailabilityJson).HasColumnType("jsonb");
         builder.Property(d => d.ModelJson).HasColumnType("jsonb");
         builder.HasIndex(d => d.FactionId);
         builder.HasIndex(d => d.BsDataId);

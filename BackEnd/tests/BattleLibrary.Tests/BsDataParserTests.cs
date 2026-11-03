@@ -40,6 +40,11 @@ public class BsDataParserTests
         Assert.Equal("16", statLine.Characteristics.Single(c => c.Name == "W").Value);
 
         Assert.NotEmpty(battlewagon.Weapons);
+
+        // A core faction unit carries no visibility gate, so it always shows.
+        Assert.NotNull(battlewagon.Availability);
+        Assert.Empty(battlewagon.Availability.RequiredDetachmentIds);
+        Assert.Empty(battlewagon.Availability.RequiredToggles);
     }
 
     [Fact]

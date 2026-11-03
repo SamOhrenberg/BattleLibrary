@@ -81,6 +81,26 @@ deployment, pass them as environment variables, e.g.
 Army data comes from the BattleScribe data repositories (the
 [`BSData`](https://github.com/BSData) organization).
 
+## AI assistance disclaimer
+
+I do use [Claude Code](https://claude.com/claude-code) for assistance with developing this project. This includes the following uses:
+
+* Assistance parsing / searching large files (BSData, in particular)
+* Assistance with front-end development
+  * I am normally more of a backend developer
+* Generating boilerplate / common code patterns that I can update
+* Rough drafts for documentation / prose
+
+I do this for two reasons:
+1. To practice with tools that are becoming industry standard
+   * At the end of the day, while this is a hobby project for something I want to use, it is also meant to be a part of my public portfolio for potential job seeking
+2. To speed up development
+   * I work a full time job, contract-based gigs, am married, have a toddler, am studying for certificates, maintain creative hobbies with friends. This is a tool I've wanted to build for a long time, but I was barely making any headway on it until I opened myself up to using Claude Code for help. You can look at the commit history and see this has been something that has been slowly growing over the last few months, and it is something I have killed and restarted multiple times over the past year. 
+
+My goal is to get all the benefits of hand-written code in a more timely manner without it feeling like, as the internet would say, AI-vibe-coded-slop. However, many people do not want to use any tool that AI touches, so I wanted to provide an upfront disclaimer on its usage. 
+
+**ALL CHANGES ARE REVIEWED AND TESTED BY MYSELF BEFORE THEY ARE EVER COMMITTED**
+
 ## License
 
 [MIT](LICENSE).

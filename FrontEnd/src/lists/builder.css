@@ -1113,15 +1113,45 @@
   color: var(--muted);
 }
 
+.option-model + .option-model {
+  margin-top: 14px;
+}
+
+/* The model a set of options is for (e.g. "Aspiring Sorcerer"). */
+.option-model-name {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--fg);
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+}
+
 .option-group {
   margin-bottom: 10px;
 }
 
 .option-group-name {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
   font-size: 0.78rem;
   font-weight: 600;
   color: var(--muted);
   margin: 8px 0 2px;
+}
+
+/* "Pick one" / "pick up to N" cap for a choice set. */
+.option-group-hint {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--accent);
+}
+
+.opt-name.opt-none {
+  color: var(--muted);
+  font-style: italic;
 }
 
 .option-wrap {
@@ -1188,6 +1218,11 @@
   accent-color: var(--accent);
 }
 
+/* An option disabled because its set is already at its cap. */
+.option-row:has(input:disabled) {
+  opacity: 0.45;
+}
+
 .option-row .opt-name {
   flex: 1;
   min-width: 0;
@@ -1198,6 +1233,103 @@
   font-size: 0.82rem;
   font-variant-numeric: tabular-nums;
   color: var(--muted);
+}
+
+/* ---- Per-model loadout pool (steppers) ---- */
+.loadout-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.pool-count {
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+.pool-count.full {
+  color: var(--ok);
+}
+
+.variant-group {
+  margin-top: 4px;
+}
+
+.variant-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 4px;
+  min-height: 44px;
+  border-bottom: 1px solid var(--border);
+}
+
+.variant-row:last-child {
+  border-bottom: none;
+}
+
+.variant-row .opt-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.9rem;
+}
+
+.variant-row .opt-pts {
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+.stepper {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: none;
+}
+
+.step-btn {
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--fg);
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.step-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.step-btn:not(:disabled):active {
+  background: color-mix(in srgb, var(--accent) 18%, var(--surface));
+}
+
+.step-n {
+  min-width: 26px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.pool-warn {
+  margin: 8px 0 0;
+  font-size: 0.8rem;
+  color: var(--warn);
+}
+
+.legality.warn {
+  border-color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 10%, var(--surface));
+}
+
+.legality.warn .legality-head {
+  color: var(--warn);
 }
 
 .entry-opts {
@@ -2068,29 +2200,46 @@
   position: relative;
 }
 
+/* Mobile-first: chips stack full width, so the rule preview anchors to the
+   specific chip (directly beneath it) and spans the field with no horizontal
+   scroll. The desktop override below switches back to a wrapping row. */
 .det-chip-wrap {
-  display: inline-flex;
+  display: block;
+  position: relative;
 }
 
-/* Hover/focus preview of a detachment's rules. Anchored to the chip row (not
-   the chip) so it spans the row width and never causes horizontal scroll. The
-   popover is inside the wrap, so hovering it keeps the wrap :hover true. */
+/* Hover/focus preview of a detachment's rules. Accent-outlined with a caret so
+   it reads as attached to the chip, not a stray box far below it. The popover
+   is inside the wrap, so hovering it keeps the wrap :hover true. */
 .det-popover {
   display: none;
   position: absolute;
-  top: 100%;
+  top: calc(100% + 9px);
   left: 0;
   right: 0;
   z-index: 60;
-  margin-top: 6px;
   max-height: 280px;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   padding: 12px 14px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--accent);
   border-radius: 10px;
   background: var(--surface-solid);
-  box-shadow: 0 8px 24px rgba(10, 15, 22, 0.2);
+  box-shadow: 0 14px 34px rgba(10, 15, 22, 0.4);
+}
+
+/* Caret pointing up to the chip the preview belongs to. */
+.det-popover::before {
+  content: "";
+  position: absolute;
+  top: -6px;
+  left: 18px;
+  width: 11px;
+  height: 11px;
+  background: var(--surface-solid);
+  border-left: 1px solid var(--accent);
+  border-top: 1px solid var(--accent);
+  transform: rotate(45deg);
 }
 
 .det-chip-wrap:hover .det-popover,
@@ -2101,7 +2250,7 @@
 .dp-title {
   font-size: 0.82rem;
   font-weight: 700;
-  color: var(--fg);
+  color: var(--accent);
   margin-bottom: 8px;
 }
 
@@ -2141,7 +2290,9 @@
 }
 
 .det-chip {
-  padding: 6px 10px;
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
   border-radius: 8px;
   border: 1px solid var(--border);
   background: var(--surface);
@@ -2149,6 +2300,24 @@
   font: inherit;
   font-size: 0.8rem;
   cursor: pointer;
+}
+
+/* Desktop: chips wrap as a compact row again; the preview anchors to the row
+   (position context on .detachment-chips) so a right-edge chip can't overflow. */
+@media (min-width: 560px) {
+  .det-chip-wrap {
+    display: inline-flex;
+    position: static;
+  }
+  .det-chip {
+    width: auto;
+  }
+  .det-popover {
+    top: calc(100% + 6px);
+  }
+  .det-popover::before {
+    display: none;
+  }
 }
 
 .det-chip.on {

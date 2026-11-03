@@ -7,6 +7,15 @@ export interface SelectedOption {
   id: string
   name: string
   points: number
+  // How many of this choice: 1 for a plain upgrade, the chosen count for a
+  // per-model loadout variant.
+  quantity: number
+}
+
+// A per-model loadout variant and the count chosen for it.
+export interface VariantQuantity {
+  id: string
+  quantity: number
 }
 
 export interface ListForce {
@@ -208,12 +217,14 @@ export function addEntry(
   selectedOptionIds: string[] = [],
   models?: number,
   forceId?: string,
+  variants?: VariantQuantity[],
 ): Promise<ArmyList> {
   return send<ArmyList>(`/api/lists/${listId}/entries`, 'POST', {
     datasheetId,
     selectedOptionIds,
     models,
     forceId,
+    variants,
   })
 }
 
@@ -227,8 +238,13 @@ export function removeForce(listId: string, forceId: string): Promise<ArmyList> 
   return send<ArmyList>(`/api/lists/${listId}/forces/${forceId}`, 'DELETE')
 }
 
-export function setModelCount(listId: string, entryId: string, models: number): Promise<ArmyList> {
-  return send<ArmyList>(`/api/lists/${listId}/entries/${entryId}/size`, 'POST', { models })
+export function setModelCount(
+  listId: string,
+  entryId: string,
+  models: number,
+  variants?: VariantQuantity[],
+): Promise<ArmyList> {
+  return send<ArmyList>(`/api/lists/${listId}/entries/${entryId}/size`, 'POST', { models, variants })
 }
 
 // Persist the owner's custom ordering of entries (full id sequence).
@@ -242,6 +258,7 @@ export interface EntryPatch {
   selectedOptionIds?: string[]
   customName?: string | null
   notes?: string | null
+  variants?: VariantQuantity[]
 }
 
 export function updateEntry(listId: string, entryId: string, patch: EntryPatch): Promise<ArmyList> {

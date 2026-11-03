@@ -21,8 +21,16 @@ public sealed record AttachEntryRequest(Guid? AttachToEntryId);
 
 public sealed record SetEnhancementRequest(string? EnhancementId);
 
+// A per-model loadout variant and how many of it the pool holds.
+public sealed record VariantQuantityDto(string Id, int Quantity);
+
 // ForceId picks which force the unit joins; null uses the primary force.
-public sealed record AddEntryRequest(string DatasheetId, IReadOnlyList<string>? SelectedOptionIds, int? Models = null, Guid? ForceId = null);
+public sealed record AddEntryRequest(
+    string DatasheetId,
+    IReadOnlyList<string>? SelectedOptionIds,
+    int? Models = null,
+    Guid? ForceId = null,
+    IReadOnlyList<VariantQuantityDto>? Variants = null);
 
 // Add an allied force (a faction) to the list.
 public sealed record AddForceRequest(string FactionId);
@@ -35,14 +43,15 @@ public sealed record ListForceDto(Guid Id, string FactionId, string FactionName,
 public sealed record UpdateEntryRequest(
     IReadOnlyList<string>? SelectedOptionIds,
     string? CustomName = null,
-    string? Notes = null);
+    string? Notes = null,
+    IReadOnlyList<VariantQuantityDto>? Variants = null);
 
-public sealed record SetModelCountRequest(int Models);
+public sealed record SetModelCountRequest(int Models, IReadOnlyList<VariantQuantityDto>? Variants = null);
 
 // The owner's full custom ordering of a list's entries, by entry id.
 public sealed record SetEntryOrderRequest(IReadOnlyList<Guid> EntryIds);
 
-public sealed record SelectedOptionDto(string Id, string Name, int Points);
+public sealed record SelectedOptionDto(string Id, string Name, int Points, int Quantity);
 
 // A saved loadout for one datasheet, reusable across the owner's lists.
 public sealed record CreatePresetRequest(
@@ -50,7 +59,8 @@ public sealed record CreatePresetRequest(
     string DatasheetId,
     string Name,
     int? Models,
-    IReadOnlyList<string>? SelectedOptionIds);
+    IReadOnlyList<string>? SelectedOptionIds,
+    IReadOnlyList<VariantQuantityDto>? Variants = null);
 
 public sealed record LoadoutPresetDto(
     Guid Id,

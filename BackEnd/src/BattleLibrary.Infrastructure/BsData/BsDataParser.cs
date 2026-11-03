@@ -123,9 +123,10 @@ public sealed class BsDataParser
         Index index,
         IReadOnlyDictionary<string, CatalogueDocument> cataloguesById)
     {
-        var datasheets = ExtractDatasheets(catalogue, schema, ptsTypeId, index, cataloguesById);
         var equipment = ExtractFactionEquipment(catalogue, schema);
         var detachments = ExtractDetachments(system, catalogue, schema, ptsTypeId, cataloguesById);
+        var availability = BuildAvailabilityContext(system, catalogue, detachments, index, cataloguesById, schema);
+        var datasheets = ExtractDatasheets(catalogue, schema, ptsTypeId, index, cataloguesById, availability);
 
         var force = system.ForceEntries.FirstOrDefault();
         var info = new GameSystemInfo(
@@ -329,7 +330,8 @@ public sealed class BsDataParser
         CatalogueSchema schema,
         string ptsTypeId,
         Index index,
-        IReadOnlyDictionary<string, CatalogueDocument> cataloguesById)
+        IReadOnlyDictionary<string, CatalogueDocument> cataloguesById,
+        AvailabilityContext availability)
     {
         var candidates = new List<SelectionEntryNode>();
         foreach (var doc in ImportedCatalogues(faction, cataloguesById))
@@ -337,13 +339,103 @@ public sealed class BsDataParser
             CollectCandidates(doc, candidates, index);
         }
 
-        return candidates
+        var pairs = candidates
             .Where(entry => !HiddenForFaction(entry, faction.Id))
-            .Select(entry => ToDatasheet(entry, schema, ptsTypeId, index))
-            .OfType<Datasheet>()
-            .DistinctBy(d => d.Id)
+            .Select(entry => (entry, sheet: ToDatasheet(entry, schema, ptsTypeId, index)))
+            .Where(p => p.sheet is not null)
+            .Select(p => (p.entry, sheet: p.sheet!))
+            .DistinctBy(p => p.sheet.Id)
+            .ToList();
+
+        if (!availability.Enabled)
+        {
+            return pairs.Select(p => p.sheet).OrderBy(d => d.Name, StringComparer.OrdinalIgnoreCase).ToList();
+        }
+
+        // A library supplying the bulk of this faction's datasheets is the
+        // faction's own content (Drukhari's units live in an "Aeldari" library),
+        // not an allied import, so its gates don't apply here.
+        var coreLibraries = ComputeCoreLibraries(pairs.Select(p => p.sheet.Id), index, availability.FactionTokens);
+
+        return pairs
+            .Select(p => p.sheet with { Availability = ComputeAvailability(p.entry, p.sheet.Id, availability, index, coreLibraries) })
             .OrderBy(d => d.Name, StringComparer.OrdinalIgnoreCase)
             .ToList();
+    }
+
+    // Libraries that are this faction's own content rather than allied imports:
+    // those supplying at least half its datasheets, plus any sharing a meaningful
+    // name token with the faction.
+    private static HashSet<string> ComputeCoreLibraries(
+        IEnumerable<string> datasheetIds, Index index, IReadOnlySet<string> factionTokens)
+    {
+        var ids = datasheetIds.ToList();
+        var counts = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (var id in ids)
+        {
+            if (index.EntryOrigin.TryGetValue(id, out var o) && o.IsLibrary)
+            {
+                counts[o.Name] = counts.GetValueOrDefault(o.Name) + 1;
+            }
+        }
+        var total = Math.Max(1, ids.Count);
+        var core = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var (name, count) in counts)
+        {
+            if (count * 2 >= total || MeaningfulTokens(name).Overlaps(factionTokens))
+            {
+                core.Add(name);
+            }
+        }
+        return core;
+    }
+
+    // Allied/optional content imported wholesale from a shared library (Chaos
+    // Knights, Titans, Unaligned Forces, ...) carries no per-entry gate, so it is
+    // gated behind a "Show <library>" toggle keyed off where it was defined.
+    // Units with their own gate, core (non-library or dominant-library) units, and
+    // Legends content (its own name-based filter) are left ungated.
+    private static DatasheetAvailability GateByOrigin(
+        string datasheetId, DatasheetAvailability current, Index index, AvailabilityContext ctx, IReadOnlySet<string> coreLibraries)
+    {
+        if (current.RequiredToggles.Count > 0
+            || current.RequiredDetachmentIds.Count > 0
+            || !index.EntryOrigin.TryGetValue(datasheetId, out var origin)
+            || !origin.IsLibrary
+            || coreLibraries.Contains(origin.Name))
+        {
+            return current;
+        }
+        var toggle = LibraryToggle(origin.Name, ctx.FactionTokens);
+        return toggle is null ? current : new DatasheetAvailability([], [toggle]);
+    }
+
+    // "Chaos - Chaos Knights Library" -> "Show Chaos Knights"; "Library - Titans"
+    // -> "Show Titans". Returns null (not gated) for a Legends library (its
+    // datasheets carry a [Legends] name the builder filters on) and for the
+    // faction's own content library (one sharing a meaningful name token, e.g.
+    // Aeldari's units living in an "Aeldari" library).
+    private static string? LibraryToggle(string libraryName, IReadOnlySet<string> factionTokens)
+    {
+        if (libraryName.Contains("Legends", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+        if (MeaningfulTokens(libraryName).Overlaps(factionTokens))
+        {
+            return null;
+        }
+        var cleaned = libraryName;
+        foreach (var prefix in new[] { "Chaos - ", "Library - ", "Imperium - ", "Xenos - " })
+        {
+            if (cleaned.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            {
+                cleaned = cleaned[prefix.Length..];
+            }
+        }
+        cleaned = cleaned.Replace("Library", "", StringComparison.OrdinalIgnoreCase)
+            .Trim().Trim('-', ':', ' ').Trim();
+        return string.IsNullOrWhiteSpace(cleaned) ? null : $"Show {cleaned}";
     }
 
     private static void CollectCandidates(DataDocument document, List<SelectionEntryNode> candidates, Index index)
@@ -426,9 +518,67 @@ public sealed class BsDataParser
 
         var modelGroups = ExtractModelGroups(entry, schema, index);
         var sizes = ExtractSizes(entry, ptsTypeId);
+        var (variantGroups, fixedModels) = ExtractVariantGroups(entry, schema, ptsTypeId, index);
 
         return new Datasheet(
-            entry.Id, entry.Name, points, keywords, unit, weapons, abilities, options, equipment, sizes, modelGroups);
+            entry.Id, entry.Name, points, keywords, unit, weapons, abilities, options, equipment, sizes, modelGroups,
+            variantGroups, fixedModels, DatasheetAvailability.None);
+    }
+
+    // Distributable model pools: a selection group holding more than one model
+    // variant (e.g. Rubric Marines split across boltgun / warpflamer / soulreaper)
+    // the player splits across loadouts. Also returns the fixed model count: the
+    // always-present single models (the Aspiring Sorcerer), used to derive the
+    // pool target for a chosen size (poolTarget = size - fixedCount).
+    private static (IReadOnlyList<ModelVariantGroup> Groups, int FixedCount) ExtractVariantGroups(
+        SelectionEntryNode entry, CatalogueSchema schema, string ptsTypeId, Index index)
+    {
+        var groups = new List<ModelVariantGroup>();
+        var fixedCount = 0;
+
+        // Direct single models with a fixed count are the unit's fixed models.
+        foreach (var s in entry.SelectionEntries)
+        {
+            if (!IsModel(s.Type))
+            {
+                continue;
+            }
+            var (lo, hi) = CountFromConstraints(s);
+            if (lo == hi)
+            {
+                fixedCount += lo;
+            }
+        }
+
+        // A group holding several model variants is a shared pool; a group with a
+        // single fixed-size model is just another fixed model. A single model with
+        // a size range is the unit's size (handled by ExtractSizes), not a pool.
+        foreach (var g in entry.SelectionEntryGroups)
+        {
+            var models = g.SelectionEntries.Where(m => IsModel(m.Type)).ToList();
+            if (models.Count == 0)
+            {
+                continue;
+            }
+            var (lo, hi) = GroupModelCount(g, models);
+            if (models.Count > 1)
+            {
+                var variants = models.Select(m => ToVariant(m, schema, ptsTypeId, index)).ToList();
+                groups.Add(new ModelVariantGroup(g.Id, g.Name, hi, variants));
+            }
+            else if (lo == hi)
+            {
+                fixedCount += lo;
+            }
+        }
+
+        return (groups, fixedCount);
+    }
+
+    private static ModelVariant ToVariant(SelectionEntryNode model, CatalogueSchema schema, string ptsTypeId, Index index)
+    {
+        var (_, hi) = CountFromConstraints(model);
+        return new ModelVariant(model.Id, model.Name, hi, PointsOf(model, ptsTypeId), OptionWeapons(model, schema, index));
     }
 
     // Collects profiles from a node, its children, and any entries/profiles its
@@ -487,7 +637,7 @@ public sealed class BsDataParser
     private static IReadOnlyList<DatasheetOption> ExtractOptions(SelectionEntryNode entry, CatalogueSchema schema, string ptsTypeId, Index index)
     {
         var options = new List<DatasheetOption>();
-        CollectOptions(entry, MaxDepth, [], options, index, ptsTypeId, schema);
+        CollectOptions(entry, "", MaxDepth, [], options, index, ptsTypeId, schema);
         return options
             .Where(o => !string.IsNullOrWhiteSpace(o.Name) && !string.IsNullOrEmpty(o.Id))
             .DistinctBy(o => o.Id)
@@ -575,28 +725,75 @@ public sealed class BsDataParser
     {
         int min = 0, max = 0;
         var any = false;
-        foreach (var (model, groupName) in ModelComponents(entry))
+
+        // Models listed directly on the entry carry their count in constraints.
+        foreach (var s in entry.SelectionEntries)
         {
-            var (lo, hi) = ModelCountOf(model, groupName);
+            if (!IsModel(s.Type))
+            {
+                continue;
+            }
+            var (lo, hi) = CountFromConstraints(s);
             min += lo;
             max += hi;
             any = true;
         }
+
+        // A group of model variants (e.g. the same Rubric Marine with different
+        // weapons) shares one model pool, so its range counts once for the group,
+        // not once per variant.
+        foreach (var g in entry.SelectionEntryGroups)
+        {
+            var models = g.SelectionEntries.Where(s => IsModel(s.Type)).ToList();
+            if (models.Count == 0)
+            {
+                continue;
+            }
+            var (lo, hi) = GroupModelCount(g, models);
+            min += lo;
+            max += hi;
+            any = true;
+        }
+
         return any ? (min, max) : (1, 1);
     }
 
-    // A model type's count in the squad. The group name, when it spells a range
-    // (e.g. "9-18 Boyz"), is the datasheet's intended size and wins; otherwise the
-    // model's "selections" min/max constraints (scope parent/self) carry it - the
-    // only source for models listed directly, without a named group.
-    private static (int Lo, int Hi) ModelCountOf(SelectionNode model, string? groupName)
+    // A grouped model pool's size. The group name, when it spells a range (e.g.
+    // "9-18 Boyz"), is the datasheet's intended size and wins; then the group's own
+    // "selections" constraints; otherwise the members' counts summed.
+    private static (int Lo, int Hi) GroupModelCount(SelectionEntryGroupNode group, IReadOnlyList<SelectionEntryNode> models)
     {
-        if (RangeFromName(groupName) is { } named)
+        if (RangeFromName(group.Name) is { } named)
         {
             return named;
         }
+        var (gmin, gmax) = ConstraintRange(group);
+        if (gmin.HasValue || gmax.HasValue)
+        {
+            return (gmin ?? gmax ?? 1, gmax ?? gmin ?? 1);
+        }
+        int min = 0, max = 0;
+        foreach (var s in models)
+        {
+            var (lo, hi) = CountFromConstraints(s);
+            min += lo;
+            max += hi;
+        }
+        return (min, max);
+    }
+
+    // A model's count from its "selections" min/max constraints (scope
+    // parent/self), defaulting to a single model when none are set.
+    private static (int Lo, int Hi) CountFromConstraints(SelectionNode model)
+    {
+        var (min, max) = ConstraintRange(model);
+        return (min.HasValue || max.HasValue) ? (min ?? max ?? 1, max ?? min ?? 1) : (1, 1);
+    }
+
+    private static (int? Min, int? Max) ConstraintRange(SelectionNode node)
+    {
         int? min = null, max = null;
-        foreach (var c in model.Constraints)
+        foreach (var c in node.Constraints)
         {
             if (c.Field != "selections" || (c.Scope != "parent" && c.Scope != "self"))
             {
@@ -611,7 +808,7 @@ public sealed class BsDataParser
                 max = (int)c.Value;
             }
         }
-        return (min.HasValue || max.HasValue) ? (min ?? max ?? 1, max ?? min ?? 1) : (1, 1);
+        return (min, max);
     }
 
     private static readonly Regex RangeRx = new(@"(\d+)\s*-\s*(\d+)|(\d+)", RegexOptions.Compiled);
@@ -688,6 +885,241 @@ public sealed class BsDataParser
         return hide;
     }
 
+    // Resolved ids and names used to classify a datasheet's "hidden" gates.
+    private sealed record AvailabilityContext(
+        IReadOnlySet<string> DetachmentIds,
+        IReadOnlySet<string> CrusadeForceIds,
+        IReadOnlyDictionary<string, string> IdToName,
+        IReadOnlyDictionary<string, CatalogueOrigin> EntryOrigin,
+        IReadOnlySet<string> FactionTokens,
+        bool Enabled);
+
+    private static AvailabilityContext BuildAvailabilityContext(
+        GameSystemDocument system,
+        CatalogueDocument catalogue,
+        IReadOnlyList<Detachment> detachments,
+        Index index,
+        IReadOnlyDictionary<string, CatalogueDocument> cataloguesById,
+        CatalogueSchema schema)
+    {
+        // Only 40k-style systems carry detachments + "Show X" gates; Kill Team has none.
+        if (string.IsNullOrEmpty(schema.DetachmentGroupName))
+        {
+            return new AvailabilityContext(new HashSet<string>(), new HashSet<string>(), new Dictionary<string, string>(), new Dictionary<string, CatalogueOrigin>(), new HashSet<string>(), false);
+        }
+
+        var docs = new List<DataDocument> { system };
+        docs.AddRange(ImportedCatalogues(catalogue, cataloguesById));
+
+        var idToName = new Dictionary<string, string>();
+        void Add(string id, string name)
+        {
+            if (!string.IsNullOrEmpty(id) && !idToName.ContainsKey(id)) idToName[id] = name;
+        }
+        foreach (var (id, e) in index.Entries) Add(id, e.Name);
+        foreach (var (id, g) in index.Groups) Add(id, g.Name);
+        var crusadeForceIds = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var doc in docs)
+        {
+            foreach (var c in doc.CategoryEntries) Add(c.Id, c.Name);
+            foreach (var f in doc.ForceEntries)
+            {
+                Add(f.Id, f.Name);
+                if (f.Name.Contains("Crusade", StringComparison.OrdinalIgnoreCase)) crusadeForceIds.Add(f.Id);
+            }
+        }
+
+        return new AvailabilityContext(
+            detachments.Select(d => d.Id).ToHashSet(StringComparer.Ordinal),
+            crusadeForceIds, idToName, index.EntryOrigin, MeaningfulTokens(catalogue.Name), true);
+    }
+
+    // Name words that distinguish a faction/library, dropping the family prefix
+    // and generic words so "Thousand Sons" vs "Chaos Knights Library" don't both
+    // collapse to "Chaos". Used to tell a faction's own content library from an
+    // allied one.
+    private static readonly HashSet<string> TokenStopWords = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "chaos", "imperium", "xenos", "adeptus", "astartes", "library", "libraries",
+        "forces", "force", "the", "of", "and", "legends",
+    };
+
+    private static HashSet<string> MeaningfulTokens(string name) =>
+        name.Split([' ', '-', ':', ',', '\''], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(t => t.Length >= 3 && !TokenStopWords.Contains(t))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+    // A datasheet's conditional visibility, read from its "hidden" set-true
+    // modifiers (matched-play assumption: the force is never a Crusade force).
+    // A unit is hidden when ANY such modifier fires, and a modifier fires when
+    // ALL its conditions hold; the parser records only the gates it can model
+    // with confidence (a single config toggle, or a required detachment) and
+    // leaves anything dynamic visible. Finally, wholesale library imports that
+    // carry no gate are gated by their origin library.
+    private static DatasheetAvailability ComputeAvailability(
+        SelectionEntryNode entry, string datasheetId, AvailabilityContext ctx, Index index, IReadOnlySet<string> coreLibraries)
+    {
+        var requiredDetachments = new List<string>();
+        var requiredToggles = new List<string>();
+
+        foreach (var modifier in HiddenSetTrueModifiers(entry))
+        {
+            if (!TryFlattenAnd(modifier, out var conditions))
+            {
+                continue; // Contains an OR branch - can't model, leave visible.
+            }
+
+            var detReqs = new List<string>();
+            var toggleReqs = new List<string>();
+            var skip = false;
+            foreach (var c in conditions)
+            {
+                switch (Classify(c, ctx, coreLibraries))
+                {
+                    case GateKind.AlwaysTrue:
+                        continue; // e.g. "force is not a Crusade force" in matched play.
+                    case GateKind.NeverFires:
+                    case GateKind.Dynamic:
+                    case GateKind.ExternallyHandled:
+                        skip = true;
+                        break;
+                    case GateKind.Detachment:
+                        detReqs.Add(c.ChildId);
+                        continue;
+                    case GateKind.Toggle:
+                        toggleReqs.Add(ctx.IdToName[c.ChildId]);
+                        continue;
+                }
+                if (skip) break;
+            }
+            if (skip)
+            {
+                continue;
+            }
+
+            // Hide fires only when every condition holds, so showing the unit means
+            // falsifying one controllable condition. With exactly one, that gate is
+            // the requirement; with several it is an OR this flat model can't carry,
+            // so leave it visible.
+            var controllable = detReqs.Count + toggleReqs.Count;
+            if (controllable == 1)
+            {
+                if (detReqs.Count == 1) requiredDetachments.Add(detReqs[0]);
+                else requiredToggles.Add(toggleReqs[0]);
+            }
+        }
+
+        var availability = requiredDetachments.Count == 0 && requiredToggles.Count == 0
+            ? DatasheetAvailability.None
+            : new DatasheetAvailability(
+                requiredDetachments.Distinct().ToList(),
+                requiredToggles.Distinct(StringComparer.OrdinalIgnoreCase).ToList());
+
+        return GateByOrigin(datasheetId, availability, index, ctx, coreLibraries);
+    }
+
+    private enum GateKind { Dynamic, AlwaysTrue, NeverFires, Detachment, Toggle, ExternallyHandled }
+
+    // What a single hide-condition means for matched-play visibility.
+    private static GateKind Classify(ConditionNode c, AvailabilityContext ctx, IReadOnlySet<string> coreLibraries)
+    {
+        if (ctx.CrusadeForceIds.Contains(c.ChildId))
+        {
+            // Matched play is never a Crusade force.
+            if (IsAbsentTest(c)) return GateKind.AlwaysTrue;  // "not a Crusade force" holds.
+            if (IsPresentTest(c)) return GateKind.NeverFires;  // "is a Crusade force" can't.
+            return GateKind.Dynamic;
+        }
+        if (ctx.DetachmentIds.Contains(c.ChildId))
+        {
+            return IsAbsentTest(c) ? GateKind.Detachment : GateKind.Dynamic;
+        }
+        if (ctx.IdToName.TryGetValue(c.ChildId, out var name) && name.StartsWith("Show ", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!IsAbsentTest(c)) return GateKind.Dynamic;
+            // Legends / Crucible already have their own name-based builder filters.
+            if (name.Contains("Legends", StringComparison.OrdinalIgnoreCase)
+                || name.Contains("Crucible", StringComparison.OrdinalIgnoreCase))
+            {
+                return GateKind.ExternallyHandled;
+            }
+            // A toggle defined in this faction's own content library is core here,
+            // not an opt-in (daemons are core to Chaos Daemons, allied to others).
+            if (ctx.EntryOrigin.TryGetValue(c.ChildId, out var origin) && coreLibraries.Contains(origin.Name))
+            {
+                return GateKind.ExternallyHandled;
+            }
+            return GateKind.Toggle;
+        }
+        return GateKind.Dynamic;
+    }
+
+    // Condition holds when the gated thing is NOT in the roster (so its presence
+    // is what shows the unit): "<1 selected", "not an instance of", "at most 0".
+    private static bool IsAbsentTest(ConditionNode c) =>
+        (string.Equals(c.Type, "lessThan", StringComparison.OrdinalIgnoreCase) && c.Value <= 1)
+        || (string.Equals(c.Type, "atMost", StringComparison.OrdinalIgnoreCase) && c.Value <= 0)
+        || (string.Equals(c.Type, "equalTo", StringComparison.OrdinalIgnoreCase) && c.Value == 0)
+        || string.Equals(c.Type, "notInstanceOf", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsPresentTest(ConditionNode c) =>
+        string.Equals(c.Type, "instanceOf", StringComparison.OrdinalIgnoreCase)
+        || (string.Equals(c.Type, "atLeast", StringComparison.OrdinalIgnoreCase) && c.Value >= 1)
+        || (string.Equals(c.Type, "greaterThan", StringComparison.OrdinalIgnoreCase) && c.Value >= 0)
+        || (string.Equals(c.Type, "equalTo", StringComparison.OrdinalIgnoreCase) && c.Value >= 1);
+
+    // "hidden" set-true modifiers on the entry and its nested "and" modifier groups.
+    private static IEnumerable<ModifierNode> HiddenSetTrueModifiers(SelectionEntryNode entry)
+    {
+        foreach (var m in entry.Modifiers)
+        {
+            if (IsHiddenSetTrue(m)) yield return m;
+        }
+        foreach (var m in FlattenModifierGroups(entry.ModifierGroups))
+        {
+            if (IsHiddenSetTrue(m)) yield return m;
+        }
+    }
+
+    private static IEnumerable<ModifierNode> FlattenModifierGroups(IEnumerable<ModifierGroupNode> groups)
+    {
+        foreach (var g in groups)
+        {
+            foreach (var m in g.Modifiers) yield return m;
+            foreach (var m in FlattenModifierGroups(g.ModifierGroups)) yield return m;
+        }
+    }
+
+    private static bool IsHiddenSetTrue(ModifierNode m) =>
+        string.Equals(m.Type, "set", StringComparison.OrdinalIgnoreCase)
+        && m.Field == "hidden"
+        && m.Value.ValueKind == JsonValueKind.True;
+
+    // Flattens a modifier's conditions and nested "and" groups into one AND list.
+    // Fails (returns false) on any "or" group, which this model can't represent.
+    private static bool TryFlattenAnd(ModifierNode m, out List<ConditionNode> conditions)
+    {
+        conditions = [..m.Conditions];
+        return FlattenGroups(m.ConditionGroups, conditions);
+    }
+
+    private static bool FlattenGroups(IEnumerable<ConditionGroupNode> groups, List<ConditionNode> into)
+    {
+        foreach (var g in groups)
+        {
+            if (!string.Equals(g.Type, "and", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+            into.AddRange(g.Conditions);
+            if (!FlattenGroups(g.ConditionGroups, into))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
     // Values of "set" modifiers targeting the points cost - the price at a larger
     // model count. Unconditional increments are ignored: the base cost is the
     // authoritative price for the smallest size.
@@ -719,8 +1151,11 @@ public sealed class BsDataParser
         return vals;
     }
 
+    // ownerModel is the nearest enclosing model type's name, so each option
+    // records which model it is for; empty at the unit root (unit-wide options)
+    // and for single-model units.
     private static void CollectOptions(
-        SelectionNode node, int depth, HashSet<string> visited,
+        SelectionNode node, string ownerModel, int depth, HashSet<string> visited,
         List<DatasheetOption> options, Index index, string ptsTypeId, CatalogueSchema schema)
     {
         if (depth < 0)
@@ -734,6 +1169,9 @@ public sealed class BsDataParser
 
         foreach (var group in node.SelectionEntryGroups)
         {
+            // The group's selection bounds: how many of the set may be taken.
+            // A "pick one" weapon swap carries max 1.
+            var (gMin, gMax) = ConstraintRange(group);
             foreach (var choice in group.SelectionEntries.Cast<SelectionNode>().Concat(group.EntryLinks))
             {
                 var (type, name, pts) = ResolveChoice(choice, index, ptsTypeId);
@@ -741,22 +1179,30 @@ public sealed class BsDataParser
                 {
                     var id = !string.IsNullOrEmpty(choice.Id) ? choice.Id
                         : (choice as EntryLinkNode)?.TargetId ?? "";
-                    options.Add(new DatasheetOption(id, name, pts, group.Name, OptionWeapons(choice, schema, index)));
+                    options.Add(new DatasheetOption(
+                        id, name, pts, group.Name, OptionWeapons(choice, schema, index),
+                        ownerModel, group.Id, gMin ?? 0, gMax ?? 0));
                 }
-                CollectOptions(choice, depth - 1, visited, options, index, ptsTypeId, schema);
+                // A model choice owns the options nested beneath it.
+                var childOwner = IsModel(type) ? name : ownerModel;
+                CollectOptions(choice, childOwner, depth - 1, visited, options, index, ptsTypeId, schema);
             }
-            CollectOptions(group, depth - 1, visited, options, index, ptsTypeId, schema);
+            CollectOptions(group, ownerModel, depth - 1, visited, options, index, ptsTypeId, schema);
         }
 
         foreach (var child in node.SelectionEntries)
         {
-            CollectOptions(child, depth - 1, visited, options, index, ptsTypeId, schema);
+            var childOwner = IsModel(child.Type) ? child.Name : ownerModel;
+            CollectOptions(child, childOwner, depth - 1, visited, options, index, ptsTypeId, schema);
         }
         foreach (var link in node.EntryLinks)
         {
             if (!string.IsNullOrEmpty(link.TargetId) && index.Entries.TryGetValue(link.TargetId, out var target))
             {
-                CollectOptions(target, depth - 1, visited, options, index, ptsTypeId, schema);
+                var childOwner = IsModel(target.Type)
+                    ? (string.IsNullOrWhiteSpace(link.Name) ? target.Name : link.Name)
+                    : ownerModel;
+                CollectOptions(target, childOwner, depth - 1, visited, options, index, ptsTypeId, schema);
             }
         }
     }
@@ -862,69 +1308,83 @@ public sealed class BsDataParser
         JsonSerializer.Deserialize<T>(json, JsonOptions)
         ?? throw new FormatException($"Could not deserialize {typeof(T).Name}.");
 
+    // The catalogue an entry was defined in: its name, and whether it is a shared
+    // library (allied/optional content) rather than the game system or a faction.
+    private sealed record CatalogueOrigin(string Name, bool IsLibrary);
+
     // Id lookups across all loaded documents.
     private sealed class Index
     {
         public required Dictionary<string, ProfileNode> Profiles { get; init; }
         public required Dictionary<string, SelectionEntryNode> Entries { get; init; }
         public required Dictionary<string, SelectionEntryGroupNode> Groups { get; init; }
+        // Where each entry id was defined, so library-sourced datasheets can be gated.
+        public required Dictionary<string, CatalogueOrigin> EntryOrigin { get; init; }
 
         public static Index Build(IEnumerable<DataDocument> documents)
         {
             var profiles = new Dictionary<string, ProfileNode>();
             var entries = new Dictionary<string, SelectionEntryNode>();
             var groups = new Dictionary<string, SelectionEntryGroupNode>();
+            var origins = new Dictionary<string, CatalogueOrigin>();
 
             foreach (var doc in documents)
             {
+                // The game system and faction catalogues are core; only a linked
+                // shared library (library: true) is optional/allied content.
+                var origin = new CatalogueOrigin(doc.Name, (doc as CatalogueDocument)?.Library ?? false);
                 foreach (var profile in doc.SharedProfiles)
                 {
                     profiles.TryAdd(profile.Id, profile);
                 }
                 foreach (var entry in doc.SharedSelectionEntries)
                 {
-                    WalkEntry(entry, profiles, entries, groups);
+                    WalkEntry(entry, origin, profiles, entries, groups, origins);
                 }
                 foreach (var group in doc.SharedSelectionEntryGroups)
                 {
-                    WalkGroup(group, profiles, entries, groups);
+                    WalkGroup(group, origin, profiles, entries, groups, origins);
                 }
             }
 
-            return new Index { Profiles = profiles, Entries = entries, Groups = groups };
+            return new Index { Profiles = profiles, Entries = entries, Groups = groups, EntryOrigin = origins };
         }
 
         private static void WalkEntry(
-            SelectionEntryNode entry,
+            SelectionEntryNode entry, CatalogueOrigin origin,
             Dictionary<string, ProfileNode> profiles,
             Dictionary<string, SelectionEntryNode> entries,
-            Dictionary<string, SelectionEntryGroupNode> groups)
+            Dictionary<string, SelectionEntryGroupNode> groups,
+            Dictionary<string, CatalogueOrigin> origins)
         {
             if (!string.IsNullOrEmpty(entry.Id))
             {
                 entries.TryAdd(entry.Id, entry);
+                origins.TryAdd(entry.Id, origin);
             }
-            WalkChildren(entry, profiles, entries, groups);
+            WalkChildren(entry, origin, profiles, entries, groups, origins);
         }
 
         private static void WalkGroup(
-            SelectionEntryGroupNode group,
+            SelectionEntryGroupNode group, CatalogueOrigin origin,
             Dictionary<string, ProfileNode> profiles,
             Dictionary<string, SelectionEntryNode> entries,
-            Dictionary<string, SelectionEntryGroupNode> groups)
+            Dictionary<string, SelectionEntryGroupNode> groups,
+            Dictionary<string, CatalogueOrigin> origins)
         {
             if (!string.IsNullOrEmpty(group.Id))
             {
                 groups.TryAdd(group.Id, group);
             }
-            WalkChildren(group, profiles, entries, groups);
+            WalkChildren(group, origin, profiles, entries, groups, origins);
         }
 
         private static void WalkChildren(
-            SelectionNode node,
+            SelectionNode node, CatalogueOrigin origin,
             Dictionary<string, ProfileNode> profiles,
             Dictionary<string, SelectionEntryNode> entries,
-            Dictionary<string, SelectionEntryGroupNode> groups)
+            Dictionary<string, SelectionEntryGroupNode> groups,
+            Dictionary<string, CatalogueOrigin> origins)
         {
             foreach (var profile in node.Profiles)
             {
@@ -935,11 +1395,11 @@ public sealed class BsDataParser
             }
             foreach (var child in node.SelectionEntries)
             {
-                WalkEntry(child, profiles, entries, groups);
+                WalkEntry(child, origin, profiles, entries, groups, origins);
             }
             foreach (var group in node.SelectionEntryGroups)
             {
-                WalkGroup(group, profiles, entries, groups);
+                WalkGroup(group, origin, profiles, entries, groups, origins);
             }
         }
     }

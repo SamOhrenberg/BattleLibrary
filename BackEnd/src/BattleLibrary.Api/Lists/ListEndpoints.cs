@@ -221,7 +221,7 @@ public static partial class ListEndpoints
                 EnhancementName = e.EnhancementName,
                 EnhancementPoints = e.EnhancementPoints,
                 SelectedOptions = e.SelectedOptions
-                    .Select(o => new SelectedOption { Id = o.Id, Name = o.Name, Points = o.Points })
+                    .Select(o => new SelectedOption { Id = o.Id, Name = o.Name, Points = o.Points, Quantity = o.Quantity })
                     .ToList(),
             };
             if (forceBySource.TryGetValue(e.ListForceId, out var copyForce))
@@ -675,7 +675,11 @@ public static partial class ListEndpoints
             Keywords = sheet.Keywords.ToList(),
             ForcedWarlord = sheet.ForcedWarlord,
             SortOrder = list.Entries.Count == 0 ? 0 : list.Entries.Max(e => e.SortOrder) + 1,
-            SelectedOptions = ResolveOptions(sheet.Options, request.SelectedOptionIds),
+            SelectedOptions =
+            [
+                .. ResolveOptions(sheet.Options, request.SelectedOptionIds),
+                .. ResolveVariants(sheet.VariantGroups, request.Variants),
+            ],
         };
         list.Entries.Add(entry);
 
@@ -711,10 +715,20 @@ public static partial class ListEndpoints
         {
             return Results.NotFound();
         }
-        if (request.SelectedOptionIds is not null)
+        // Options and variants are independent slices of SelectedOptions: a null
+        // field leaves its slice as is, so wargear edits and loadout edits can be
+        // sent separately.
+        if (request.SelectedOptionIds is not null || request.Variants is not null)
         {
             var sheet = await LoadSheet(db, entry.DatasheetId, list.GameSystemKey, ct);
-            entry.SelectedOptions = ResolveOptions(sheet?.Options ?? [], request.SelectedOptionIds);
+            var groups = sheet?.VariantGroups ?? [];
+            var plain = request.SelectedOptionIds is not null
+                ? ResolveOptions(sheet?.Options ?? [], request.SelectedOptionIds)
+                : NonVariantOptions(entry, groups);
+            var chosenVariants = request.Variants is not null
+                ? ResolveVariants(groups, request.Variants)
+                : VariantOptions(entry, groups);
+            entry.SelectedOptions = [.. plain, .. chosenVariants];
         }
         // A null field is left as is; a sent value (including "") updates, with
         // blank clearing the value. Lengths match the column limits.
@@ -791,6 +805,12 @@ public static partial class ListEndpoints
         }
         entry.ModelCount = size.Models;
         entry.Points = size.Points;
+        // A new size re-fills the loadout pool: keep the wargear, replace variants.
+        if (request.Variants is not null)
+        {
+            var groups = sheet!.VariantGroups;
+            entry.SelectedOptions = [.. NonVariantOptions(entry, groups), .. ResolveVariants(groups, request.Variants)];
+        }
         list.UpdatedAt = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(ct);
         return Results.Ok(ToDto(list));
@@ -851,7 +871,7 @@ public static partial class ListEndpoints
         static RosterSelection ToSelection(ListEntry e)
         {
             var children = e.SelectedOptions
-                .Select(o => new RosterSelection(o.Id, o.Name, 1, "upgrade", o.Points, []))
+                .Select(o => new RosterSelection(o.Id, o.Name, Math.Max(1, o.Quantity), "upgrade", o.Points * Math.Max(1, o.Quantity), []))
                 .ToList();
             if (e.EnhancementId is not null)
             {
@@ -1214,13 +1234,13 @@ public static partial class ListEndpoints
             .ThenBy(e => e.DatasheetName)
             .Select(e =>
             {
-                var optionsPoints = e.SelectedOptions.Sum(o => o.Points);
+                var optionsPoints = OptionsPoints(e);
                 return new ListEntryDto(
                     e.Id, e.ListForceId, e.DatasheetId, e.DatasheetName, e.CustomName, e.Notes, e.Points, optionsPoints, e.ModelCount,
                     e.SortOrder,
                     e.Points + optionsPoints + e.EnhancementPoints,
                     e.Keywords, e.IsWarlord, e.ForcedWarlord, e.AttachedToEntryId, e.EnhancementId, e.EnhancementName, e.EnhancementPoints,
-                    e.SelectedOptions.Select(o => new SelectedOptionDto(o.Id, o.Name, o.Points)).ToList());
+                    e.SelectedOptions.Select(o => new SelectedOptionDto(o.Id, o.Name, o.Points, Math.Max(1, o.Quantity))).ToList());
             })
             .ToList();
         var total = entries.Sum(e => e.LineTotal);
@@ -1240,13 +1260,18 @@ public static partial class ListEndpoints
     }
 
     private static int LineTotal(ListEntry e) =>
-        e.Points + e.SelectedOptions.Sum(o => o.Points) + e.EnhancementPoints;
+        e.Points + OptionsPoints(e) + e.EnhancementPoints;
+
+    // Points from wargear and loadout variants, each multiplied by its count
+    // (count is 1 for a plain upgrade).
+    private static int OptionsPoints(ListEntry e) =>
+        e.SelectedOptions.Sum(o => o.Points * Math.Max(1, o.Quantity));
 
     private sealed record SheetInfo(
         string Name, int Points, IReadOnlyList<string> Keywords, IReadOnlyList<DatasheetOption> Options, IReadOnlyList<UnitSize> Sizes,
-        bool ForcedWarlord);
+        bool ForcedWarlord, IReadOnlyList<ModelVariantGroup> VariantGroups);
 
-    // Pulls name/points/keywords/options/sizes for a datasheet from the cached slim jsonb.
+    // Pulls name/points/keywords/options/sizes/variants for a datasheet from the cached slim jsonb.
     private static async Task<SheetInfo?> LoadSheet(
         BattleLibraryDbContext db, string datasheetId, string gameSystemKey, CancellationToken ct)
     {
@@ -1262,7 +1287,9 @@ public static partial class ListEndpoints
         var sheet = JsonSerializer.Deserialize<Datasheet>(json, SlimJson);
         return sheet is null
             ? null
-            : new SheetInfo(sheet.Name, sheet.Points ?? 0, sheet.Keywords, sheet.Options, sheet.Sizes ?? [], IsForcedWarlord(sheet));
+            : new SheetInfo(
+                sheet.Name, sheet.Points ?? 0, sheet.Keywords, sheet.Options, sheet.Sizes ?? [], IsForcedWarlord(sheet),
+                sheet.VariantGroups ?? []);
     }
 
     // An Epic Hero whose rules force it to be the army's Warlord ("...it must be
@@ -1332,6 +1359,48 @@ public static partial class ListEndpoints
             .Where(byId.ContainsKey)
             .Select(id => new SelectedOption { Id = byId[id].Id, Name = byId[id].Name, Points = byId[id].Points })
             .ToList();
+    }
+
+    // Snapshots the chosen per-model loadout variants (name + points + count)
+    // against the datasheet's variant groups; each count is clamped to [0, Max]
+    // and a zero count is dropped. Unknown ids are ignored.
+    private static List<SelectedOption> ResolveVariants(
+        IReadOnlyList<ModelVariantGroup> groups, IReadOnlyList<VariantQuantityDto>? variants)
+    {
+        if (variants is null || variants.Count == 0)
+        {
+            return [];
+        }
+        var byId = groups.SelectMany(g => g.Variants).GroupBy(v => v.Id).ToDictionary(g => g.Key, g => g.First());
+        var result = new List<SelectedOption>();
+        foreach (var v in variants)
+        {
+            if (!byId.TryGetValue(v.Id, out var variant))
+            {
+                continue;
+            }
+            var qty = Math.Clamp(v.Quantity, 0, variant.Max);
+            if (qty > 0)
+            {
+                result.Add(new SelectedOption { Id = variant.Id, Name = variant.Name, Points = variant.Points, Quantity = qty });
+            }
+        }
+        return result;
+    }
+
+    // The entry's plain upgrade options (everything that isn't a loadout variant),
+    // so a variant re-resolve leaves the wargear checkboxes untouched and vice
+    // versa.
+    private static List<SelectedOption> NonVariantOptions(ListEntry entry, IReadOnlyList<ModelVariantGroup> groups)
+    {
+        var variantIds = groups.SelectMany(g => g.Variants).Select(v => v.Id).ToHashSet();
+        return entry.SelectedOptions.Where(o => !variantIds.Contains(o.Id)).ToList();
+    }
+
+    private static List<SelectedOption> VariantOptions(ListEntry entry, IReadOnlyList<ModelVariantGroup> groups)
+    {
+        var variantIds = groups.SelectMany(g => g.Variants).Select(v => v.Id).ToHashSet();
+        return entry.SelectedOptions.Where(o => variantIds.Contains(o.Id)).ToList();
     }
 
     private static IResult Problem(string field, string message) =>

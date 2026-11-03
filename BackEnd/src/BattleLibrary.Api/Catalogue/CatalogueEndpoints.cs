@@ -14,6 +14,23 @@ public static class CatalogueEndpoints
     private const int SearchLimit = 60;
 
     private sealed record AbilityDto(string Name, string Text);
+    private sealed record AvailabilityDto(IReadOnlyList<string> RequiredDetachmentIds, IReadOnlyList<string> RequiredToggles);
+
+    private static AvailabilityDto DeserializeAvailability(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return new AvailabilityDto([], []);
+        }
+        try
+        {
+            return JsonSerializer.Deserialize<AvailabilityDto>(json, WebJson) ?? new AvailabilityDto([], []);
+        }
+        catch (JsonException)
+        {
+            return new AvailabilityDto([], []);
+        }
+    }
     private sealed record EnhancementDto(string Id, string Name, int Points, string Text);
     private sealed record DetachmentDto(
         string Id, string Name, int Dp, IReadOnlyList<EnhancementDto> Enhancements, IReadOnlyList<AbilityDto> Rules);
@@ -118,7 +135,7 @@ public static class CatalogueEndpoints
         var rows = await db.CachedDatasheets
             .Where(d => d.FactionId == faction.Id)
             .OrderBy(d => d.Name)
-            .Select(d => new { id = d.BsDataId, name = d.Name, points = d.Points, keywords = d.KeywordsCsv })
+            .Select(d => new { id = d.BsDataId, name = d.Name, points = d.Points, keywords = d.KeywordsCsv, availability = d.AvailabilityJson })
             .ToListAsync(ct);
         var datasheets = rows.Select(d => new
         {
@@ -126,6 +143,7 @@ public static class CatalogueEndpoints
             d.name,
             d.points,
             keywords = string.IsNullOrEmpty(d.keywords) ? [] : d.keywords.Split('|'),
+            availability = DeserializeAvailability(d.availability),
         });
 
         var equipment = DeserializeNames(faction.EquipmentJson);

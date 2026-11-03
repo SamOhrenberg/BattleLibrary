@@ -65,4 +65,8 @@ public class SelectedOption
     public string Id { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public int Points { get; set; }
+
+    // How many of this choice. 1 for a plain upgrade; a per-model loadout variant
+    // carries its chosen count. Old rows (no field in jsonb) read back as 1.
+    public int Quantity { get; set; } = 1;
 }

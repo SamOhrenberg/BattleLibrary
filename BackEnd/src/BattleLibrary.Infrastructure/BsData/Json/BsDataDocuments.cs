@@ -129,6 +129,16 @@ internal sealed class ConditionNode
     public string Scope { get; set; } = "";
 }
 
+// A boolean grouping of conditions ("and"/"or"), optionally nesting further
+// groups. A "hidden" modifier gating a unit on a detachment/config toggle puts
+// its conditions here rather than in the flat Conditions list.
+internal sealed class ConditionGroupNode
+{
+    public string Type { get; set; } = "";
+    public List<ConditionNode> Conditions { get; set; } = [];
+    public List<ConditionGroupNode> ConditionGroups { get; set; } = [];
+}
+
 // A min/max bound on a selection. A model entry's squad size is a pair of these
 // (field "selections", scope parent/self) rather than a range in its name.
 internal sealed class ConstraintNode
@@ -149,6 +159,7 @@ internal sealed class ModifierNode
     // Value is a number for cost modifiers, a string for name/text ones.
     public JsonElement Value { get; set; }
     public List<ConditionNode> Conditions { get; set; } = [];
+    public List<ConditionGroupNode> ConditionGroups { get; set; } = [];
 }
 
 internal sealed class ModifierGroupNode

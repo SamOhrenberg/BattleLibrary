@@ -74,7 +74,11 @@ public static partial class ListEndpoints
         }
 
         var size = PickSize(sheet.Sizes, request.Models);
-        var options = ResolveOptions(sheet.Options, request.SelectedOptionIds);
+        List<SelectedOption> options =
+        [
+            .. ResolveOptions(sheet.Options, request.SelectedOptionIds),
+            .. ResolveVariants(sheet.VariantGroups, request.Variants),
+        ];
 
         // Saving over a same-named preset for this unit overwrites it, so a tweak
         // doesn't pile up duplicates.
@@ -127,11 +131,11 @@ public static partial class ListEndpoints
 
     private static LoadoutPresetDto PresetToDto(LoadoutPreset p)
     {
-        var optionsPoints = p.SelectedOptions.Sum(o => o.Points);
+        var optionsPoints = p.SelectedOptions.Sum(o => o.Points * Math.Max(1, o.Quantity));
         return new LoadoutPresetDto(
             p.Id, p.GameSystemKey, p.DatasheetId, p.DatasheetName, p.Name, p.ModelCount,
             p.Points, p.Points + optionsPoints,
-            p.SelectedOptions.Select(o => new SelectedOptionDto(o.Id, o.Name, o.Points)).ToList(),
+            p.SelectedOptions.Select(o => new SelectedOptionDto(o.Id, o.Name, o.Points, Math.Max(1, o.Quantity))).ToList(),
             p.UpdatedAt);
     }
 }

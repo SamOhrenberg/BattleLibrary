@@ -45,6 +45,17 @@ export type IssueCode =
   | 'too-many-forced-warlords'
   | 'too-many-enhancements'
   | 'rule-of-n'
+  | 'needs-detachment'
+
+// Detachment-locked units: which detachments each datasheet requires, the ones
+// currently selected, and detachment names for messaging. A unit locked to a
+// detachment (e.g. Scintillating Legions -> Changehost of Deceit) is only legal
+// when one of its detachments is selected.
+export interface DetachmentRequirements {
+  byDatasheet: Map<string, string[]>
+  selectedIds: Set<string>
+  names: Map<string, string>
+}
 
 export interface ListIssue {
   code: IssueCode
@@ -58,7 +69,50 @@ export interface ListIssue {
   amount?: number
 }
 
-export function validateList(list: ArmyList, hasDetachments: boolean, pointless: boolean): ListIssue[] {
+// Per-datasheet loadout-pool shape: the fixed (always-present) model count and
+// the ids of its distributable loadout variants.
+export interface VariantInfo {
+  fixed: number
+  variantIds: Set<string>
+}
+
+export interface PoolWarning {
+  entryId: string
+  message: string
+}
+
+// Non-blocking warnings when a unit's loadout pool isn't fully assigned for its
+// chosen size. Pool target = unit size - fixed models; chosen = the sum of the
+// unit's variant-option counts. Only units whose datasheet detail is known (so
+// their pool shape is in `info`) are checked.
+export function variantPoolWarnings(list: ArmyList, info: Map<string, VariantInfo>): PoolWarning[] {
+  const warnings: PoolWarning[] = []
+  for (const e of list.entries) {
+    const vi = info.get(e.datasheetId)
+    if (!vi) continue
+    const target = Math.max(0, e.modelCount - vi.fixed)
+    const chosen = e.selectedOptions
+      .filter((o) => vi.variantIds.has(o.id))
+      .reduce((n, o) => n + o.quantity, 0)
+    if (chosen === target) continue
+    const name = e.customName || e.datasheetName
+    warnings.push({
+      entryId: e.id,
+      message:
+        chosen < target
+          ? `${name}: ${chosen} of ${target} loadouts assigned (${target - chosen} to go).`
+          : `${name}: ${chosen} loadouts assigned, ${chosen - target} over the pool of ${target}.`,
+    })
+  }
+  return warnings
+}
+
+export function validateList(
+  list: ArmyList,
+  hasDetachments: boolean,
+  pointless: boolean,
+  detachmentReqs?: DetachmentRequirements,
+): ListIssue[] {
   const issues: ListIssue[] = []
   if (list.entries.length === 0) {
     issues.push({
@@ -135,6 +189,29 @@ export function validateList(list: ArmyList, hasDetachments: boolean, pointless:
       fix: 'Keep a single Warlord and clear the others.',
       entryIds: warlords.map((e) => e.id),
     })
+  }
+
+  // Detachment-locked units: each must have one of its detachments selected.
+  if (detachmentReqs) {
+    const offenders: string[] = []
+    const neededIds = new Set<string>()
+    for (const e of list.entries) {
+      const req = detachmentReqs.byDatasheet.get(e.datasheetId)
+      if (req && req.length > 0 && !req.some((id) => detachmentReqs.selectedIds.has(id))) {
+        offenders.push(e.id)
+        req.forEach((id) => neededIds.add(id))
+      }
+    }
+    if (offenders.length > 0) {
+      const names = [...neededIds].map((id) => detachmentReqs.names.get(id)).filter(Boolean)
+      const nameList = names.length > 0 ? names.join(' or ') : 'a specific detachment'
+      issues.push({
+        code: 'needs-detachment',
+        message: `${offenders.length} unit${offenders.length > 1 ? 's require' : ' requires'} a detachment you haven't selected.`,
+        fix: `These units need ${nameList}. Select it, or remove them.`,
+        entryIds: offenders,
+      })
+    }
   }
 
   const enhanced = list.entries.filter((e) => e.enhancementId)

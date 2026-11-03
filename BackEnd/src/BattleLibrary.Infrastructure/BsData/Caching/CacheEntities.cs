@@ -63,6 +63,11 @@ public sealed class CachedDatasheet
     // deserializing the full model); the full set lives in ModelJson.
     public string KeywordsCsv { get; set; } = "";
 
+    // Serialized Domain.Catalogue.DatasheetAvailability (jsonb): the unit's
+    // detachment / config-toggle gates, so the catalogue list can be filtered
+    // without deserializing the full model.
+    public string AvailabilityJson { get; set; } = "{}";
+
     // Serialized Domain.Catalogue.Datasheet (jsonb).
     public string ModelJson { get; set; } = "";
 }

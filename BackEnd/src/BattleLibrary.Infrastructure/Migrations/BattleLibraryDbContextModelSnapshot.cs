@@ -569,6 +569,10 @@ namespace BattleLibrary.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<string>("AvailabilityJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
                     b.Property<string>("BsDataId")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -963,6 +967,8 @@ namespace BattleLibrary.Infrastructure.Migrations
 
                             b1.Property<int>("Points");
 
+                            b1.Property<int>("Quantity");
+
                             b1.HasKey("ListEntryId", "__synthesizedOrdinal");
 
                             b1.ToTable("ListEntries");
@@ -1012,6 +1018,8 @@ namespace BattleLibrary.Infrastructure.Migrations
                                 .IsRequired();
 
                             b1.Property<int>("Points");
+
+                            b1.Property<int>("Quantity");
 
                             b1.HasKey("LoadoutPresetId", "__synthesizedOrdinal");
 

@@ -104,6 +104,7 @@ public sealed class BsDataRefreshService(
                     Name = sheet.Name,
                     Points = sheet.Points,
                     KeywordsCsv = string.Join('|', sheet.Keywords),
+                    AvailabilityJson = JsonSerializer.Serialize(sheet.Availability, CacheJson.Options),
                     ModelJson = JsonSerializer.Serialize(sheet, CacheJson.Options),
                 });
             }

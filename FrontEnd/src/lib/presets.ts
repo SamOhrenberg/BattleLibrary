@@ -1,5 +1,5 @@
 import { ApiError, authFetch } from './api'
-import type { SelectedOption } from './lists'
+import type { SelectedOption, VariantQuantity } from './lists'
 
 // Saved loadouts (wargear + size) for a datasheet, reusable across lists.
 
@@ -23,6 +23,7 @@ export interface CreatePresetInput {
   name: string
   models?: number
   selectedOptionIds: string[]
+  variants?: VariantQuantity[]
 }
 
 async function send<T>(path: string, method: string, body?: unknown): Promise<T> {

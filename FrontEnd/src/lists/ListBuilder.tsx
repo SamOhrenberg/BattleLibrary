@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ApiError } from '../lib/api'
-import { getDatasheets, getFactions, type CatalogueDatasheet, type CatalogueDetachment, type CatalogueFaction, type FactionDatasheets } from '../lib/catalogue'
+import { getDatasheets, getFactions, type CatalogueDatasheet, type CatalogueDetachment, type CatalogueFaction, type DatasheetDetail, type FactionDatasheets } from '../lib/catalogue'
 import {
   addEntry,
   addForce,
@@ -20,9 +20,10 @@ import {
   BATTLE_SIZES,
   type ArmyList,
   type ListEntry,
+  type VariantQuantity,
 } from '../lib/lists'
 import { getPresets, createPreset, deletePreset, type LoadoutPreset } from '../lib/presets'
-import { validateList, isCharacter, BATTLE_SIZE_RULES } from './validation'
+import { validateList, variantPoolWarnings, isCharacter, BATTLE_SIZE_RULES, type VariantInfo } from './validation'
 import { groupByRole } from './roles'
 import { isLegends, isCrucible } from './tiers'
 import { useTour } from '../onboarding/TourContext'
@@ -58,6 +59,9 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
   // current, so show it. Toggles below let either be flipped.
   const [showLegends, setShowLegends] = useState(false)
   const [showCrucible, setShowCrucible] = useState(true)
+  // "Show X" opt-in content (allied daemons, Chaos Knights, Titans, ...) is off
+  // by default; a unit gated on one appears only when its toggle is enabled here.
+  const [enabledToggles, setEnabledToggles] = useState<Set<string>>(new Set())
   const [tab, setTab] = useState<'catalogue' | 'list'>('catalogue')
   // How the list panel groups entries: by role (default) or the owner's custom order.
   const [listView, setListView] = useState<'role' | 'custom'>('role')
@@ -65,6 +69,9 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
   const [catCollapsed, setCatCollapsed] = useState<Set<string>>(new Set())
   const [detailId, setDetailId] = useState<string | null>(null)
   const [editEntry, setEditEntry] = useState<ListEntry | null>(null)
+  // Datasheet details seen so far, so the loadout-pool warning knows each unit's
+  // fixed model count and variant ids. Populated as the detail modal loads them.
+  const [detailCache, setDetailCache] = useState<Record<string, DatasheetDetail>>({})
   // The owner's saved loadouts for this game system, indexed by datasheet.
   const [presets, setPresets] = useState<LoadoutPreset[]>([])
   // Inline custom-name / notes editors, keyed by the entry being edited.
@@ -163,10 +170,19 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
     }
   }
 
-  // Save a datasheet's current wargear + size as a named, reusable preset.
-  async function savePreset(datasheetId: string, name: string, optionIds: string[], models?: number) {
+  const cacheDetail = (d: DatasheetDetail) =>
+    setDetailCache((prev) => (prev[d.id] === d ? prev : { ...prev, [d.id]: d }))
+
+  // Save a datasheet's current wargear + size + loadout as a named, reusable preset.
+  async function savePreset(
+    datasheetId: string,
+    name: string,
+    optionIds: string[],
+    models?: number,
+    variants?: VariantQuantity[],
+  ) {
     try {
-      await createPreset({ gameSystemKey: list.gameSystemKey, datasheetId, name, models, selectedOptionIds: optionIds })
+      await createPreset({ gameSystemKey: list.gameSystemKey, datasheetId, name, models, selectedOptionIds: optionIds, variants })
       await refreshPresets()
       toast.push(`Saved loadout "${name}".`, 'success')
     } catch (err) {
@@ -193,6 +209,17 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
     () => datasheets.filter((d) => isCrucible(d.name, d.keywords)).length,
     [datasheets],
   )
+  // Selected detachment ids (also used to gate detachment-locked units below).
+  const chosenIds = useMemo(() => new Set(list.detachments.map((d) => d.id)), [list.detachments])
+
+  // "Show X" content groups present in this faction, with how many units each gates.
+  const contentToggles = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const d of datasheets) {
+      for (const t of d.availability?.requiredToggles ?? []) counts.set(t, (counts.get(t) ?? 0) + 1)
+    }
+    return [...counts.entries()].sort((a, b) => a[0].localeCompare(b[0]))
+  }, [datasheets])
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -200,9 +227,16 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
       if (q && !d.name.toLowerCase().includes(q)) return false
       if (!showLegends && isLegends(d.name)) return false
       if (!showCrucible && isCrucible(d.name, d.keywords)) return false
+      const av = d.availability
+      if (av) {
+        // Opt-in content stays hidden until its "Show X" toggle is enabled.
+        if (av.requiredToggles.length > 0 && !av.requiredToggles.every((t) => enabledToggles.has(t))) return false
+        // Detachment-locked units appear only with one of their detachments chosen.
+        if (av.requiredDetachmentIds.length > 0 && !av.requiredDetachmentIds.some((id) => chosenIds.has(id))) return false
+      }
       return true
     })
-  }, [datasheets, search, showLegends, showCrucible])
+  }, [datasheets, search, showLegends, showCrucible, enabledToggles, chosenIds])
 
   const catalogueGroups = useMemo(() => groupByRole(filtered, (d) => d.keywords), [filtered])
   // Flat ordering for the name/points sorts (role uses the grouped view).
@@ -244,8 +278,8 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
     }
   }
 
-  async function add(datasheetId: string, optionIds: string[] = [], models?: number) {
-    await run(() => addEntry(list.id, datasheetId, optionIds, models, activeForce?.id))
+  async function add(datasheetId: string, optionIds: string[] = [], models?: number, variants?: VariantQuantity[]) {
+    await run(() => addEntry(list.id, datasheetId, optionIds, models, activeForce?.id, variants))
     if (!addedOnce.current) {
       addedOnce.current = true
       notify('entry-added')
@@ -315,10 +349,17 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
     URL.revokeObjectURL(url)
   }
 
-  // Copies an entry: re-adds the same datasheet, quantity, and wargear options.
-  // Warlord/enhancement are intentionally not copied (each is unique).
+  // Copies an entry: re-adds the same datasheet, size, wargear, and loadout pool
+  // (variants, when the datasheet's shape is known). Warlord/enhancement are
+  // intentionally not copied (each is unique).
   function duplicateEntry(e: ListEntry) {
-    void run(() => addEntry(list.id, e.datasheetId, e.selectedOptions.map((o) => o.id), e.modelCount))
+    const groups = detailCache[e.datasheetId]?.variantGroups ?? []
+    const variantIds = new Set(groups.flatMap((g) => g.variants.map((v) => v.id)))
+    const optionIds = e.selectedOptions.filter((o) => !variantIds.has(o.id)).map((o) => o.id)
+    const variants = e.selectedOptions
+      .filter((o) => variantIds.has(o.id))
+      .map((o) => ({ id: o.id, quantity: o.quantity }))
+    void run(() => addEntry(list.id, e.datasheetId, optionIds, e.modelCount, undefined, variants.length ? variants : undefined))
   }
 
   // Inline custom-name editing: open with the current name, save on blur/Enter.
@@ -399,10 +440,40 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
 
   const over = list.isOverLimit
   const hasDetachments = detachments.length > 0
-  const chosenIds = useMemo(() => new Set(list.detachments.map((d) => d.id)), [list.detachments])
   const rules = BATTLE_SIZE_RULES[list.battleSize ?? '']
   const dpUsed = list.detachments.reduce((n, d) => n + d.dp, 0)
-  const issues = useMemo(() => validateList(list, hasDetachments, pointless), [list, hasDetachments, pointless])
+  // Detachment-locked datasheets in the active faction, for legality checks.
+  const detachmentReqs = useMemo(() => {
+    const byDatasheet = new Map<string, string[]>()
+    for (const d of datasheets) {
+      const req = d.availability?.requiredDetachmentIds
+      if (req && req.length > 0) byDatasheet.set(d.id, req)
+    }
+    return {
+      byDatasheet,
+      selectedIds: chosenIds,
+      names: new Map(detachments.map((d) => [d.id, d.name])),
+    }
+  }, [datasheets, chosenIds, detachments])
+  const issues = useMemo(
+    () => validateList(list, hasDetachments, pointless, detachmentReqs),
+    [list, hasDetachments, pointless, detachmentReqs],
+  )
+  // Loadout-pool fill status, from the datasheet details seen so far.
+  const variantInfo = useMemo(() => {
+    const map = new Map<string, VariantInfo>()
+    for (const d of Object.values(detailCache)) {
+      const groups = d.variantGroups ?? []
+      if (groups.length > 0) {
+        map.set(d.id, { fixed: d.fixedModelCount ?? 0, variantIds: new Set(groups.flatMap((g) => g.variants.map((v) => v.id))) })
+      }
+    }
+    return map
+  }, [detailCache])
+  const poolWarnings = useMemo(
+    () => (pointless ? [] : variantPoolWarnings(list, variantInfo)),
+    [list, variantInfo, pointless],
+  )
   // A unit whose rules force the Warlord slot locks it: it can't be cleared and
   // no other unit can take the slot while it is in the list.
   const hasForcedWarlord = useMemo(() => list.entries.some((e) => e.forcedWarlord), [list.entries])
@@ -426,6 +497,14 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
   }
   const toggleDetachment = (id: string) =>
     run(() => setDetachments(list.id, chosenIds.has(id) ? [...chosenIds].filter((x) => x !== id) : [...chosenIds, id]))
+
+  const toggleContent = (name: string) =>
+    setEnabledToggles((prev) => {
+      const next = new Set(prev)
+      if (next.has(name)) next.delete(name)
+      else next.add(name)
+      return next
+    })
 
   const attach = (entryId: string, targetId: string | null) => run(() => attachEntry(list.id, entryId, targetId))
 
@@ -1016,6 +1095,15 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
         </div>
       )}
 
+      {!pointless && poolWarnings.length > 0 && (
+        <div className="legality warn">
+          <span className="legality-head">
+            ⚠ {poolWarnings.length} loadout{poolWarnings.length > 1 ? 's' : ''} to finish assigning
+          </span>
+          <ul>{poolWarnings.map((w) => <li key={w.entryId}>{w.message}</li>)}</ul>
+        </div>
+      )}
+
       {equipment.length > 0 && (
         <div className="faction-equipment">
           <span className="fe-label">Kill team equipment</span>
@@ -1128,6 +1216,21 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
               )}
             </div>
           )}
+          {contentToggles.length > 0 && (
+            <div className="tier-toggles">
+              <span className="tier-label">Optional</span>
+              {contentToggles.map(([name, count]) => (
+                <label key={name} className="tier-toggle">
+                  <input
+                    type="checkbox"
+                    checked={enabledToggles.has(name)}
+                    onChange={() => toggleContent(name)}
+                  />
+                  {name.replace(/^Show /, '')} <span className="tier-count">{count}</span>
+                </label>
+              ))}
+            </div>
+          )}
           <div className="scroll">
             {filtered.length === 0 ? (
               <p className="empty">No units match.</p>
@@ -1218,10 +1321,11 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
         <UnitDetailModal
           datasheetId={detailId}
           presets={presetsBySheet.get(detailId) ?? []}
-          onSavePreset={(name, optionIds, models) => void savePreset(detailId, name, optionIds, models)}
+          onDetail={cacheDetail}
+          onSavePreset={(name, optionIds, models, variants) => void savePreset(detailId, name, optionIds, models, variants)}
           onDeletePreset={(presetId) => void removePreset(presetId)}
-          onAdd={(optionIds, models) => {
-            void add(detailId, optionIds, models)
+          onAdd={(optionIds, models, variants) => {
+            void add(detailId, optionIds, models, variants)
             setDetailId(null)
           }}
           onClose={() => setDetailId(null)}
@@ -1234,12 +1338,14 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
           datasheetId={editEntry.datasheetId}
           initialSelected={editEntry.selectedOptions.map((o) => o.id)}
           initialModels={editEntry.modelCount}
+          initialQuantities={Object.fromEntries(editEntry.selectedOptions.map((o) => [o.id, o.quantity]))}
           submitLabel="Save changes"
           busy={busy}
           presets={presetsBySheet.get(editEntry.datasheetId) ?? []}
-          onSavePreset={(name, optionIds, models) => void savePreset(editEntry.datasheetId, name, optionIds, models)}
+          onDetail={cacheDetail}
+          onSavePreset={(name, optionIds, models, variants) => void savePreset(editEntry.datasheetId, name, optionIds, models, variants)}
           onDeletePreset={(presetId) => void removePreset(presetId)}
-          onSizeChange={(m) => void runEntry(editEntry.id, () => setModelCount(list.id, editEntry.id, m))}
+          onSizeChange={(m, variants) => void runEntry(editEntry.id, () => setModelCount(list.id, editEntry.id, m, variants))}
           enhancement={
             pointless || list.detachments.length === 0
               ? undefined
@@ -1249,8 +1355,8 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
                   onChange: (id) => void runEntry(editEntry.id, () => setEnhancement(list.id, editEntry.id, id)),
                 }
           }
-          onAdd={(optionIds) => {
-            void run(() => updateEntry(list.id, editEntry.id, { selectedOptionIds: optionIds }))
+          onAdd={(optionIds, _models, variants) => {
+            void run(() => updateEntry(list.id, editEntry.id, { selectedOptionIds: optionIds, variants }))
             setEditEntry(null)
           }}
           onClose={() => setEditEntry(null)}

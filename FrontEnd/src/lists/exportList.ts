@@ -41,7 +41,7 @@ export function listToText(list: ArmyList, pointless: boolean): string {
       lines.push(`${sub}Enhancement: ${e.enhancementName}${e.enhancementPoints ? ` (+${e.enhancementPoints})` : ''}`)
     }
     if (e.selectedOptions.length > 0) {
-      lines.push(`${sub}${e.selectedOptions.map((o) => o.name).join(', ')}`)
+      lines.push(`${sub}${e.selectedOptions.map((o) => (o.quantity > 1 ? `${o.quantity}× ${o.name}` : o.name)).join(', ')}`)
     }
     if (e.notes) {
       for (const note of e.notes.split('\n')) lines.push(`${sub}Note: ${note}`)
