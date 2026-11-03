@@ -577,7 +577,7 @@ public sealed class BsDataParser
             var (lo, hi) = GroupModelCount(g, models);
             if (models.Count > 1)
             {
-                var variants = models.Select(m => ToVariant(m, schema, ptsTypeId, index)).ToList();
+                var variants = models.Select(m => ToVariant(m, g, schema, ptsTypeId, index)).ToList();
                 groups.Add(new ModelVariantGroup(g.Id, g.Name, hi, variants));
             }
             else if (lo == hi)
@@ -589,10 +589,23 @@ public sealed class BsDataParser
         return (groups, fixedCount);
     }
 
-    private static ModelVariant ToVariant(SelectionEntryNode model, CatalogueSchema schema, string ptsTypeId, Index index)
+    private static ModelVariant ToVariant(SelectionEntryNode model, SelectionEntryGroupNode group, CatalogueSchema schema, string ptsTypeId, Index index)
     {
         var (_, hi) = CountFromConstraints(model);
-        return new ModelVariant(model.Id, model.Name, hi, PointsOf(model, ptsTypeId), OptionWeapons(model, schema, index));
+        return new ModelVariant(model.Id, model.Name, hi, PointsOf(model, ptsTypeId), OptionWeapons(model, schema, index), IsGroupDefault(group, model));
+    }
+
+    // Whether a group's child (a selection entry or entry link) is the one named
+    // by the group's defaultSelectionEntryId - matched on the child id, or on an
+    // entry link's target id, since a group may name either.
+    private static bool IsGroupDefault(SelectionEntryGroupNode group, SelectionNode choice)
+    {
+        if (string.IsNullOrEmpty(group.DefaultSelectionEntryId))
+        {
+            return false;
+        }
+        return choice.Id == group.DefaultSelectionEntryId
+            || (choice is EntryLinkNode link && link.TargetId == group.DefaultSelectionEntryId);
     }
 
     // Collects profiles from a node, its children, and any entries/profiles/rules
@@ -1402,7 +1415,7 @@ public sealed class BsDataParser
                         : (choice as EntryLinkNode)?.TargetId ?? "";
                     options.Add(new DatasheetOption(
                         id, name, pts, group.Name, OptionWeapons(choice, schema, index),
-                        ownerModel, group.Id, gMin ?? 0, gMax ?? 0));
+                        ownerModel, group.Id, gMin ?? 0, gMax ?? 0, IsGroupDefault(group, choice)));
                 }
                 // A model choice owns the options nested beneath it.
                 var childOwner = IsModel(type) ? name : ownerModel;

@@ -213,7 +213,13 @@ internal sealed class SelectionEntryNode : SelectionNode
     public string Type { get; set; } = "";
 }
 
-internal sealed class SelectionEntryGroupNode : SelectionNode;
+internal sealed class SelectionEntryGroupNode : SelectionNode
+{
+    // Names the child entry/link that is pre-selected by default when the group
+    // is added (e.g. a unit's stock weapon in a "pick one" swap). Empty when the
+    // group declares no default.
+    public string DefaultSelectionEntryId { get; set; } = "";
+}
 
 internal sealed class EntryLinkNode : SelectionNode
 {

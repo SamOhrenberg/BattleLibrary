@@ -100,7 +100,7 @@ internal static class BsDataXmlReader
 
     private static SelectionEntryGroupNode ReadGroup(XElement e)
     {
-        var node = new SelectionEntryGroupNode();
+        var node = new SelectionEntryGroupNode { DefaultSelectionEntryId = Attr(e, "defaultSelectionEntryId") };
         FillSelection(node, e);
         return node;
     }

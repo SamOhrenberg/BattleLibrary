@@ -19,7 +19,7 @@ function reconcile(groups: ModelVariantGroup[], current: Record<string, number>,
   const next: Record<string, number> = {}
   for (const v of variants) next[v.id] = Math.min(v.max, Math.max(0, current[v.id] ?? 0))
   let total = variants.reduce((n, v) => n + next[v.id], 0)
-  const def = variants[0]
+  const def = variants.find((v) => v.isDefault) ?? variants[0]
   if (!def) return next
   if (total < target) {
     next[def.id] = Math.min(def.max, next[def.id] + (target - total))
@@ -109,6 +109,12 @@ export function UnitDetailModal({
         // Default the size to the entry's current count, else the smallest.
         const size = initialModels ?? d.sizes[0]?.models
         setModels(size)
+        // Add mode (no saved selection): pre-select each choice set's default
+        // wargear so the unit starts on its datasheet loadout. Edit mode keeps
+        // the saved picks seeded before the fetch.
+        if (!initialSelected) {
+          setSelected(new Set(d.options.filter((o) => o.isDefault).map((o) => o.id)))
+        }
         // Seed the loadout pool: restore current counts in edit mode, else
         // auto-fill the default variant up to the pool target.
         const groups = d.variantGroups ?? []
@@ -437,6 +443,7 @@ export function UnitDetailModal({
                                 disabled={busy || (atCap && !selected.has(o.id))}
                               />
                               <span className="opt-name">{o.name}</span>
+                              {o.isDefault && <span className="opt-default">Default</span>}
                               <span className="opt-pts">{o.points > 0 ? `+${o.points}` : 'free'}</span>
                             </label>
                             {o.weapons?.length > 0 && (

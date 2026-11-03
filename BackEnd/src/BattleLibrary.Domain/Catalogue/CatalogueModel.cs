@@ -93,9 +93,10 @@ public sealed record ModelVariantGroup(
     string Id, string Name, int Max, IReadOnlyList<ModelVariant> Variants);
 
 // One weapon loadout within a variant group. Max is the per-variant cap; Points
-// is the additive pts cost per model taking it (usually 0 in 11e).
+// is the additive pts cost per model taking it (usually 0 in 11e). IsDefault
+// marks the loadout the pool fills with first (the group's declared default).
 public sealed record ModelVariant(
-    string Id, string Name, int Max, int Points, IReadOnlyList<WeaponProfile> Weapons);
+    string Id, string Name, int Max, int Points, IReadOnlyList<WeaponProfile> Weapons, bool IsDefault = false);
 
 // A selectable wargear/upgrade choice. Points is the additive pts cost (0 when
 // the option is free, as most 11e wargear is). Group is the choice set it
@@ -107,9 +108,13 @@ public sealed record ModelVariant(
 // GroupId is the choice set's stable id, GroupMin/GroupMax its selection bounds
 // (how many of the set may be taken): GroupMax 1 is a "pick one" swap, GroupMax
 // 0 means no declared cap. These drive single-select enforcement in the builder.
+//
+// IsDefault marks the choice named by its group's defaultSelectionEntryId: the
+// option pre-selected when the unit is added, so starting wargear and points
+// match the datasheet. At most one option per group carries it.
 public sealed record DatasheetOption(
     string Id, string Name, int Points, string Group, IReadOnlyList<WeaponProfile> Weapons,
-    string Model = "", string GroupId = "", int GroupMin = 0, int GroupMax = 0);
+    string Model = "", string GroupId = "", int GroupMin = 0, int GroupMax = 0, bool IsDefault = false);
 
 public sealed record UnitProfile(string Name, IReadOnlyList<Characteristic> Characteristics);
 

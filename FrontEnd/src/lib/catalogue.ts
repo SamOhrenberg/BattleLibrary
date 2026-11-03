@@ -92,6 +92,9 @@ export interface DatasheetOption {
   groupId?: string
   groupMin?: number
   groupMax?: number
+  // True for the choice named by its group's default: pre-selected when the unit
+  // is added, so starting wargear and points match the datasheet.
+  isDefault?: boolean
   // Weapon stat line(s) this choice grants (empty for plain upgrades).
   weapons: DatasheetWeapon[]
 }
@@ -126,6 +129,8 @@ export interface ModelVariant {
   name: string
   max: number
   points: number
+  // True for the loadout the pool fills with first (the group's default).
+  isDefault?: boolean
   weapons: DatasheetWeapon[]
 }
 
