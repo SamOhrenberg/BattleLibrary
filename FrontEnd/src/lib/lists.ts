@@ -37,6 +37,9 @@ export interface ListEntry {
   notes: string | null
   points: number
   optionsPoints: number
+  // Selection-dependent points from datasheet cost rules (Crucible warband weapon
+  // pricing); 0 for ordinary units. Already included in lineTotal.
+  dynamicPoints: number
   modelCount: number
   sortOrder: number
   lineTotal: number

@@ -621,8 +621,12 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
         {!pointless && (
           <div className="entry-each">
             {e.modelCount > 1 ? `${e.modelCount} models · ` : ''}
-            {e.points + e.optionsPoints} pts
-            {e.optionsPoints > 0 ? ` (${e.points} + ${e.optionsPoints})` : ''}
+            {e.points + e.optionsPoints + e.dynamicPoints} pts
+            {e.optionsPoints > 0 || e.dynamicPoints > 0
+              ? ` (${e.points}${e.optionsPoints > 0 ? ` + ${e.optionsPoints}` : ''}${
+                  e.dynamicPoints !== 0 ? ` ${e.dynamicPoints > 0 ? '+' : '−'} ${Math.abs(e.dynamicPoints)}` : ''
+                })`
+              : ''}
           </div>
         )}
         {e.selectedOptions.length > 0 && (

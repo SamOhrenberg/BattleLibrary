@@ -101,6 +101,19 @@ export interface UnitSize {
   points: number
 }
 
+// A selection-dependent points adjustment (Crucible warband weapon pricing).
+// countedOptionIds are the option ids the rule counts. amount is signed.
+// perSelection: add amount once per `step` selected. Otherwise (threshold) add
+// amount once when the selected count satisfies `operator` against `value`.
+export interface CostRule {
+  countedOptionIds: string[]
+  amount: number
+  perSelection: boolean
+  step: number
+  operator: string
+  value: number
+}
+
 export interface ModelGroup {
   label: string
   weapons: string[]
@@ -142,6 +155,48 @@ export interface DatasheetDetail {
   variantGroups?: ModelVariantGroup[]
   fixedModelCount?: number
   availability?: DatasheetAvailability
+  // Selection-dependent pricing rules (Crucible warband weapons); usually empty.
+  costRules?: CostRule[]
+}
+
+// Points adjustment from a datasheet's cost rules for a given set of selected
+// option ids (with quantities). Mirrors the server's DynamicPoints so the
+// builder preview matches the saved total.
+export function dynamicPoints(
+  rules: CostRule[] | undefined,
+  selected: ReadonlyArray<{ id: string; quantity?: number }>,
+): number {
+  if (!rules || rules.length === 0) return 0
+  let total = 0
+  for (const rule of rules) {
+    const counted = new Set(rule.countedOptionIds)
+    const count = selected
+      .filter((o) => counted.has(o.id))
+      .reduce((n, o) => n + Math.max(1, o.quantity ?? 1), 0)
+    if (rule.perSelection) {
+      total += rule.amount * Math.floor(count / Math.max(1, rule.step))
+    } else if (qualifies(count, rule.operator, rule.value)) {
+      total += rule.amount
+    }
+  }
+  return total
+}
+
+function qualifies(count: number, op: string, value: number): boolean {
+  switch (op) {
+    case 'atLeast':
+      return count >= value
+    case 'greaterThan':
+      return count > value
+    case 'atMost':
+      return count <= value
+    case 'lessThan':
+      return count < value
+    case 'equalTo':
+      return count === value
+    default:
+      return false
+  }
 }
 
 export function getCatalogueSystems(): Promise<CatalogueSystem[]> {

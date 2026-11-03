@@ -681,6 +681,7 @@ public static partial class ListEndpoints
                 .. ResolveVariants(sheet.VariantGroups, request.Variants),
             ],
         };
+        entry.DynamicPoints = DynamicPoints(sheet.CostRules, entry.SelectedOptions);
         list.Entries.Add(entry);
 
         // An Epic Hero whose rules mandate it takes the Warlord slot outright.
@@ -729,6 +730,7 @@ public static partial class ListEndpoints
                 ? ResolveVariants(groups, request.Variants)
                 : VariantOptions(entry, groups);
             entry.SelectedOptions = [.. plain, .. chosenVariants];
+            entry.DynamicPoints = DynamicPoints(sheet?.CostRules ?? [], entry.SelectedOptions);
         }
         // A null field is left as is; a sent value (including "") updates, with
         // blank clearing the value. Lengths match the column limits.
@@ -811,6 +813,7 @@ public static partial class ListEndpoints
             var groups = sheet!.VariantGroups;
             entry.SelectedOptions = [.. NonVariantOptions(entry, groups), .. ResolveVariants(groups, request.Variants)];
         }
+        entry.DynamicPoints = DynamicPoints(sheet.CostRules, entry.SelectedOptions);
         list.UpdatedAt = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(ct);
         return Results.Ok(ToDto(list));
@@ -1115,6 +1118,7 @@ public static partial class ListEndpoints
                 }
             }
             entry.SelectedOptions = ResolveOptions(sheet.Options, selected);
+            entry.DynamicPoints = DynamicPoints(sheet.CostRules, entry.SelectedOptions);
             list.Entries.Add(entry);
         }
         list.Detachments = chosenDetachments;
@@ -1238,9 +1242,10 @@ public static partial class ListEndpoints
                 return new ListEntryDto(
                     e.Id, e.ListForceId, e.DatasheetId, e.DatasheetName, e.CustomName, e.Notes, e.Points, optionsPoints, e.ModelCount,
                     e.SortOrder,
-                    e.Points + optionsPoints + e.EnhancementPoints,
+                    e.Points + optionsPoints + e.EnhancementPoints + e.DynamicPoints,
                     e.Keywords, e.IsWarlord, e.ForcedWarlord, e.AttachedToEntryId, e.EnhancementId, e.EnhancementName, e.EnhancementPoints,
-                    e.SelectedOptions.Select(o => new SelectedOptionDto(o.Id, o.Name, o.Points, Math.Max(1, o.Quantity))).ToList());
+                    e.SelectedOptions.Select(o => new SelectedOptionDto(o.Id, o.Name, o.Points, Math.Max(1, o.Quantity))).ToList(),
+                    e.DynamicPoints);
             })
             .ToList();
         var total = entries.Sum(e => e.LineTotal);
@@ -1260,16 +1265,53 @@ public static partial class ListEndpoints
     }
 
     private static int LineTotal(ListEntry e) =>
-        e.Points + OptionsPoints(e) + e.EnhancementPoints;
+        e.Points + OptionsPoints(e) + e.EnhancementPoints + e.DynamicPoints;
 
     // Points from wargear and loadout variants, each multiplied by its count
     // (count is 1 for a plain upgrade).
     private static int OptionsPoints(ListEntry e) =>
         e.SelectedOptions.Sum(o => o.Points * Math.Max(1, o.Quantity));
 
+    // Selection-dependent points from a datasheet's cost rules (Crucible warband
+    // weapon pricing), given the entry's chosen options. Per-selection rules add
+    // per counted selection; threshold rules add once when the count qualifies.
+    private static int DynamicPoints(IReadOnlyList<CostRule> rules, IEnumerable<SelectedOption> options)
+    {
+        if (rules.Count == 0)
+        {
+            return 0;
+        }
+        var selected = options.ToList();
+        var total = 0;
+        foreach (var rule in rules)
+        {
+            var counted = rule.CountedOptionIds.ToHashSet(StringComparer.Ordinal);
+            var count = selected.Where(o => counted.Contains(o.Id)).Sum(o => Math.Max(1, o.Quantity));
+            if (rule.PerSelection)
+            {
+                total += rule.Amount * (count / Math.Max(1, rule.Step));
+            }
+            else if (Qualifies(count, rule.Operator, rule.Value))
+            {
+                total += rule.Amount;
+            }
+        }
+        return total;
+    }
+
+    private static bool Qualifies(int count, string op, int value) => op switch
+    {
+        "atLeast" => count >= value,
+        "greaterThan" => count > value,
+        "atMost" => count <= value,
+        "lessThan" => count < value,
+        "equalTo" => count == value,
+        _ => false,
+    };
+
     private sealed record SheetInfo(
         string Name, int Points, IReadOnlyList<string> Keywords, IReadOnlyList<DatasheetOption> Options, IReadOnlyList<UnitSize> Sizes,
-        bool ForcedWarlord, IReadOnlyList<ModelVariantGroup> VariantGroups);
+        bool ForcedWarlord, IReadOnlyList<ModelVariantGroup> VariantGroups, IReadOnlyList<CostRule> CostRules);
 
     // Pulls name/points/keywords/options/sizes/variants for a datasheet from the cached slim jsonb.
     private static async Task<SheetInfo?> LoadSheet(
@@ -1289,7 +1331,7 @@ public static partial class ListEndpoints
             ? null
             : new SheetInfo(
                 sheet.Name, sheet.Points ?? 0, sheet.Keywords, sheet.Options, sheet.Sizes ?? [], IsForcedWarlord(sheet),
-                sheet.VariantGroups ?? []);
+                sheet.VariantGroups ?? [], sheet.CostRules ?? []);
     }
 
     // An Epic Hero whose rules force it to be the army's Warlord ("...it must be

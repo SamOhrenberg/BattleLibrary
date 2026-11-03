@@ -279,7 +279,7 @@ public static class GameSessionEndpoints
                     Keywords = [.. e.Keywords],
                     IsWarlord = e.IsWarlord,
                     EnhancementName = e.EnhancementName,
-                    Points = (e.Points + e.SelectedOptions.Sum(o => o.Points)) * e.Quantity + e.EnhancementPoints,
+                    Points = (e.Points + e.SelectedOptions.Sum(o => o.Points)) * e.Quantity + e.EnhancementPoints + e.DynamicPoints,
                     Wargear = [.. e.SelectedOptions.Select(o => o.Name)],
                 });
             }
@@ -656,7 +656,7 @@ public static class GameSessionEndpoints
         p.Rounds.Sum(r => r.PrimaryScore + r.Secondaries.Sum(x => x.Score));
 
     private static int ListTotal(ArmyList l) =>
-        l.Entries.Sum(e => (e.Points + e.SelectedOptions.Sum(o => o.Points)) * e.Quantity + e.EnhancementPoints);
+        l.Entries.Sum(e => (e.Points + e.SelectedOptions.Sum(o => o.Points)) * e.Quantity + e.EnhancementPoints + e.DynamicPoints);
 
     // Legality reason per participant that has chosen a list: null when the list
     // is both usable (system/points/non-empty) and legal (the builder's 11e

@@ -56,6 +56,11 @@ public class ListEntry : Entity
     public string? EnhancementName { get; set; }
     public int EnhancementPoints { get; set; }
 
+    // Selection-dependent points from the datasheet's cost rules (Crucible warband
+    // weapon pricing), recomputed from SelectedOptions whenever they change. Zero
+    // for ordinary units. Added to the line total alongside options/enhancement.
+    public int DynamicPoints { get; set; }
+
     // Chosen wargear options, each snapshotting its id/name/points at add-time.
     public List<SelectedOption> SelectedOptions { get; set; } = [];
 }

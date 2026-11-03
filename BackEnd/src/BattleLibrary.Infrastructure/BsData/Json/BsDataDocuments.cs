@@ -162,6 +162,24 @@ internal sealed class ModifierNode
     public JsonElement Value { get; set; }
     public List<ConditionNode> Conditions { get; set; } = [];
     public List<ConditionGroupNode> ConditionGroups { get; set; } = [];
+
+    // A points increment/decrement that scales with a selection count carries its
+    // counter here ("+V points per N selections of a child"), rather than a flat
+    // condition. Used by Crucible characters whose weapons each add points.
+    public List<RepeatNode> Repeats { get; set; } = [];
+}
+
+// A modifier's repeat counter: apply the modifier Repeats times for every Value
+// selections of ChildId within Scope. Value/Repeats are 1 for a plain
+// per-selection modifier ("+V per weapon").
+internal sealed class RepeatNode
+{
+    public string ChildId { get; set; } = "";
+    public string Field { get; set; } = "";
+    public string Scope { get; set; } = "";
+    public double Value { get; set; }
+    public double Repeats { get; set; }
+    public bool IncludeChildSelections { get; set; }
 }
 
 internal sealed class ModifierGroupNode

@@ -406,6 +406,9 @@ namespace BattleLibrary.Infrastructure.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
+                    b.Property<int>("DynamicPoints")
+                        .HasColumnType("integer");
+
                     b.Property<string>("EnhancementId")
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");

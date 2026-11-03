@@ -516,7 +516,15 @@ public sealed class BsDataParser
             .DistinctBy(a => a.Name, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-        var options = ExtractOptions(entry, schema, ptsTypeId, index);
+        // Crucible warband characters attach their Weapons / Specialisms / Abilities
+        // by group link and price those weapons through selection-counting modifiers.
+        // Both are handled only for this content tier (the app already treats it
+        // specially), so ordinary datasheets are untouched.
+        var isCrucible = entry.Name.Contains("[Crucible]", StringComparison.OrdinalIgnoreCase)
+            || keywords.Any(k => string.Equals(k, "Crucible", StringComparison.OrdinalIgnoreCase));
+
+        var options = ExtractOptions(entry, schema, ptsTypeId, index, isCrucible);
+        IReadOnlyList<CostRule> costRules = isCrucible ? ExtractCostRules(entry, ptsTypeId, index, options) : [];
 
         var unit = unitProfiles
             .Select(p => new UnitProfile(p.Name, ToCharacteristics(p)))
@@ -528,7 +536,7 @@ public sealed class BsDataParser
 
         return new Datasheet(
             entry.Id, entry.Name, points, keywords, unit, weapons, abilities, options, equipment, sizes, modelGroups,
-            variantGroups, fixedModels, DatasheetAvailability.None);
+            variantGroups, fixedModels, DatasheetAvailability.None, costRules);
     }
 
     // Distributable model pools: a selection group holding more than one model
@@ -702,10 +710,15 @@ public sealed class BsDataParser
     // Wargear/upgrade choices the datasheet offers: the children of the unit's
     // selection groups, with their additive pts cost (0 when free or point-less).
     // Model/unit children are size brackets, not add-ons, so they are skipped.
-    private static IReadOnlyList<DatasheetOption> ExtractOptions(SelectionEntryNode entry, CatalogueSchema schema, string ptsTypeId, Index index)
+    // resolveGroupLinks follows entryLinks that point at a shared selection group
+    // (not just an entry). It is enabled only for Crucible datasheets, whose
+    // Weapons / Specialisms / Abilities choices are attached solely by group link;
+    // enabling it everywhere would restructure options for nearly every datasheet.
+    private static IReadOnlyList<DatasheetOption> ExtractOptions(
+        SelectionEntryNode entry, CatalogueSchema schema, string ptsTypeId, Index index, bool resolveGroupLinks)
     {
         var options = new List<DatasheetOption>();
-        CollectOptions(entry, "", MaxDepth, [], options, index, ptsTypeId, schema);
+        CollectOptions(entry, "", MaxDepth, [], options, index, ptsTypeId, schema, resolveGroupLinks);
         return options
             .Where(o => !string.IsNullOrWhiteSpace(o.Name) && !string.IsNullOrEmpty(o.Id))
             .DistinctBy(o => o.Id)
@@ -1219,12 +1232,150 @@ public sealed class BsDataParser
         return vals;
     }
 
+    // Selection-dependent points rules for a Crucible character: increment /
+    // decrement modifiers on the points cost that scale with, or are gated on, how
+    // many choices are taken in a counted group (its weapons). A per-selection
+    // modifier (repeats) becomes a PerSelection rule; a conditional one
+    // (atLeast/atMost/... selections) becomes a threshold rule. Each is resolved
+    // to the datasheet option ids it counts so pricing needs no group lookup later.
+    private static IReadOnlyList<CostRule> ExtractCostRules(
+        SelectionEntryNode entry, string ptsTypeId, Index index, IReadOnlyList<DatasheetOption> options)
+    {
+        if (string.IsNullOrEmpty(ptsTypeId))
+        {
+            return [];
+        }
+        var surfaced = options.Select(o => o.Id).ToHashSet(StringComparer.Ordinal);
+        var rules = new List<CostRule>();
+
+        void Consider(ModifierNode m)
+        {
+            var sign = string.Equals(m.Type, "increment", StringComparison.OrdinalIgnoreCase) ? 1
+                : string.Equals(m.Type, "decrement", StringComparison.OrdinalIgnoreCase) ? -1 : 0;
+            if (sign == 0 || m.Field != ptsTypeId || m.Value.ValueKind != JsonValueKind.Number)
+            {
+                return;
+            }
+            var amount = sign * (int)Math.Round(m.Value.GetDouble());
+
+            // "+amount points for every Value selections of the counted group."
+            foreach (var r in m.Repeats)
+            {
+                var counted = CountedOptionIds(r.ChildId, index, surfaced);
+                if (counted.Count == 0)
+                {
+                    continue;
+                }
+                var step = Math.Max(1, (int)Math.Round(r.Value));
+                var times = Math.Max(1, (int)Math.Round(r.Repeats));
+                rules.Add(new CostRule(counted, amount * times, PerSelection: true, step, "", 0));
+            }
+
+            // "+amount points when (count OP Value) selections of the counted group."
+            foreach (var c in m.Conditions)
+            {
+                if (!string.Equals(c.Field, "selections", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+                if (NormalizeOperator(c.Type) is not { } op)
+                {
+                    continue;
+                }
+                var counted = CountedOptionIds(c.ChildId, index, surfaced);
+                if (counted.Count == 0)
+                {
+                    continue;
+                }
+                rules.Add(new CostRule(counted, amount, PerSelection: false, 0, op, (int)Math.Round(c.Value)));
+            }
+        }
+
+        foreach (var m in entry.Modifiers)
+        {
+            Consider(m);
+        }
+        foreach (var m in FlattenModifierGroups(entry.ModifierGroups))
+        {
+            Consider(m);
+        }
+        return rules;
+    }
+
+    private static string? NormalizeOperator(string type) => (type ?? "").ToLowerInvariant() switch
+    {
+        "atleast" => "atLeast",
+        "greaterthan" => "greaterThan",
+        "atmost" => "atMost",
+        "lessthan" => "lessThan",
+        "equalto" => "equalTo",
+        _ => null,
+    };
+
+    // The surfaced option ids that fall under a counted group (by id). Walks the
+    // group's descendants and keeps only ids that were actually surfaced as
+    // options, so counting a rule means counting selected options with these ids.
+    private static IReadOnlyList<string> CountedOptionIds(string groupId, Index index, HashSet<string> surfaced)
+    {
+        if (string.IsNullOrEmpty(groupId) || !index.Groups.TryGetValue(groupId, out var group))
+        {
+            return [];
+        }
+        var ids = new HashSet<string>(StringComparer.Ordinal);
+        CollectDescendantIds(group, index, [], ids);
+        ids.IntersectWith(surfaced);
+        return ids.Count == 0 ? [] : ids.ToList();
+    }
+
+    private static void CollectDescendantIds(SelectionNode node, Index index, HashSet<string> visited, HashSet<string> ids)
+    {
+        if (!string.IsNullOrEmpty(node.Id) && !visited.Add(node.Id))
+        {
+            return;
+        }
+
+        void AddLink(EntryLinkNode l)
+        {
+            if (string.IsNullOrEmpty(l.TargetId))
+            {
+                return;
+            }
+            ids.Add(!string.IsNullOrEmpty(l.Id) ? l.Id : l.TargetId);
+            ids.Add(l.TargetId);
+            if (index.Entries.TryGetValue(l.TargetId, out var te))
+            {
+                CollectDescendantIds(te, index, visited, ids);
+            }
+            else if (index.Groups.TryGetValue(l.TargetId, out var tg))
+            {
+                CollectDescendantIds(tg, index, visited, ids);
+            }
+        }
+
+        foreach (var g in node.SelectionEntryGroups)
+        {
+            CollectDescendantIds(g, index, visited, ids);
+        }
+        foreach (var e in node.SelectionEntries)
+        {
+            if (!string.IsNullOrEmpty(e.Id))
+            {
+                ids.Add(e.Id);
+            }
+            CollectDescendantIds(e, index, visited, ids);
+        }
+        foreach (var l in node.EntryLinks)
+        {
+            AddLink(l);
+        }
+    }
+
     // ownerModel is the nearest enclosing model type's name, so each option
     // records which model it is for; empty at the unit root (unit-wide options)
     // and for single-model units.
     private static void CollectOptions(
         SelectionNode node, string ownerModel, int depth, HashSet<string> visited,
-        List<DatasheetOption> options, Index index, string ptsTypeId, CatalogueSchema schema)
+        List<DatasheetOption> options, Index index, string ptsTypeId, CatalogueSchema schema, bool resolveGroupLinks)
     {
         if (depth < 0)
         {
@@ -1235,7 +1386,9 @@ public sealed class BsDataParser
             return;
         }
 
-        foreach (var group in node.SelectionEntryGroups)
+        // A selection group's choices become options; shared across inline groups
+        // and (for Crucible) group-linked ones so both surface identically.
+        void AddGroup(SelectionEntryGroupNode group)
         {
             // The group's selection bounds: how many of the set may be taken.
             // A "pick one" weapon swap carries max 1.
@@ -1253,15 +1406,20 @@ public sealed class BsDataParser
                 }
                 // A model choice owns the options nested beneath it.
                 var childOwner = IsModel(type) ? name : ownerModel;
-                CollectOptions(choice, childOwner, depth - 1, visited, options, index, ptsTypeId, schema);
+                CollectOptions(choice, childOwner, depth - 1, visited, options, index, ptsTypeId, schema, resolveGroupLinks);
             }
-            CollectOptions(group, ownerModel, depth - 1, visited, options, index, ptsTypeId, schema);
+            CollectOptions(group, ownerModel, depth - 1, visited, options, index, ptsTypeId, schema, resolveGroupLinks);
+        }
+
+        foreach (var group in node.SelectionEntryGroups)
+        {
+            AddGroup(group);
         }
 
         foreach (var child in node.SelectionEntries)
         {
             var childOwner = IsModel(child.Type) ? child.Name : ownerModel;
-            CollectOptions(child, childOwner, depth - 1, visited, options, index, ptsTypeId, schema);
+            CollectOptions(child, childOwner, depth - 1, visited, options, index, ptsTypeId, schema, resolveGroupLinks);
         }
         foreach (var link in node.EntryLinks)
         {
@@ -1270,7 +1428,12 @@ public sealed class BsDataParser
                 var childOwner = IsModel(target.Type)
                     ? (string.IsNullOrWhiteSpace(link.Name) ? target.Name : link.Name)
                     : ownerModel;
-                CollectOptions(target, childOwner, depth - 1, visited, options, index, ptsTypeId, schema);
+                CollectOptions(target, childOwner, depth - 1, visited, options, index, ptsTypeId, schema, resolveGroupLinks);
+            }
+            else if (resolveGroupLinks && !string.IsNullOrEmpty(link.TargetId)
+                     && index.Groups.TryGetValue(link.TargetId, out var linkedGroup))
+            {
+                AddGroup(linkedGroup);
             }
         }
     }

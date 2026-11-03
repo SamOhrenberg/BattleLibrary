@@ -44,7 +44,30 @@ public sealed record Datasheet(
     IReadOnlyList<ModelLoadout> ModelGroups,
     IReadOnlyList<ModelVariantGroup> VariantGroups,
     int FixedModelCount,
-    DatasheetAvailability Availability);
+    DatasheetAvailability Availability,
+    IReadOnlyList<CostRule> CostRules = null!)
+{
+    // Default to empty so older cached jsonb (written before cost rules existed)
+    // deserializes without a null list.
+    public IReadOnlyList<CostRule> CostRules { get; init; } = CostRules ?? [];
+}
+
+// A selection-dependent points adjustment, used for Crucible warband characters
+// whose price scales with the weapons chosen. CountedOptionIds are the datasheet
+// option ids the rule counts (selections in a linked group). Amount is signed
+// (a decrement is negative).
+//
+// PerSelection: add Amount once for every Step selected (Step is 1 for a plain
+// "+X per weapon"). Threshold (Step 0): add Amount once when the selected count
+// satisfies Operator against Value (e.g. atLeast 3). Operator is one of
+// atLeast / greaterThan / atMost / lessThan / equalTo.
+public sealed record CostRule(
+    IReadOnlyList<string> CountedOptionIds,
+    int Amount,
+    bool PerSelection,
+    int Step,
+    string Operator,
+    int Value);
 
 // When a datasheet is selectable, from its BattleScribe "hidden" modifiers.
 // RequiredDetachmentIds: shown only when one of these detachments is selected

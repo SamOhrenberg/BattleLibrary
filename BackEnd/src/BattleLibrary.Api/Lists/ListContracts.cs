@@ -93,7 +93,8 @@ public sealed record ListEntryDto(
     string? EnhancementId,
     string? EnhancementName,
     int EnhancementPoints,
-    IReadOnlyList<SelectedOptionDto> SelectedOptions);
+    IReadOnlyList<SelectedOptionDto> SelectedOptions,
+    int DynamicPoints = 0);
 
 public sealed record ArmyListSummaryDto(
     Guid Id,

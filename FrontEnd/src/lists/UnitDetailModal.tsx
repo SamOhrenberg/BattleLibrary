@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { getDatasheet, type DatasheetDetail, type DatasheetOption, type ModelVariantGroup } from '../lib/catalogue'
+import { getDatasheet, dynamicPoints, type DatasheetDetail, type DatasheetOption, type ModelVariantGroup } from '../lib/catalogue'
 import type { VariantQuantity } from '../lib/lists'
 import type { LoadoutPreset } from '../lib/presets'
 import { RuleText } from './RuleText'
@@ -206,7 +206,12 @@ export function UnitDetailModal({
   }
 
   const sizePoints = detail?.sizes.find((s) => s.models === models)?.points ?? detail?.points ?? 0
-  const subtotal = sizePoints + optionsTotal + variantPoints
+  // Selection-dependent pricing (Crucible warband weapons), matching the server.
+  const dynamicTotal = useMemo(
+    () => dynamicPoints(detail?.costRules, [...selected].map((id) => ({ id }))),
+    [detail, selected],
+  )
+  const subtotal = sizePoints + optionsTotal + variantPoints + dynamicTotal
 
   function changeSize(m: number) {
     setModels(m)
