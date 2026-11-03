@@ -63,8 +63,8 @@ deployment, pass them as environment variables, e.g.
 
 **UI** reads build-time variables (see `frontend/.env.example`):
 
-- `VITE_API_BASE_URL` — base URL of the API
-- `VITE_BASE` — Pages subpath for project sites, e.g. `/battle-library/`
+- `VITE_API_BASE_URL` - base URL of the API
+- `VITE_BASE` - Pages subpath for project sites, e.g. `/battle-library/`
 
 ## Deployment
 

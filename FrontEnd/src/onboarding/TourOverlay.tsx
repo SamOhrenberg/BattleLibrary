@@ -76,7 +76,7 @@ export function TourOverlay() {
     el?.scrollIntoView({ block: 'center', behavior: 'smooth' })
   }, [active, step, stepIndex])
 
-  // Track the target's rect every frame while active — robust to the layout
+  // Track the target's rect every frame while active - robust to the layout
   // shifts that adding units and opening panels cause.
   useLayoutEffect(() => {
     if (!active || !step) {

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { ApiError } from '../lib/api'
+import { AdminPanel } from './AdminPanel'
 import { getLists, setListFeatured, type ArmyListSummary } from '../lib/lists'
 import {
   acceptFriendRequest,
@@ -16,6 +17,7 @@ import {
   type UserSearchResult,
 } from '../lib/social'
 import { PublicProfile } from './PublicProfile'
+import { THEMES, applyTheme, getTheme } from '../styles/theme'
 import './social.css'
 
 type Tab = 'profile' | 'friends' | 'find'
@@ -120,6 +122,8 @@ function ProfileTab({ username, email, onPreview }: { username: string; email: s
         </button>
       </div>
 
+      <ThemeSelector />
+
       <div>
         <h3 className="section-title">Profile visibility</h3>
         <div className="segmented">
@@ -159,6 +163,41 @@ function ProfileTab({ username, email, onPreview }: { username: string; email: s
       </button>
 
       <HighlightLists />
+      <AdminPanel />
+    </div>
+  )
+}
+
+// Theme picker. Applies instantly and remembers the choice on this device.
+function ThemeSelector() {
+  const [theme, setTheme] = useState(getTheme)
+
+  function pick(id: string) {
+    applyTheme(id)
+    setTheme(id)
+  }
+
+  return (
+    <div>
+      <h3 className="section-title">Appearance</h3>
+      <p className="vis-hint">Pick a theme - it applies instantly and is remembered on this device.</p>
+      <div className="theme-grid">
+        {THEMES.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            className={`theme-card${theme === t.id ? ' on' : ''}`}
+            aria-pressed={theme === t.id}
+            onClick={() => pick(t.id)}
+          >
+            <span className="theme-sw" style={{ background: t.swatch }} aria-hidden="true" />
+            <span className="theme-meta">
+              <span className="theme-name">{t.name}</span>
+              <span className="theme-blurb">{t.blurb}</span>
+            </span>
+          </button>
+        ))}
+      </div>
     </div>
   )
 }

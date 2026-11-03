@@ -30,7 +30,7 @@ export const TOUR_STEPS: TourStep[] = [
   {
     target: 'create-name',
     title: 'Name it',
-    body: 'Give the list a name you will recognise — your tournament list, a casual roster, a work in progress.',
+    body: 'Give the list a name you will recognise - your tournament list, a casual roster, a work in progress.',
     placement: 'bottom',
   },
   {
@@ -68,13 +68,13 @@ export const TOUR_STEPS: TourStep[] = [
   {
     target: 'list-total',
     title: 'Watch the total',
-    body: 'Your running points total lives here. Adjust quantities on the right; the total — and the over-limit warning — update live.',
+    body: 'Your running points total lives here. Adjust quantities on the right; the total - and the over-limit warning - update live.',
     placement: 'bottom',
   },
   {
     target: 'save-list',
     title: 'You’re set',
-    body: 'Changes save as you go, but Save forces it and timestamps the list. That’s the whole loop — build away!',
+    body: 'Changes save as you go, but Save forces it and timestamps the list. That’s the whole loop - build away!',
     placement: 'top',
   },
 ]

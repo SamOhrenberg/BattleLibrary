@@ -1,19 +1,31 @@
-import { useState, type FormEvent } from 'react'
-import { ApiError } from '../lib/api'
+import { useEffect, useState, type FormEvent } from 'react'
+import { ApiError, getRegistrationStatus } from '../lib/api'
 import { useAuth } from './AuthContext'
 
 type Mode = 'login' | 'register'
 
+// An invite link lands as ?invite=TOKEN; prefill the code and open registration.
+const initialInvite = new URLSearchParams(window.location.search).get('invite') ?? ''
+
 export function AuthPage() {
   const { login, register } = useAuth()
-  const [mode, setMode] = useState<Mode>('login')
+  const [mode, setMode] = useState<Mode>(initialInvite ? 'register' : 'login')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  // null while loading; true/false once the public status is known.
+  const [regOpen, setRegOpen] = useState<boolean | null>(null)
 
   const [usernameOrEmail, setUsernameOrEmail] = useState('')
   const [username, setUsername] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [invite, setInvite] = useState(initialInvite)
+
+  useEffect(() => {
+    getRegistrationStatus()
+      .then((s) => setRegOpen(s.open))
+      .catch(() => setRegOpen(null))
+  }, [])
 
   function switchMode(next: Mode) {
     setMode(next)
@@ -28,7 +40,7 @@ export function AuthPage() {
       if (mode === 'login') {
         await login({ usernameOrEmail, password })
       } else {
-        await register({ username, email, password })
+        await register({ username, email, password, inviteToken: invite.trim() || undefined })
       }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Something went wrong. Please try again.')
@@ -95,6 +107,21 @@ export function AuthPage() {
                 onChange={(e) => setEmail(e.target.value)}
                 autoComplete="email"
                 required
+              />
+            </label>
+            {regOpen === false && (
+              <p className="auth-note">
+                Sign-ups are invite-only right now. Use your invite link, or paste your invite code below.
+              </p>
+            )}
+            <label>
+              Invite code {regOpen ? '(optional)' : ''}
+              <input
+                id="register-invite"
+                value={invite}
+                onChange={(e) => setInvite(e.target.value)}
+                placeholder={regOpen ? 'Leave blank if you have none' : 'Required unless you were seeded as admin'}
+                autoComplete="off"
               />
             </label>
           </>
