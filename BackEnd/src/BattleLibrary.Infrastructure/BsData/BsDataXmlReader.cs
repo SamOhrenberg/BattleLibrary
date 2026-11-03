@@ -65,6 +65,14 @@ internal static class BsDataXmlReader
         {
             doc.SharedProfiles.Add(ReadProfile(p));
         }
+        foreach (var r in Children(root, "sharedRules", "rule"))
+        {
+            doc.SharedRules.Add(ReadRule(r));
+        }
+        foreach (var g in Children(root, "sharedInfoGroups", "infoGroup"))
+        {
+            doc.SharedInfoGroups.Add(ReadInfoGroup(g));
+        }
 
         // Shared and non-shared top-level entries/groups both seed candidates.
         foreach (var e in Children(root, "sharedSelectionEntries", "selectionEntry")
@@ -140,6 +148,66 @@ internal static class BsDataXmlReader
         {
             node.EntryLinks.Add(ReadLink(l));
         }
+        foreach (var r in Children(e, "rules", "rule"))
+        {
+            node.Rules.Add(ReadRule(r));
+        }
+        foreach (var l in Children(e, "infoLinks", "infoLink"))
+        {
+            node.InfoLinks.Add(ReadInfoLink(l));
+        }
+        foreach (var g in Children(e, "infoGroups", "infoGroup"))
+        {
+            node.InfoGroups.Add(ReadInfoGroup(g));
+        }
+    }
+
+    private static RuleNode ReadRule(XElement e)
+    {
+        var desc = e.Elements().FirstOrDefault(x => x.Name.LocalName == "description");
+        return new RuleNode
+        {
+            Id = Attr(e, "id"),
+            Name = Attr(e, "name"),
+            Hidden = Bool(e, "hidden"),
+            Description = desc?.Value,
+        };
+    }
+
+    private static InfoLinkNode ReadInfoLink(XElement e) => new()
+    {
+        Id = Attr(e, "id"),
+        Name = Attr(e, "name"),
+        Type = Attr(e, "type"),
+        TargetId = Attr(e, "targetId"),
+        Hidden = Bool(e, "hidden"),
+    };
+
+    private static InfoGroupNode ReadInfoGroup(XElement e)
+    {
+        var node = new InfoGroupNode
+        {
+            Id = Attr(e, "id"),
+            Name = Attr(e, "name"),
+            Hidden = Bool(e, "hidden"),
+        };
+        foreach (var p in Children(e, "profiles", "profile"))
+        {
+            node.Profiles.Add(ReadProfile(p));
+        }
+        foreach (var r in Children(e, "rules", "rule"))
+        {
+            node.Rules.Add(ReadRule(r));
+        }
+        foreach (var l in Children(e, "infoLinks", "infoLink"))
+        {
+            node.InfoLinks.Add(ReadInfoLink(l));
+        }
+        foreach (var g in Children(e, "infoGroups", "infoGroup"))
+        {
+            node.InfoGroups.Add(ReadInfoGroup(g));
+        }
+        return node;
     }
 
     private static ProfileNode ReadProfile(XElement e)

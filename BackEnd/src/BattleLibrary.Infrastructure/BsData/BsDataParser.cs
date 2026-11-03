@@ -502,11 +502,17 @@ public sealed class BsDataParser
 
         // Innate abilities only: a group traversal would pull in enhancements
         // and Crusade battle scars, which are not part of the base datasheet.
+        // Abilities come from ability-type profiles (inline or linked) and from
+        // referenced rules, both resolved via infoLinks / info groups.
         var innateProfiles = new List<ProfileNode>();
-        Gather(entry, MaxDepth, [], innateProfiles, index, descendGroups: false);
+        var innateRules = new List<RuleNode>();
+        Gather(entry, MaxDepth, [], innateProfiles, index, descendGroups: false, innateRules);
         var abilities = innateProfiles
             .Where(p => schema.AbilityTypes.Contains(p.TypeName) && !string.IsNullOrWhiteSpace(p.Name))
             .Select(p => new Ability(p.Name, DescriptionOf(p)))
+            .Concat(innateRules
+                .Where(r => !string.IsNullOrWhiteSpace(r.Name))
+                .Select(r => new Ability(r.Name, (r.Description ?? "").Trim())))
             .DistinctBy(a => a.Name, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
@@ -581,9 +587,13 @@ public sealed class BsDataParser
         return new ModelVariant(model.Id, model.Name, hi, PointsOf(model, ptsTypeId), OptionWeapons(model, schema, index));
     }
 
-    // Collects profiles from a node, its children, and any entries/profiles its
-    // links resolve to, across the game system, catalogue, and libraries.
-    private static void Gather(SelectionNode node, int depth, HashSet<string> visited, List<ProfileNode> profiles, Index index, bool descendGroups)
+    // Collects profiles from a node, its children, and any entries/profiles/rules
+    // its links resolve to, across the game system, catalogue, and libraries. When
+    // a rules list is supplied, rule references (and info-group rules) land there;
+    // profiles always land in profiles. Hidden info references are skipped.
+    private static void Gather(
+        SelectionNode node, int depth, HashSet<string> visited, List<ProfileNode> profiles,
+        Index index, bool descendGroups, List<RuleNode>? rules = null)
     {
         if (depth < 0)
         {
@@ -595,6 +605,16 @@ public sealed class BsDataParser
         }
 
         profiles.AddRange(node.Profiles);
+        rules?.AddRange(node.Rules.Where(r => !r.Hidden));
+
+        foreach (var info in node.InfoLinks)
+        {
+            ResolveInfoLink(info, visited, profiles, rules, index);
+        }
+        foreach (var group in node.InfoGroups)
+        {
+            ExpandInfoGroup(group, visited, profiles, rules, index);
+        }
 
         if (node is EntryLinkNode link && !string.IsNullOrEmpty(link.TargetId))
         {
@@ -604,30 +624,78 @@ public sealed class BsDataParser
             }
             else if (index.Entries.TryGetValue(link.TargetId, out var entry))
             {
-                Gather(entry, depth - 1, visited, profiles, index, descendGroups);
+                Gather(entry, depth - 1, visited, profiles, index, descendGroups, rules);
             }
             else if (index.Groups.TryGetValue(link.TargetId, out var group))
             {
-                Gather(group, depth - 1, visited, profiles, index, descendGroups);
+                Gather(group, depth - 1, visited, profiles, index, descendGroups, rules);
             }
         }
 
         foreach (var child in node.SelectionEntries)
         {
-            Gather(child, depth - 1, visited, profiles, index, descendGroups);
+            Gather(child, depth - 1, visited, profiles, index, descendGroups, rules);
         }
 
         if (descendGroups)
         {
             foreach (var group in node.SelectionEntryGroups)
             {
-                Gather(group, depth - 1, visited, profiles, index, descendGroups);
+                Gather(group, depth - 1, visited, profiles, index, descendGroups, rules);
             }
         }
 
         foreach (var childLink in node.EntryLinks)
         {
-            Gather(childLink, depth - 1, visited, profiles, index, descendGroups);
+            Gather(childLink, depth - 1, visited, profiles, index, descendGroups, rules);
+        }
+    }
+
+    // Resolves an infoLink's target against the profile / rule / info-group index.
+    // Rules are collected only when a rules list is supplied.
+    private static void ResolveInfoLink(
+        InfoLinkNode info, HashSet<string> visited, List<ProfileNode> profiles, List<RuleNode>? rules, Index index)
+    {
+        if (info.Hidden || string.IsNullOrEmpty(info.TargetId))
+        {
+            return;
+        }
+        if (index.Profiles.TryGetValue(info.TargetId, out var profile))
+        {
+            profiles.Add(profile);
+        }
+        else if (index.Rules.TryGetValue(info.TargetId, out var rule))
+        {
+            if (rules is not null && !rule.Hidden) rules.Add(rule);
+        }
+        else if (index.InfoGroups.TryGetValue(info.TargetId, out var group))
+        {
+            ExpandInfoGroup(group, visited, profiles, rules, index);
+        }
+    }
+
+    // Expands an info group into its profiles/rules, following its own links and
+    // nested groups. Guarded against cycles via the shared visited set.
+    private static void ExpandInfoGroup(
+        InfoGroupNode group, HashSet<string> visited, List<ProfileNode> profiles, List<RuleNode>? rules, Index index)
+    {
+        if (group.Hidden)
+        {
+            return;
+        }
+        if (!string.IsNullOrEmpty(group.Id) && !visited.Add(group.Id))
+        {
+            return;
+        }
+        profiles.AddRange(group.Profiles);
+        rules?.AddRange(group.Rules.Where(r => !r.Hidden));
+        foreach (var info in group.InfoLinks)
+        {
+            ResolveInfoLink(info, visited, profiles, rules, index);
+        }
+        foreach (var nested in group.InfoGroups)
+        {
+            ExpandInfoGroup(nested, visited, profiles, rules, index);
         }
     }
 
@@ -1316,6 +1384,8 @@ public sealed class BsDataParser
     private sealed class Index
     {
         public required Dictionary<string, ProfileNode> Profiles { get; init; }
+        public required Dictionary<string, RuleNode> Rules { get; init; }
+        public required Dictionary<string, InfoGroupNode> InfoGroups { get; init; }
         public required Dictionary<string, SelectionEntryNode> Entries { get; init; }
         public required Dictionary<string, SelectionEntryGroupNode> Groups { get; init; }
         // Where each entry id was defined, so library-sourced datasheets can be gated.
@@ -1323,7 +1393,7 @@ public sealed class BsDataParser
 
         public static Index Build(IEnumerable<DataDocument> documents)
         {
-            var profiles = new Dictionary<string, ProfileNode>();
+            var refs = new Refs();
             var entries = new Dictionary<string, SelectionEntryNode>();
             var groups = new Dictionary<string, SelectionEntryGroupNode>();
             var origins = new Dictionary<string, CatalogueOrigin>();
@@ -1335,24 +1405,44 @@ public sealed class BsDataParser
                 var origin = new CatalogueOrigin(doc.Name, (doc as CatalogueDocument)?.Library ?? false);
                 foreach (var profile in doc.SharedProfiles)
                 {
-                    profiles.TryAdd(profile.Id, profile);
+                    refs.Profiles.TryAdd(profile.Id, profile);
+                }
+                foreach (var rule in doc.SharedRules)
+                {
+                    if (!string.IsNullOrEmpty(rule.Id)) refs.Rules.TryAdd(rule.Id, rule);
+                }
+                foreach (var ig in doc.SharedInfoGroups)
+                {
+                    WalkInfoGroup(ig, refs);
                 }
                 foreach (var entry in doc.SharedSelectionEntries)
                 {
-                    WalkEntry(entry, origin, profiles, entries, groups, origins);
+                    WalkEntry(entry, origin, refs, entries, groups, origins);
                 }
                 foreach (var group in doc.SharedSelectionEntryGroups)
                 {
-                    WalkGroup(group, origin, profiles, entries, groups, origins);
+                    WalkGroup(group, origin, refs, entries, groups, origins);
                 }
             }
 
-            return new Index { Profiles = profiles, Entries = entries, Groups = groups, EntryOrigin = origins };
+            return new Index
+            {
+                Profiles = refs.Profiles, Rules = refs.Rules, InfoGroups = refs.InfoGroups,
+                Entries = entries, Groups = groups, EntryOrigin = origins,
+            };
+        }
+
+        // The id-keyed collections an infoLink can resolve against, grouped so the
+        // walk methods carry one argument instead of three.
+        private sealed class Refs
+        {
+            public Dictionary<string, ProfileNode> Profiles { get; } = new();
+            public Dictionary<string, RuleNode> Rules { get; } = new();
+            public Dictionary<string, InfoGroupNode> InfoGroups { get; } = new();
         }
 
         private static void WalkEntry(
-            SelectionEntryNode entry, CatalogueOrigin origin,
-            Dictionary<string, ProfileNode> profiles,
+            SelectionEntryNode entry, CatalogueOrigin origin, Refs refs,
             Dictionary<string, SelectionEntryNode> entries,
             Dictionary<string, SelectionEntryGroupNode> groups,
             Dictionary<string, CatalogueOrigin> origins)
@@ -1362,12 +1452,11 @@ public sealed class BsDataParser
                 entries.TryAdd(entry.Id, entry);
                 origins.TryAdd(entry.Id, origin);
             }
-            WalkChildren(entry, origin, profiles, entries, groups, origins);
+            WalkChildren(entry, origin, refs, entries, groups, origins);
         }
 
         private static void WalkGroup(
-            SelectionEntryGroupNode group, CatalogueOrigin origin,
-            Dictionary<string, ProfileNode> profiles,
+            SelectionEntryGroupNode group, CatalogueOrigin origin, Refs refs,
             Dictionary<string, SelectionEntryNode> entries,
             Dictionary<string, SelectionEntryGroupNode> groups,
             Dictionary<string, CatalogueOrigin> origins)
@@ -1376,12 +1465,11 @@ public sealed class BsDataParser
             {
                 groups.TryAdd(group.Id, group);
             }
-            WalkChildren(group, origin, profiles, entries, groups, origins);
+            WalkChildren(group, origin, refs, entries, groups, origins);
         }
 
         private static void WalkChildren(
-            SelectionNode node, CatalogueOrigin origin,
-            Dictionary<string, ProfileNode> profiles,
+            SelectionNode node, CatalogueOrigin origin, Refs refs,
             Dictionary<string, SelectionEntryNode> entries,
             Dictionary<string, SelectionEntryGroupNode> groups,
             Dictionary<string, CatalogueOrigin> origins)
@@ -1390,16 +1478,47 @@ public sealed class BsDataParser
             {
                 if (!string.IsNullOrEmpty(profile.Id))
                 {
-                    profiles.TryAdd(profile.Id, profile);
+                    refs.Profiles.TryAdd(profile.Id, profile);
                 }
+            }
+            foreach (var rule in node.Rules)
+            {
+                if (!string.IsNullOrEmpty(rule.Id)) refs.Rules.TryAdd(rule.Id, rule);
+            }
+            foreach (var ig in node.InfoGroups)
+            {
+                WalkInfoGroup(ig, refs);
             }
             foreach (var child in node.SelectionEntries)
             {
-                WalkEntry(child, origin, profiles, entries, groups, origins);
+                WalkEntry(child, origin, refs, entries, groups, origins);
             }
             foreach (var group in node.SelectionEntryGroups)
             {
-                WalkGroup(group, origin, profiles, entries, groups, origins);
+                WalkGroup(group, origin, refs, entries, groups, origins);
+            }
+        }
+
+        // Index an info group by id, plus the profiles/rules it defines and any
+        // groups nested inside it, so a link to the group or to its contents
+        // resolves.
+        private static void WalkInfoGroup(InfoGroupNode group, Refs refs)
+        {
+            if (!string.IsNullOrEmpty(group.Id))
+            {
+                refs.InfoGroups.TryAdd(group.Id, group);
+            }
+            foreach (var profile in group.Profiles)
+            {
+                if (!string.IsNullOrEmpty(profile.Id)) refs.Profiles.TryAdd(profile.Id, profile);
+            }
+            foreach (var rule in group.Rules)
+            {
+                if (!string.IsNullOrEmpty(rule.Id)) refs.Rules.TryAdd(rule.Id, rule);
+            }
+            foreach (var nested in group.InfoGroups)
+            {
+                WalkInfoGroup(nested, refs);
             }
         }
     }

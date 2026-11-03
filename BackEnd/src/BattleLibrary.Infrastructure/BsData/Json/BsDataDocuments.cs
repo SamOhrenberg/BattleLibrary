@@ -25,6 +25,8 @@ internal abstract class DataDocument
     public List<CategoryEntry> CategoryEntries { get; set; } = [];
     public List<ForceEntry> ForceEntries { get; set; } = [];
     public List<ProfileNode> SharedProfiles { get; set; } = [];
+    public List<RuleNode> SharedRules { get; set; } = [];
+    public List<InfoGroupNode> SharedInfoGroups { get; set; } = [];
     public List<SelectionEntryNode> SharedSelectionEntries { get; set; } = [];
     public List<SelectionEntryGroupNode> SharedSelectionEntryGroups { get; set; } = [];
     public List<EntryLinkNode> EntryLinks { get; set; } = [];
@@ -184,6 +186,8 @@ internal abstract class SelectionNode
     public List<SelectionEntryNode> SelectionEntries { get; set; } = [];
     public List<SelectionEntryGroupNode> SelectionEntryGroups { get; set; } = [];
     public List<EntryLinkNode> EntryLinks { get; set; } = [];
+    public List<InfoLinkNode> InfoLinks { get; set; } = [];
+    public List<InfoGroupNode> InfoGroups { get; set; } = [];
 }
 
 internal sealed class SelectionEntryNode : SelectionNode
@@ -197,4 +201,29 @@ internal sealed class EntryLinkNode : SelectionNode
 {
     public string Type { get; set; } = "";
     public string TargetId { get; set; } = "";
+}
+
+// A reference to a shared profile, rule, or info group. TargetId resolves
+// against the profile / rule / info-group index; Type names which, but
+// resolution is by id so it is not relied on.
+internal sealed class InfoLinkNode
+{
+    public string Id { get; set; } = "";
+    public string Name { get; set; } = "";
+    public string Type { get; set; } = "";
+    public string TargetId { get; set; } = "";
+    public bool Hidden { get; set; }
+}
+
+// A named bundle of profiles/rules, optionally referencing more by infoLink and
+// nesting further groups.
+internal sealed class InfoGroupNode
+{
+    public string Id { get; set; } = "";
+    public string Name { get; set; } = "";
+    public bool Hidden { get; set; }
+    public List<ProfileNode> Profiles { get; set; } = [];
+    public List<RuleNode> Rules { get; set; } = [];
+    public List<InfoLinkNode> InfoLinks { get; set; } = [];
+    public List<InfoGroupNode> InfoGroups { get; set; } = [];
 }
