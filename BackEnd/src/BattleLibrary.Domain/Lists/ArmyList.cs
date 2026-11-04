@@ -17,8 +17,9 @@ public class ArmyList : Entity
     public string? BattleSize { get; set; }
 
     // Optional army-wide "Force Disposition" configuration choice, recorded as
-    // part of the list's configuration. Free text until config-group discovery
-    // is validated against live BSData.
+    // part of the list's configuration. Stores the chosen option's name; the
+    // builder offers the options parsed from the game system's Force Disposition
+    // group (same for every faction).
     public string? ForceDisposition { get; set; }
 
     // Chosen detachments (11e Detachment Points budget); each snapshots id/name/dp.

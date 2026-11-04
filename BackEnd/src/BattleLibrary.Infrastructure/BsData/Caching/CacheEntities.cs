@@ -24,6 +24,10 @@ public sealed class CachedGameSystem
     public string ForceEntryId { get; set; } = "";
     public string ForceEntryName { get; set; } = "";
 
+    // Army-wide Force Disposition options (jsonb array of {id,name}); empty for
+    // systems without them (e.g. Kill Team).
+    public string DispositionsJson { get; set; } = "[]";
+
     public List<CachedFaction> Factions { get; set; } = [];
 }
 

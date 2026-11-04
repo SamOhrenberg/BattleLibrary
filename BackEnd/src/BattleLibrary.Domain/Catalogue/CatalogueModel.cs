@@ -8,9 +8,22 @@ namespace BattleLibrary.Domain.Catalogue;
 // identify the system's primary roster force slot, which a roster's <force> must
 // reference by id or importers reject it. Limits carries the data-driven roster
 // legality caps read from that force (null on systems that declare none).
+// Dispositions are the army-wide Force Disposition options (same for every
+// faction); empty on systems that declare none.
 public sealed record GameSystemInfo(
     string Id, string Name, int Revision, string PointsCostTypeId = "",
-    string ForceEntryId = "", string ForceEntryName = "", RosterLimits? Limits = null);
+    string ForceEntryId = "", string ForceEntryName = "", RosterLimits? Limits = null,
+    IReadOnlyList<Disposition> Dispositions = null!)
+{
+    // Empty default so older cached models deserialize without a null list.
+    public IReadOnlyList<Disposition> Dispositions { get; init; } = Dispositions ?? [];
+}
+
+// An army-wide "Force Disposition" choice (40k 11e): a roster-level configuration
+// option read from the game system root. Id/Name are the stable BSData
+// selection-entry id and display name. CategoryId is the category that unlocks
+// it (granted by the chosen detachment); used to tie dispositions to detachments.
+public sealed record Disposition(string Id, string Name, string CategoryId = "");
 
 // Data-driven roster legality limits read from the game system's primary force
 // entry, so the builder need not hardcode battle-size tables. BattleSizes lists
@@ -44,8 +57,15 @@ public sealed record CatalogueModel(
 
 // A detachment choice, its Detachment Points cost, the enhancements it offers
 // (each with its pts cost), and its detachment rules (name + text).
+// DispositionIds are the Force Disposition option ids this detachment unlocks
+// (via its category links); empty when it grants none.
 public sealed record Detachment(
-    string Id, string Name, int Dp, IReadOnlyList<Enhancement> Enhancements, IReadOnlyList<Ability> Rules);
+    string Id, string Name, int Dp, IReadOnlyList<Enhancement> Enhancements, IReadOnlyList<Ability> Rules,
+    IReadOnlyList<string> DispositionIds = null!)
+{
+    // Empty default so older cached jsonb deserializes without a null list.
+    public IReadOnlyList<string> DispositionIds { get; init; } = DispositionIds ?? [];
+}
 
 public sealed record Enhancement(string Id, string Name, int Points, string Text);
 
@@ -184,12 +204,14 @@ public sealed record ModelVariant(
 // (how many of the set may be taken): GroupMax 1 is a "pick one" swap, GroupMax
 // 0 means no declared cap. These drive single-select enforcement in the builder.
 //
-// IsDefault marks the choice named by its group's defaultSelectionEntryId: the
-// option pre-selected when the unit is added, so starting wargear and points
-// match the datasheet. At most one option per group carries it.
+// IsDefault marks a choice pre-selected when the unit is added, so starting
+// wargear and points match the datasheet: the choice named by its group's
+// defaultSelectionEntryId, or one forced on by its own selection-min. Mandatory
+// marks the latter - included by default and not removable (the base loadout).
 public sealed record DatasheetOption(
     string Id, string Name, int Points, string Group, IReadOnlyList<WeaponProfile> Weapons,
-    string Model = "", string GroupId = "", int GroupMin = 0, int GroupMax = 0, bool IsDefault = false);
+    string Model = "", string GroupId = "", int GroupMin = 0, int GroupMax = 0,
+    bool IsDefault = false, bool Mandatory = false);
 
 public sealed record UnitProfile(string Name, IReadOnlyList<Characteristic> Characteristics);
 

@@ -132,7 +132,8 @@ public sealed class BsDataParser
         IReadOnlyDictionary<string, CatalogueDocument> cataloguesById)
     {
         var equipment = ExtractFactionEquipment(catalogue, schema);
-        var detachments = ExtractDetachments(system, catalogue, schema, ptsTypeId, cataloguesById);
+        var dispositions = ExtractDispositions(system, schema);
+        var detachments = ExtractDetachments(system, catalogue, schema, ptsTypeId, cataloguesById, dispositions);
         var availability = BuildAvailabilityContext(system, catalogue, detachments, index, cataloguesById, schema);
         var datasheets = ExtractDatasheets(catalogue, schema, ptsTypeId, index, cataloguesById, availability);
 
@@ -140,7 +141,7 @@ public sealed class BsDataParser
         var limits = RosterLimitsReader.Read(system, schema, ptsTypeId);
         var info = new GameSystemInfo(
             system.Id, system.Name, system.Revision, ptsTypeId,
-            force?.Id ?? "", force?.Name ?? "", limits);
+            force?.Id ?? "", force?.Name ?? "", limits, dispositions);
         return new CatalogueModel(info, catalogue.Id, catalogue.Name, catalogue.Revision, datasheets, equipment, detachments);
     }
 
@@ -179,12 +180,88 @@ public sealed class BsDataParser
     // "Detachment"), each paired with its enhancements - the entries under a
     // "<Detachment> Enhancements" group that carry an enhancement counter cost,
     // snapshotting the enhancement's pts cost. Names only, no rules text.
+    // Army-wide Force Disposition options: the direct child entries of the game
+    // system's "Force Disposition" selection group (same for every faction).
+    // Empty when the schema names no such group or the data omits it.
+    private static IReadOnlyList<Disposition> ExtractDispositions(GameSystemDocument system, CatalogueSchema schema)
+    {
+        if (string.IsNullOrEmpty(schema.DispositionGroupName))
+        {
+            return [];
+        }
+
+        var roots = system.SharedSelectionEntryGroups.Cast<SelectionNode>().Concat(system.SharedSelectionEntries);
+        var group = FindGroupByName(roots, schema.DispositionGroupName, MaxDepth);
+        if (group is null)
+        {
+            return [];
+        }
+
+        return group.SelectionEntries
+            .Where(e => !e.Hidden && !string.IsNullOrWhiteSpace(e.Name))
+            .DistinctBy(e => e.Id)
+            .Select(e => new Disposition(e.Id, e.Name, GatingCategoryId(e)))
+            .ToList();
+    }
+
+    // A disposition option is shown only when the roster holds its matching
+    // category (granted by the chosen detachment). That category id is named in
+    // the option's "hidden" modifier condition; empty when none is found.
+    private static string GatingCategoryId(SelectionNode option)
+    {
+        foreach (var mod in option.Modifiers)
+        {
+            foreach (var cond in mod.Conditions)
+            {
+                if (!string.IsNullOrEmpty(cond.ChildId))
+                {
+                    return cond.ChildId;
+                }
+            }
+            foreach (var group in mod.ConditionGroups)
+            {
+                foreach (var cond in group.Conditions)
+                {
+                    if (!string.IsNullOrEmpty(cond.ChildId))
+                    {
+                        return cond.ChildId;
+                    }
+                }
+            }
+        }
+        return "";
+    }
+
+    // First selection-entry group matching Name in document order, searched
+    // depth-first through nested entries/groups.
+    private static SelectionEntryGroupNode? FindGroupByName(IEnumerable<SelectionNode> roots, string name, int depth)
+    {
+        foreach (var node in roots)
+        {
+            if (node is SelectionEntryGroupNode group && string.Equals(group.Name, name, StringComparison.OrdinalIgnoreCase))
+            {
+                return group;
+            }
+            if (depth > 0)
+            {
+                var found = FindGroupByName(
+                    node.SelectionEntryGroups.Cast<SelectionNode>().Concat(node.SelectionEntries), name, depth - 1);
+                if (found is not null)
+                {
+                    return found;
+                }
+            }
+        }
+        return null;
+    }
+
     private static IReadOnlyList<Detachment> ExtractDetachments(
         GameSystemDocument system,
         CatalogueDocument catalogue,
         CatalogueSchema schema,
         string ptsTypeId,
-        IReadOnlyDictionary<string, CatalogueDocument> cataloguesById)
+        IReadOnlyDictionary<string, CatalogueDocument> cataloguesById,
+        IReadOnlyList<Disposition> dispositions)
     {
         if (string.IsNullOrEmpty(schema.DetachmentGroupName))
         {
@@ -196,15 +273,22 @@ public sealed class BsDataParser
         var dpCostId = system.CostTypes
             .FirstOrDefault(c => string.Equals(c.Name, schema.DetachmentPointsCostName, StringComparison.OrdinalIgnoreCase))?.Id ?? "";
 
+        // Disposition option keyed by the category that unlocks it, so a
+        // detachment's category links resolve to the dispositions it enables.
+        var dispositionByCategory = dispositions
+            .Where(d => !string.IsNullOrEmpty(d.CategoryId))
+            .GroupBy(d => d.CategoryId)
+            .ToDictionary(g => g.Key, g => g.First().Id);
+
         var docs = ImportedCatalogues(catalogue, cataloguesById);
 
-        var options = new List<(string Id, string Name, int Dp, List<Ability> Rules)>();
+        var options = new List<(string Id, string Name, int Dp, List<Ability> Rules, List<string> DispositionIds)>();
         var enhancements = new List<(string Det, string Id, string Name, int Points, string Text)>();
         foreach (var doc in docs)
         {
             foreach (var root in doc.SharedSelectionEntryGroups.Cast<SelectionNode>().Concat(doc.SharedSelectionEntries))
             {
-                CollectDetachments(root, null, DetachmentMaxDepth, [], schema.DetachmentGroupName, enhCostId, dpCostId, ptsTypeId, catalogue.Id, schema.AbilityTypes, options, enhancements);
+                CollectDetachments(root, null, DetachmentMaxDepth, [], schema.DetachmentGroupName, enhCostId, dpCostId, ptsTypeId, catalogue.Id, schema.AbilityTypes, dispositionByCategory, options, enhancements);
             }
         }
 
@@ -223,7 +307,8 @@ public sealed class BsDataParser
             .Select(o => new Detachment(
                 o.Id, o.Name, o.Dp,
                 byDetachment.TryGetValue(o.Name, out var es) ? es : [],
-                o.Rules))
+                o.Rules,
+                o.DispositionIds))
             .OrderBy(d => d.Name, StringComparer.OrdinalIgnoreCase)
             .ToList();
     }
@@ -233,7 +318,8 @@ public sealed class BsDataParser
         string detachmentGroupName, string enhCostId, string dpCostId, string ptsTypeId,
         string factionCatalogueId,
         IReadOnlySet<string> abilityTypes,
-        List<(string Id, string Name, int Dp, List<Ability> Rules)> options,
+        IReadOnlyDictionary<string, string> dispositionByCategory,
+        List<(string Id, string Name, int Dp, List<Ability> Rules, List<string> DispositionIds)> options,
         List<(string Det, string Id, string Name, int Points, string Text)> enhancements)
     {
         if (depth < 0 || (!string.IsNullOrEmpty(node.Id) && !visited.Add(node.Id)))
@@ -254,7 +340,15 @@ public sealed class BsDataParser
                     var dp = string.IsNullOrEmpty(dpCostId)
                         ? 1
                         : child.Costs.Where(c => c.TypeId == dpCostId).Select(c => (int)Math.Round(c.Value)).DefaultIfEmpty(1).First();
-                    options.Add((child.Id, child.Name, dp, CollectAbilities(child, abilityTypes, 4)));
+                    // Force Disposition options this detachment unlocks, via its
+                    // category links to the disposition categories.
+                    var dispositionIds = child.CategoryLinks
+                        .Select(cl => cl.TargetId)
+                        .Where(t => dispositionByCategory.ContainsKey(t))
+                        .Select(t => dispositionByCategory[t])
+                        .Distinct()
+                        .ToList();
+                    options.Add((child.Id, child.Name, dp, CollectAbilities(child, abilityTypes, 4), dispositionIds));
                 }
             }
         }
@@ -281,11 +375,11 @@ public sealed class BsDataParser
 
         foreach (var child in node.SelectionEntries)
         {
-            CollectDetachments(child, groupName, depth - 1, visited, detachmentGroupName, enhCostId, dpCostId, ptsTypeId, factionCatalogueId, abilityTypes, options, enhancements);
+            CollectDetachments(child, groupName, depth - 1, visited, detachmentGroupName, enhCostId, dpCostId, ptsTypeId, factionCatalogueId, abilityTypes, dispositionByCategory, options, enhancements);
         }
         foreach (var group in node.SelectionEntryGroups)
         {
-            CollectDetachments(group, group.Name, depth - 1, visited, detachmentGroupName, enhCostId, dpCostId, ptsTypeId, factionCatalogueId, abilityTypes, options, enhancements);
+            CollectDetachments(group, group.Name, depth - 1, visited, detachmentGroupName, enhCostId, dpCostId, ptsTypeId, factionCatalogueId, abilityTypes, dispositionByCategory, options, enhancements);
         }
     }
 
@@ -716,6 +810,20 @@ public sealed class BsDataParser
             || (choice is EntryLinkNode link && link.TargetId == group.DefaultSelectionEntryId);
     }
 
+    // The choice's effective selection-min: its own constraint, raised by the
+    // target entry's for an entry link (the min may sit on either). A value >= 1
+    // means the choice is included by default and cannot be removed.
+    private static int EffectiveMin(SelectionNode choice, Index index)
+    {
+        var min = ConstraintRange(choice).Min ?? 0;
+        if (choice is EntryLinkNode link && !string.IsNullOrEmpty(link.TargetId)
+            && index.Entries.TryGetValue(link.TargetId, out var target))
+        {
+            min = Math.Max(min, ConstraintRange(target).Min ?? 0);
+        }
+        return min;
+    }
+
     // Collects profiles from a node, its children, and any entries/profiles/rules
     // its links resolve to, across the game system, catalogue, and libraries. When
     // a rules list is supplied, rule references (and info-group rules) land there;
@@ -842,9 +950,19 @@ public sealed class BsDataParser
         CollectOptions(entry, "", MaxDepth, [], options, index, ptsTypeId, schema, resolveGroupLinks);
         return options
             .Where(o => !string.IsNullOrWhiteSpace(o.Name) && !string.IsNullOrEmpty(o.Id))
+            .Where(o => !IsCrusadeUpgrade(o))
             .DistinctBy(o => o.Id)
             .ToList();
     }
+
+    // Crusade-only upgrade entries (Weapon Modifications, Crusade Relic Upgrades)
+    // that BSData hangs off each weapon via a "Weapon Upgrades" group. They are
+    // narrative-campaign mechanics, not matched-play wargear, so they are dropped
+    // from the slim model. Re-enabling is this predicate plus a cache refresh,
+    // the hook for a future per-list Crusade game type (see the content-tiers plan).
+    private static bool IsCrusadeUpgrade(DatasheetOption o) =>
+        string.Equals(o.Group, "Weapon Upgrades", StringComparison.OrdinalIgnoreCase)
+        || o.Name.Contains("Crusade", StringComparison.OrdinalIgnoreCase);
 
     // Weapon stat line(s) a wargear choice grants, for the option preview.
     private static IReadOnlyList<WeaponProfile> OptionWeapons(SelectionNode choice, CatalogueSchema schema, Index index)
@@ -1671,9 +1789,13 @@ public sealed class BsDataParser
                 {
                     var id = !string.IsNullOrEmpty(choice.Id) ? choice.Id
                         : (choice as EntryLinkNode)?.TargetId ?? "";
+                    // A choice forced on by its own selection-min is part of the
+                    // base loadout: mandatory, and default so it starts selected.
+                    var mandatory = EffectiveMin(choice, index) >= 1;
                     options.Add(new DatasheetOption(
                         id, name, pts, group.Name, OptionWeapons(choice, schema, index),
-                        ownerModel, group.Id, gMin ?? 0, gMax ?? 0, IsGroupDefault(group, choice)));
+                        ownerModel, group.Id, gMin ?? 0, gMax ?? 0,
+                        IsGroupDefault(group, choice) || mandatory, mandatory));
                 }
                 // A model choice owns the options nested beneath it.
                 var childOwner = IsModel(type) ? name : ownerModel;

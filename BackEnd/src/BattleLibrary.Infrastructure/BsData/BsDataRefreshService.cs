@@ -72,6 +72,7 @@ public sealed class BsDataRefreshService(
             system.PointsCostTypeId = systemInfo.PointsCostTypeId;
             system.ForceEntryId = systemInfo.ForceEntryId;
             system.ForceEntryName = systemInfo.ForceEntryName;
+            system.DispositionsJson = JsonSerializer.Serialize(systemInfo.Dispositions, CacheJson.Options);
         }
         if (existing is null)
         {

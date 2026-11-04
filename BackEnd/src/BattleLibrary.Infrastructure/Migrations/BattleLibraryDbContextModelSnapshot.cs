@@ -674,6 +674,10 @@ namespace BattleLibrary.Infrastructure.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)");
 
+                    b.Property<string>("DispositionsJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.Property<bool>("Enabled")
                         .HasColumnType("boolean");
 

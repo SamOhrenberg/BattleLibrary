@@ -21,6 +21,10 @@ public sealed class CatalogueSchema
     public string EnhancementCostName { get; init; } = "";
     public string DetachmentPointsCostName { get; init; } = "";
 
+    // Selection-group name listing the army-wide Force Disposition options in the
+    // game system root. Empty on systems without it (e.g. Kill Team).
+    public string DispositionGroupName { get; init; } = "";
+
     private static HashSet<string> Set(params string[] values) => new(values, StringComparer.OrdinalIgnoreCase);
 
     public static readonly CatalogueSchema Wh40k = new()
@@ -34,6 +38,7 @@ public sealed class CatalogueSchema
         DetachmentGroupName = "Detachment",
         EnhancementCostName = "Enhancements",
         DetachmentPointsCostName = "Detachment Points",
+        DispositionGroupName = "Force Disposition",
     };
 
     public static readonly CatalogueSchema KillTeam2024 = new()

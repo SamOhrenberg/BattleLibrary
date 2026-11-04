@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ApiError } from '../lib/api'
-import { getDatasheet, getDatasheets, getFactions, type CatalogueDatasheet, type CatalogueDetachment, type CatalogueFaction, type DatasheetDetail, type FactionDatasheets } from '../lib/catalogue'
+import { getDatasheet, getDatasheets, getFactions, type CatalogueDatasheet, type CatalogueDetachment, type CatalogueDisposition, type CatalogueFaction, type DatasheetDetail, type FactionDatasheets } from '../lib/catalogue'
 import {
   addEntry,
   addForce,
@@ -65,8 +65,9 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
   const [tab, setTab] = useState<'catalogue' | 'list'>('catalogue')
   // Leader-attachment targets per Leader datasheet (the unit names it may lead),
   // fetched lazily from the datasheet detail. A datasheet id maps to [] once
-  // fetched with no declared targets, so we don't refetch it.
-  const [leaderTargets, setLeaderTargets] = useState<Record<string, string[]>>({})
+  // fetched with no declared targets (a non-Leader character), and to null when
+  // the fetch failed, so we don't refetch and the two cases stay distinct.
+  const [leaderTargets, setLeaderTargets] = useState<Record<string, string[] | null>>({})
   // How the list panel groups entries: by role (default) or the owner's custom order.
   const [listView, setListView] = useState<'role' | 'custom'>('role')
   // Role groups collapsed in the catalogue panel.
@@ -108,7 +109,6 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
   }, [exportOpen])
   const [name, setName] = useState(initial.name)
   const [limit, setLimit] = useState(initial.pointsLimit?.toString() ?? '')
-  const [disposition, setDisposition] = useState(initial.forceDisposition ?? '')
   const [busy, setBusy] = useState(false)
   const [saved, setSaved] = useState(false)
   const toast = useToast()
@@ -144,6 +144,8 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
   const datasheets: CatalogueDatasheet[] = factionData[activeFactionId]?.datasheets ?? []
   const equipment: string[] = factionData[activeFactionId]?.faction.equipment ?? []
   const detachments: CatalogueDetachment[] = factionData[primaryFactionId]?.faction.detachments ?? []
+  // Force Disposition options are army-wide (same for every faction).
+  const dispositions: CatalogueDisposition[] = factionData[primaryFactionId]?.faction.dispositions ?? []
 
   // Load the owner's saved loadouts for this system (presets are per datasheet).
   useEffect(() => {
@@ -493,12 +495,15 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
     [chosenDetachments],
   )
 
+  // Force Disposition options are unlocked by the chosen detachment(s): a
+  // disposition shows only when a selected detachment grants its category.
+  const availableDispositions = useMemo(() => {
+    const unlocked = new Set(chosenDetachments.flatMap((d) => d.dispositionIds ?? []))
+    return dispositions.filter((d) => unlocked.has(d.id))
+  }, [chosenDetachments, dispositions])
+
   const changeBattleSize = (b: string | null) => run(() => setBattleSize(list.id, b))
-  const saveDisposition = () => {
-    const next = disposition.trim()
-    if (next === (list.forceDisposition ?? '')) return
-    void run(() => setForceDisposition(list.id, next || null))
-  }
+  const changeDisposition = (d: string | null) => run(() => setForceDisposition(list.id, d))
   const toggleDetachment = (id: string) =>
     run(() => setDetachments(list.id, chosenIds.has(id) ? [...chosenIds].filter((x) => x !== id) : [...chosenIds, id]))
 
@@ -531,8 +536,9 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
   }, [list.entries])
 
   // Fetch each Leader's declared attach targets once, so the attach picker can
-  // be restricted to the units it can actually lead. A failed fetch caches [] so
-  // the Leader stays unrestricted rather than retried.
+  // be restricted to the units it can actually lead. A failed fetch caches null
+  // so the Leader stays unrestricted rather than retried; an empty [] means the
+  // datasheet declares no attachments (a non-Leader character leads nothing).
   useEffect(() => {
     const ids = Array.from(
       new Set(list.entries.filter((e) => isCharacter(e)).map((e) => e.datasheetId)),
@@ -540,7 +546,7 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
     if (ids.length === 0) return
     let cancelled = false
     void Promise.all(
-      ids.map(async (id): Promise<[string, string[]]> => {
+      ids.map(async (id): Promise<[string, string[] | null]> => {
         try {
           const detail = await getDatasheet(id)
           const targets = Array.from(
@@ -548,7 +554,7 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
           )
           return [id, targets]
         } catch {
-          return [id, []]
+          return [id, null]
         }
       }),
     ).then((pairs) => {
@@ -566,12 +572,14 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
 
   // Units in the same force a given Leader can be attached to. When the Leader's
   // datasheet declares its targets, keep only units carrying a matching keyword
-  // (the target's datasheet category); otherwise (unknown / not yet loaded / no
-  // declared targets) fall back to every non-Character unit.
+  // (the target's datasheet category). A datasheet that declares no attachments
+  // (empty []) is not a Leader and leads nothing. Unknown (not yet loaded) or a
+  // failed fetch (null) falls back to every non-Character unit.
   const bodyguardsFor = (leader: ListEntry) => {
     const sameForce = list.entries.filter((e) => !isCharacter(e) && e.forceId === leader.forceId)
     const targets = leaderTargets[leader.datasheetId]
-    if (!targets || targets.length === 0) return sameForce
+    if (targets === undefined || targets === null) return sameForce
+    if (targets.length === 0) return []
     const wanted = new Set(targets.map((t) => t.toLowerCase()))
     return sameForce.filter((e) => e.keywords.some((k) => wanted.has(k.toLowerCase())))
   }
@@ -1034,18 +1042,28 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
               ))}
             </select>
           </label>
-          <label className="setup-field disposition">
-            <span>Force disposition</span>
-            <input
-              className="disposition-input"
-              value={disposition}
-              maxLength={100}
-              placeholder="Optional"
-              onChange={(e) => setDisposition(e.target.value)}
-              onBlur={saveDisposition}
-              disabled={busy}
-            />
-          </label>
+          {(dispositions.length > 0 || list.forceDisposition) && (
+            <label className="setup-field disposition">
+              <span>Force disposition</span>
+              <select
+                value={list.forceDisposition ?? ''}
+                onChange={(e) => changeDisposition(e.target.value || null)}
+                disabled={busy || availableDispositions.length === 0}
+              >
+                <option value="">None</option>
+                {availableDispositions.map((d) => (
+                  <option key={d.id} value={d.name}>{d.name}</option>
+                ))}
+                {/* Keep a saved value visible even if the current detachment no longer unlocks it. */}
+                {list.forceDisposition && !availableDispositions.some((d) => d.name === list.forceDisposition) && (
+                  <option value={list.forceDisposition}>{list.forceDisposition}</option>
+                )}
+              </select>
+              {availableDispositions.length === 0 && chosenDetachments.length === 0 && (
+                <small className="setup-hint">Choose a detachment to unlock its disposition.</small>
+              )}
+            </label>
+          )}
           {hasDetachments && (
             <div className="setup-field">
               <span>

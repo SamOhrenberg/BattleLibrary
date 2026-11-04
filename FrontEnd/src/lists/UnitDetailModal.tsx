@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { getDatasheet, dynamicPoints, type DatasheetDetail, type DatasheetOption, type ModelVariantGroup } from '../lib/catalogue'
+import { getDatasheet, dynamicPoints, type AbilityText, type DatasheetDetail, type DatasheetOption, type ModelVariantGroup } from '../lib/catalogue'
 import type { VariantQuantity } from '../lib/lists'
 import type { LoadoutPreset } from '../lib/presets'
 import { RuleText } from './RuleText'
@@ -111,10 +111,11 @@ export function UnitDetailModal({
         setModels(size)
         // Add mode (no saved selection): pre-select each choice set's default
         // wargear so the unit starts on its datasheet loadout. Edit mode keeps
-        // the saved picks seeded before the fetch.
-        if (!initialSelected) {
-          setSelected(new Set(d.options.filter((o) => o.isDefault).map((o) => o.id)))
-        }
+        // the saved picks. Either way, mandatory (base-loadout) options are
+        // always selected.
+        const mandatory = d.options.filter((o) => o.mandatory).map((o) => o.id)
+        const base = initialSelected ?? d.options.filter((o) => o.isDefault).map((o) => o.id)
+        setSelected(new Set([...base, ...mandatory]))
         // Seed the loadout pool: restore current counts in edit mode, else
         // auto-fill the default variant up to the pool target.
         const groups = d.variantGroups ?? []
@@ -301,7 +302,7 @@ export function UnitDetailModal({
               <StatTable key={p.name} labels={p.characteristics.map((c) => c.name)} row={p.characteristics} />
             ))}
 
-            {detail.weapons.length > 0 && <WeaponTables weapons={detail.weapons} />}
+            {detail.weapons.length > 0 && <WeaponTables weapons={detail.weapons} rules={detail.rules} />}
 
             {detail.modelGroups.length > 0 && (
               <div className="detail-section">
@@ -466,14 +467,18 @@ export function UnitDetailModal({
                               <input
                                 type={pickOne ? 'radio' : 'checkbox'}
                                 name={pickOne ? radioName : undefined}
-                                checked={selected.has(o.id)}
+                                checked={o.mandatory || selected.has(o.id)}
                                 onChange={() =>
                                   pickOne ? selectOnly(o.id, g) : capped ? toggleCapped(o.id, g) : toggle(o.id)
                                 }
-                                disabled={busy || (atCap && !selected.has(o.id))}
+                                disabled={busy || o.mandatory || (atCap && !selected.has(o.id))}
                               />
                               <span className="opt-name">{o.name}</span>
-                              {o.isDefault && <span className="opt-default">Default</span>}
+                              {o.mandatory ? (
+                                <span className="opt-default">Fixed</span>
+                              ) : (
+                                o.isDefault && <span className="opt-default">Default</span>
+                              )}
                               <span className="opt-pts">{o.points > 0 ? `+${o.points}` : 'free'}</span>
                             </label>
                             {o.weapons?.length > 0 && (
@@ -668,7 +673,7 @@ function StatTable({ labels, row }: { labels: string[]; row: { name: string; val
   )
 }
 
-function WeaponTables({ weapons }: { weapons: DatasheetDetail['weapons'] }) {
+function WeaponTables({ weapons, rules }: { weapons: DatasheetDetail['weapons']; rules?: AbilityText[] }) {
   return (
     <div className="detail-section">
       <h4>Weapons</h4>
@@ -684,7 +689,11 @@ function WeaponTables({ weapons }: { weapons: DatasheetDetail['weapons'] }) {
             <tbody>
               <tr>
                 <td>{w.ranged ? 'Ranged' : 'Melee'}</td>
-                {w.characteristics.map((c) => <td key={c.name}>{c.value || '-'}</td>)}
+                {w.characteristics.map((c) => (
+                  <td key={c.name}>
+                    {c.value ? isKeywordChar(c.name) ? <RuleText text={c.value} rules={rules} /> : c.value : '-'}
+                  </td>
+                ))}
               </tr>
             </tbody>
           </table>
@@ -693,3 +702,7 @@ function WeaponTables({ weapons }: { weapons: DatasheetDetail['weapons'] }) {
     </div>
   )
 }
+
+// The weapon characteristic that lists keyword rules (e.g. "[ASSAULT, LETHAL
+// HITS]"), so its cell links each keyword to its rule tooltip.
+const isKeywordChar = (name: string) => name.trim().toLowerCase() === 'keywords'

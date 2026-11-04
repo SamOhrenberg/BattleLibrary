@@ -33,7 +33,25 @@ public static class CatalogueEndpoints
     }
     private sealed record EnhancementDto(string Id, string Name, int Points, string Text);
     private sealed record DetachmentDto(
-        string Id, string Name, int Dp, IReadOnlyList<EnhancementDto> Enhancements, IReadOnlyList<AbilityDto> Rules);
+        string Id, string Name, int Dp, IReadOnlyList<EnhancementDto> Enhancements, IReadOnlyList<AbilityDto> Rules,
+        IReadOnlyList<string> DispositionIds);
+    private sealed record DispositionDto(string Id, string Name);
+
+    private static IReadOnlyList<DispositionDto> DeserializeDispositions(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return [];
+        }
+        try
+        {
+            return JsonSerializer.Deserialize<List<DispositionDto>>(json, WebJson) ?? [];
+        }
+        catch (JsonException)
+        {
+            return [];
+        }
+    }
 
     private static string[] DeserializeNames(string? json)
     {
@@ -125,7 +143,7 @@ public static class CatalogueEndpoints
         var faction = await db.CachedFactions
             .Where(f => f.BsDataId == factionId)
             .Where(f => db.CachedGameSystems.Any(s => s.Key == f.GameSystemKey && s.Enabled))
-            .Select(f => new { f.Id, f.Name, f.BsDataId, f.EquipmentJson, f.DetachmentsJson })
+            .Select(f => new { f.Id, f.Name, f.BsDataId, f.EquipmentJson, f.DetachmentsJson, Dispositions = f.GameSystem.DispositionsJson })
             .FirstOrDefaultAsync(ct);
         if (faction is null)
         {
@@ -149,10 +167,11 @@ public static class CatalogueEndpoints
 
         var equipment = DeserializeNames(faction.EquipmentJson);
         var detachments = DeserializeDetachments(faction.DetachmentsJson);
+        var dispositions = DeserializeDispositions(faction.Dispositions);
 
         return Results.Ok(new
         {
-            faction = new { id = faction.BsDataId, name = faction.Name, equipment, detachments },
+            faction = new { id = faction.BsDataId, name = faction.Name, equipment, detachments, dispositions },
             datasheets,
         });
     }

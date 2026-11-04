@@ -77,10 +77,25 @@ export interface CatalogueDetachment {
   dp: number
   enhancements: CatalogueEnhancement[]
   rules: AbilityText[]
+  // Force Disposition option ids this detachment unlocks; empty when none.
+  dispositionIds?: string[]
+}
+
+// An army-wide Force Disposition option (40k 11e). Same set for every faction of
+// a system; read from the game system root.
+export interface CatalogueDisposition {
+  id: string
+  name: string
 }
 
 export interface FactionDatasheets {
-  faction: { id: string; name: string; equipment?: string[]; detachments?: CatalogueDetachment[] }
+  faction: {
+    id: string
+    name: string
+    equipment?: string[]
+    detachments?: CatalogueDetachment[]
+    dispositions?: CatalogueDisposition[]
+  }
   datasheets: CatalogueDatasheet[]
 }
 
@@ -113,9 +128,12 @@ export interface DatasheetOption {
   groupId?: string
   groupMin?: number
   groupMax?: number
-  // True for the choice named by its group's default: pre-selected when the unit
-  // is added, so starting wargear and points match the datasheet.
+  // True for a choice pre-selected when the unit is added, so starting wargear
+  // and points match the datasheet (the group's default, or a forced choice).
   isDefault?: boolean
+  // True for a choice forced on by its own min: part of the base loadout, so it
+  // starts selected and cannot be removed.
+  mandatory?: boolean
   // Weapon stat line(s) this choice grants (empty for plain upgrades).
   weapons: DatasheetWeapon[]
 }

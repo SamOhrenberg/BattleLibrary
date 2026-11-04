@@ -1991,17 +1991,15 @@
   font-weight: 600;
 }
 
-.disposition-input {
-  padding: 7px 9px;
-  border: 1px solid var(--border);
-  border-radius: 7px;
-  background: var(--bg);
-  color: var(--fg);
-  font: inherit;
-}
-
 .setup-field.battle-size select {
   max-width: 340px;
+}
+
+.setup-hint {
+  margin-top: 4px;
+  font-size: 0.78rem;
+  color: var(--muted, var(--fg));
+  opacity: 0.75;
 }
 
 .setup-field select {

@@ -65,6 +65,38 @@ public class BsDataParserTests
     }
 
     [Fact]
+    public void Parses_army_wide_force_dispositions()
+    {
+        var (gst, orks) = LoadOrSkip();
+        var model = new BsDataParser().ParseCatalogue(gst, orks);
+
+        var names = model.GameSystem.Dispositions.Select(d => d.Name).ToList();
+        Assert.Contains("Disruption", names);
+        Assert.Contains("Priority Assets", names);
+        Assert.Contains("Purge the Foe", names);
+        // Every disposition carries a stable BSData id for the client.
+        Assert.All(model.GameSystem.Dispositions, d => Assert.False(string.IsNullOrWhiteSpace(d.Id)));
+    }
+
+    [Fact]
+    public void Detachments_unlock_their_force_disposition()
+    {
+        var (gst, orks) = LoadOrSkip();
+        var model = new BsDataParser().ParseCatalogue(gst, orks);
+
+        var purgeTheFoe = model.GameSystem.Dispositions.Single(d => d.Name == "Purge the Foe");
+        var disruption = model.GameSystem.Dispositions.Single(d => d.Name == "Disruption");
+
+        // War Horde grants "Purge the Foe"; Madcap Meks grants "Disruption".
+        var warHorde = model.Detachments.Single(d => d.Name == "War Horde");
+        Assert.Contains(purgeTheFoe.Id, warHorde.DispositionIds);
+        Assert.DoesNotContain(disruption.Id, warHorde.DispositionIds);
+
+        var madcapMeks = model.Detachments.Single(d => d.Name == "Madcap Meks");
+        Assert.Contains(disruption.Id, madcapMeks.DispositionIds);
+    }
+
+    [Fact]
     public void Writes_summary()
     {
         var (gst, orks) = LoadOrSkip();
