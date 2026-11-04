@@ -20,6 +20,14 @@ public sealed class BsDataParser
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNameCaseInsensitive = true,
+        // BSData serializes numeric fields (e.g. defaultCostLimit) as strings,
+        // including "" for no value; this reads those leniently.
+        Converters =
+        {
+            new Json.LenientDoubleConverter(),
+            new Json.LenientIntConverter(),
+            new Json.LenientStringConverter(),
+        },
     };
 
     public GameSystemInfo ParseGameSystemInfo(string gameSystemJson)
