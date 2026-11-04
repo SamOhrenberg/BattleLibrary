@@ -77,6 +77,15 @@ public sealed record Datasheet(
     // Default to empty so older cached jsonb (written before cost rules existed)
     // deserializes without a null list.
     public IReadOnlyList<CostRule> CostRules { get; init; } = CostRules ?? [];
+
+    // Keyword changes that only apply under a condition, from the datasheet's
+    // "category" modifiers (e.g. a unit gaining Battleline under a specific
+    // detachment). Unconditional category modifiers are already folded into
+    // <see cref="Keywords"/>; these are the ones the builder must apply (or not)
+    // based on the selected detachment / config toggle, feeding the Battleline
+    // and rule-of-N checks. Empty for most units. Init-only with an empty default
+    // so older cached models deserialize unchanged.
+    public IReadOnlyList<ConditionalKeyword> ConditionalKeywords { get; init; } = [];
 }
 
 // A selection-dependent points adjustment, used for Crucible warband characters
@@ -95,6 +104,18 @@ public sealed record CostRule(
     int Step,
     string Operator,
     int Value);
+
+// A keyword a datasheet gains (Add = true) or loses (Add = false) only when a
+// gate is active. RequiredDetachmentIds: the change applies when one of these
+// detachments is selected. RequiredToggles: or when one of these "Show X" config
+// toggles is on. Exactly one gate is recorded per entry (an AND of several gates
+// can't be modelled flatly), named by the same ids/toggles as
+// <see cref="DatasheetAvailability"/>.
+public sealed record ConditionalKeyword(
+    string Keyword,
+    bool Add,
+    IReadOnlyList<string> RequiredDetachmentIds,
+    IReadOnlyList<string> RequiredToggles);
 
 // When a datasheet is selectable, from its BattleScribe "hidden" modifiers.
 // RequiredDetachmentIds: shown only when one of these detachments is selected

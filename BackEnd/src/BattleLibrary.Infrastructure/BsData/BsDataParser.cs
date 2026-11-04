@@ -359,7 +359,11 @@ public sealed class BsDataParser
         var coreLibraries = ComputeCoreLibraries(pairs.Select(p => p.sheet.Id), index, availability.FactionTokens);
 
         return pairs
-            .Select(p => p.sheet with { Availability = ComputeAvailability(p.entry, p.sheet.Id, availability, index, coreLibraries) })
+            .Select(p => p.sheet with
+            {
+                Availability = ComputeAvailability(p.entry, p.sheet.Id, availability, index, coreLibraries),
+                ConditionalKeywords = ComputeConditionalKeywords(p.entry, availability, index),
+            })
             .OrderBy(d => d.Name, StringComparer.OrdinalIgnoreCase)
             .ToList();
     }
@@ -499,6 +503,7 @@ public sealed class BsDataParser
             .Where(n => !string.IsNullOrWhiteSpace(n))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
+        ApplyUnconditionalCategoryModifiers(entry, keywords, index);
 
         var weapons = allProfiles
             .Where(p => schema.WeaponTypes.Contains(p.TypeName))
@@ -1396,6 +1401,153 @@ public sealed class BsDataParser
         }
     }
 
+    // "category" modifiers that always apply (no conditions) change the unit's
+    // fixed keyword set: add / set / set-primary grant a keyword, remove strips
+    // one. Only entry-level modifiers are folded here - a category modifier nested
+    // in a modifier group may be gated by a group condition this model doesn't
+    // carry, so it is left to ComputeConditionalKeywords (via its own conditions)
+    // rather than risk granting a keyword that should be conditional.
+    private static void ApplyUnconditionalCategoryModifiers(
+        SelectionEntryNode entry, List<string> keywords, Index index)
+    {
+        foreach (var m in entry.Modifiers)
+        {
+            if (!IsCategoryModifier(m) || m.Conditions.Count > 0 || m.ConditionGroups.Count > 0)
+            {
+                continue;
+            }
+            var name = CategoryName(m, index, entry);
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                continue;
+            }
+            if (IsCategoryRemove(m))
+            {
+                keywords.RemoveAll(k => string.Equals(k, name, StringComparison.OrdinalIgnoreCase));
+            }
+            else if (IsCategoryAdd(m) && !keywords.Any(k => string.Equals(k, name, StringComparison.OrdinalIgnoreCase)))
+            {
+                keywords.Add(name);
+            }
+        }
+    }
+
+    // Conditional "category" modifiers: a keyword gained or stripped only when a
+    // gate holds (e.g. a unit gaining Battleline under the War Horde detachment).
+    // Recorded only when the gate is a single "present" test on a known detachment
+    // or a "Show X" config toggle - the same shapes DatasheetAvailability models -
+    // so the builder can apply the change for the active detachment/toggle.
+    private static IReadOnlyList<ConditionalKeyword> ComputeConditionalKeywords(
+        SelectionEntryNode entry, AvailabilityContext ctx, Index index)
+    {
+        var result = new List<ConditionalKeyword>();
+        foreach (var m in CategoryModifiers(entry))
+        {
+            // Unconditional ones are already folded into the static keyword set.
+            if (m.Conditions.Count == 0 && m.ConditionGroups.Count == 0)
+            {
+                continue;
+            }
+            var add = IsCategoryAdd(m);
+            if (!add && !IsCategoryRemove(m))
+            {
+                continue; // e.g. unset-primary: no change to the keyword set.
+            }
+            var name = CategoryName(m, index, entry);
+            if (string.IsNullOrWhiteSpace(name) || !TryFlattenAnd(m, out var conditions) || conditions.Count == 0)
+            {
+                continue; // Unresolvable, or an OR branch this flat model can't carry.
+            }
+
+            var detReqs = new List<string>();
+            var toggleReqs = new List<string>();
+            var ok = true;
+            foreach (var c in conditions)
+            {
+                // The change fires when the gated thing IS present (detachment
+                // selected / toggle on), so only present-tests are modelled.
+                if (!IsPresentTest(c))
+                {
+                    ok = false;
+                    break;
+                }
+                if (ctx.DetachmentIds.Contains(c.ChildId))
+                {
+                    detReqs.Add(c.ChildId);
+                }
+                else if (ctx.IdToName.TryGetValue(c.ChildId, out var tn)
+                         && tn.StartsWith("Show ", StringComparison.OrdinalIgnoreCase))
+                {
+                    toggleReqs.Add(tn);
+                }
+                else
+                {
+                    ok = false; // A dynamic condition (roster counts, battle size, ...).
+                    break;
+                }
+            }
+            // One gate is a clean "when X is selected" requirement; an AND of
+            // several can't be carried by this flat model, so skip it.
+            if (!ok || detReqs.Count + toggleReqs.Count != 1)
+            {
+                continue;
+            }
+            result.Add(new ConditionalKeyword(name, add, detReqs, toggleReqs));
+        }
+
+        return result
+            .DistinctBy(k => (
+                k.Keyword.ToLowerInvariant(),
+                k.Add,
+                string.Join(",", k.RequiredDetachmentIds),
+                string.Join(",", k.RequiredToggles)))
+            .ToList();
+    }
+
+    // "category" modifiers on the entry and its nested modifier groups.
+    private static IEnumerable<ModifierNode> CategoryModifiers(SelectionEntryNode entry)
+    {
+        foreach (var m in entry.Modifiers)
+        {
+            if (IsCategoryModifier(m)) yield return m;
+        }
+        foreach (var m in FlattenModifierGroups(entry.ModifierGroups))
+        {
+            if (IsCategoryModifier(m)) yield return m;
+        }
+    }
+
+    // A modifier targeting the "category" field, whose value is the id of the
+    // category (keyword) to change.
+    private static bool IsCategoryModifier(ModifierNode m) =>
+        string.Equals(m.Field, "category", StringComparison.OrdinalIgnoreCase)
+        && m.Value.ValueKind == JsonValueKind.String;
+
+    private static bool IsCategoryAdd(ModifierNode m) =>
+        string.Equals(m.Type, "add", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(m.Type, "set", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(m.Type, "set-primary", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsCategoryRemove(ModifierNode m) =>
+        string.Equals(m.Type, "remove", StringComparison.OrdinalIgnoreCase);
+
+    // The keyword a category modifier names, resolved from its value (a category
+    // id) via the category index, falling back to the entry's own category links.
+    private static string CategoryName(ModifierNode m, Index index, SelectionEntryNode entry)
+    {
+        var id = m.Value.GetString() ?? "";
+        if (string.IsNullOrEmpty(id))
+        {
+            return "";
+        }
+        if (index.Categories.TryGetValue(id, out var name) && !string.IsNullOrWhiteSpace(name))
+        {
+            return name;
+        }
+        return entry.CategoryLinks
+            .FirstOrDefault(c => c.TargetId == id && !string.IsNullOrWhiteSpace(c.Name))?.Name ?? "";
+    }
+
     // ownerModel is the nearest enclosing model type's name, so each option
     // records which model it is for; empty at the unit root (unit-wide options)
     // and for single-model units.
@@ -1579,6 +1731,9 @@ public sealed class BsDataParser
         public required Dictionary<string, SelectionEntryGroupNode> Groups { get; init; }
         // Where each entry id was defined, so library-sourced datasheets can be gated.
         public required Dictionary<string, CatalogueOrigin> EntryOrigin { get; init; }
+        // Category entry id -> name, so a "category" modifier (which names its
+        // target category by id) can be resolved to the keyword it grants/strips.
+        public required Dictionary<string, string> Categories { get; init; }
 
         public static Index Build(IEnumerable<DataDocument> documents)
         {
@@ -1586,12 +1741,17 @@ public sealed class BsDataParser
             var entries = new Dictionary<string, SelectionEntryNode>();
             var groups = new Dictionary<string, SelectionEntryGroupNode>();
             var origins = new Dictionary<string, CatalogueOrigin>();
+            var categories = new Dictionary<string, string>(StringComparer.Ordinal);
 
             foreach (var doc in documents)
             {
                 // The game system and faction catalogues are core; only a linked
                 // shared library (library: true) is optional/allied content.
                 var origin = new CatalogueOrigin(doc.Name, (doc as CatalogueDocument)?.Library ?? false);
+                foreach (var category in doc.CategoryEntries)
+                {
+                    if (!string.IsNullOrEmpty(category.Id)) categories.TryAdd(category.Id, category.Name);
+                }
                 foreach (var profile in doc.SharedProfiles)
                 {
                     refs.Profiles.TryAdd(profile.Id, profile);
@@ -1617,7 +1777,7 @@ public sealed class BsDataParser
             return new Index
             {
                 Profiles = refs.Profiles, Rules = refs.Rules, InfoGroups = refs.InfoGroups,
-                Entries = entries, Groups = groups, EntryOrigin = origins,
+                Entries = entries, Groups = groups, EntryOrigin = origins, Categories = categories,
             };
         }
 

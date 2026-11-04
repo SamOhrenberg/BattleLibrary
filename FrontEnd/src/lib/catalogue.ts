@@ -29,6 +29,18 @@ export interface DatasheetAvailability {
   requiredToggles: string[]
 }
 
+// A keyword a unit gains (add: true) or loses (add: false) only when a gate is
+// active, from the datasheet's conditional "category" modifiers (e.g. gaining
+// Battleline under a specific detachment). Unconditional changes are already
+// baked into `keywords`; these apply when one of requiredDetachmentIds is the
+// selected detachment, or one of requiredToggles ("Show X") is enabled.
+export interface ConditionalKeyword {
+  keyword: string
+  add: boolean
+  requiredDetachmentIds: string[]
+  requiredToggles: string[]
+}
+
 export interface CatalogueDatasheet {
   id: string
   name: string
@@ -165,6 +177,9 @@ export interface DatasheetDetail {
   availability?: DatasheetAvailability
   // Selection-dependent pricing rules (Crucible warband weapons); usually empty.
   costRules?: CostRule[]
+  // Keyword changes that only apply under a selected detachment / config toggle
+  // (empty for most units); feeds the Battleline and rule-of-N legality checks.
+  conditionalKeywords?: ConditionalKeyword[]
 }
 
 // Points adjustment from a datasheet's cost rules for a given set of selected
