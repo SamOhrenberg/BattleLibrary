@@ -45,6 +45,8 @@ public static class DatabaseConnectionString
             Database = uri.AbsolutePath.TrimStart('/'),
             // Use SSL when the host offers it; skip on a plain local connection.
             SslMode = SslMode.Prefer,
+            // Skips the Kerberos probe, which needs libgssapi missing from the slim runtime image.
+            GssEncryptionMode = GssEncryptionMode.Disable,
         };
 
         return builder.ConnectionString;

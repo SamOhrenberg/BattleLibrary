@@ -12,6 +12,7 @@ using BattleLibrary.Infrastructure.BsData;
 using BattleLibrary.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Scalar.AspNetCore;
 
@@ -159,6 +160,10 @@ app.MapHub<GameHub>("/hubs/game");
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<BattleLibraryDbContext>();
+    if (!app.Environment.IsDevelopment())
+    {
+        await db.Database.MigrateAsync();
+    }
     try
     {
         await AdminEndpoints.SeedAsync(db, app.Configuration);
