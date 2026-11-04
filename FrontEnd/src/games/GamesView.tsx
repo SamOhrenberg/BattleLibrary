@@ -7,7 +7,6 @@ import { getFriends, searchUsers, type Friend } from '../lib/social'
 import {
   deleteGame,
   getGames,
-  getGameStats,
   recordGame,
   updateGame,
   type Game,
@@ -214,19 +213,27 @@ function CreateSessionForm({ onCreated, onCancel }: { onCreated: (id: string) =>
   )
 }
 
+// A game with its display-ready system name and size label resolved on the
+// client. Size is derived from the linked army list (battle size, else points),
+// since a logged game does not store a size of its own.
+type EnrichedGame = Game & { systemName: string; sizeLabel: string }
+
+const UNSIZED = 'Unsized'
+
 function HistoryTab() {
   const [games, setGames] = useState<Game[] | null>(null)
-  const [stats, setStats] = useState<GameStats | null>(null)
+  const [systems, setSystems] = useState<CatalogueSystem[]>([])
+  const [lists, setLists] = useState<ArmyListSummary[]>([])
   const [view, setView] = useState<'index' | 'form'>('index')
   const [editing, setEditing] = useState<Game | null>(null)
   const [sessionView, setSessionView] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [systemFilter, setSystemFilter] = useState('all')
+  const [sizeFilter, setSizeFilter] = useState('all')
 
   const reload = useCallback(async () => {
     try {
-      const [g, s] = await Promise.all([getGames(), getGameStats()])
-      setGames(g)
-      setStats(s)
+      setGames(await getGames())
     } catch {
       setError('Could not load your games.')
     }
@@ -234,7 +241,49 @@ function HistoryTab() {
 
   useEffect(() => {
     void reload()
+    getCatalogueSystems().then(setSystems).catch(() => {})
+    getLists().then(setLists).catch(() => {})
   }, [reload])
+
+  const listsById = useMemo(() => new Map(lists.map((l) => [l.id, l])), [lists])
+
+  const enriched = useMemo<EnrichedGame[]>(() => {
+    const systemName = (key: string) =>
+      systems.find((s) => s.key === key)?.name || (key ? key : 'Unspecified')
+    const sizeOf = (g: Game): string => {
+      const list = g.playerListId ? listsById.get(g.playerListId) : undefined
+      if (list?.battleSize) return list.battleSize
+      if (list?.pointsLimit) return `${list.pointsLimit} pts`
+      return UNSIZED
+    }
+    return (games ?? []).map((g) => ({ ...g, systemName: systemName(g.gameSystemKey), sizeLabel: sizeOf(g) }))
+  }, [games, systems, listsById])
+
+  const systemOptions = useMemo(() => {
+    const seen = new Map<string, string>()
+    enriched.forEach((g) => {
+      if (g.gameSystemKey) seen.set(g.gameSystemKey, g.systemName)
+    })
+    return [...seen.entries()].sort((a, b) => a[1].localeCompare(b[1]))
+  }, [enriched])
+
+  const sizeOptions = useMemo(() => {
+    const seen = new Set(enriched.map((g) => g.sizeLabel))
+    return [...seen].sort(compareSizes)
+  }, [enriched])
+
+  const filtered = useMemo(
+    () =>
+      enriched.filter(
+        (g) =>
+          (systemFilter === 'all' || g.gameSystemKey === systemFilter) &&
+          (sizeFilter === 'all' || g.sizeLabel === sizeFilter),
+      ),
+    [enriched, systemFilter, sizeFilter],
+  )
+
+  const viewStats = useMemo(() => computeStats(filtered), [filtered])
+  const filtersActive = systemFilter !== 'all' || sizeFilter !== 'all'
 
   function openNew() {
     setEditing(null)
@@ -263,6 +312,11 @@ function HistoryTab() {
     }
   }
 
+  function clearFilters() {
+    setSystemFilter('all')
+    setSizeFilter('all')
+  }
+
   if (sessionView) {
     return (
       <GameSessionView
@@ -279,6 +333,8 @@ function HistoryTab() {
     return <GameForm initial={editing} onSaved={onSaved} onCancel={() => setView('index')} />
   }
 
+  const hasGames = (games?.length ?? 0) > 0
+
   return (
     <section className="card">
       <div className="lists-head">
@@ -292,16 +348,96 @@ function HistoryTab() {
 
       {error && <p className="builder-error">{error}</p>}
 
-      {stats && stats.total > 0 && <StatsBar stats={stats} />}
+      {hasGames && (
+        <GameFilters
+          systemOptions={systemOptions}
+          sizeOptions={sizeOptions}
+          systemFilter={systemFilter}
+          sizeFilter={sizeFilter}
+          onSystem={setSystemFilter}
+          onSize={setSizeFilter}
+          matched={filtered.length}
+          filtersActive={filtersActive}
+          onClear={clearFilters}
+        />
+      )}
 
-      <GameHistory
-        games={games}
-        onEdit={openEdit}
-        onDelete={remove}
-        onNew={openNew}
-        onDetails={(g) => g.gameSessionId && setSessionView(g.gameSessionId)}
-      />
+      {viewStats.total > 0 && <StatsBar stats={viewStats} />}
+
+      <div className="history-layout">
+        <Timeline games={filtered} onPick={openEdit} />
+        <div className="history-main">
+          <GameHistory
+            games={games === null ? null : filtered}
+            filtersActive={filtersActive}
+            onClear={clearFilters}
+            onEdit={openEdit}
+            onDelete={remove}
+            onNew={openNew}
+            onDetails={(g) => g.gameSessionId && setSessionView(g.gameSessionId)}
+          />
+        </div>
+      </div>
     </section>
+  )
+}
+
+function GameFilters({
+  systemOptions,
+  sizeOptions,
+  systemFilter,
+  sizeFilter,
+  onSystem,
+  onSize,
+  matched,
+  filtersActive,
+  onClear,
+}: {
+  systemOptions: [string, string][]
+  sizeOptions: string[]
+  systemFilter: string
+  sizeFilter: string
+  onSystem: (v: string) => void
+  onSize: (v: string) => void
+  matched: number
+  filtersActive: boolean
+  onClear: () => void
+}) {
+  return (
+    <div className="history-filters" role="group" aria-label="Filter games">
+      <label className="filter-field">
+        <span className="filter-label">Game</span>
+        <select value={systemFilter} onChange={(e) => onSystem(e.target.value)}>
+          <option value="all">All games</option>
+          {systemOptions.map(([key, name]) => (
+            <option key={key} value={key}>
+              {name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="filter-field">
+        <span className="filter-label">Game size</span>
+        <select value={sizeFilter} onChange={(e) => onSize(e.target.value)}>
+          <option value="all">All sizes</option>
+          {sizeOptions.map((size) => (
+            <option key={size} value={size}>
+              {size}
+            </option>
+          ))}
+        </select>
+      </label>
+      <div className="filter-meta">
+        <span className="filter-count">
+          {matched} game{matched === 1 ? '' : 's'}
+        </span>
+        {filtersActive && (
+          <button type="button" className="link-button" onClick={onClear}>
+            Clear
+          </button>
+        )}
+      </div>
+    </div>
   )
 }
 
@@ -326,14 +462,125 @@ function StatsBar({ stats }: { stats: GameStats }) {
   )
 }
 
+// Left-hand visual history: a cumulative win/loss trend sparkline above a
+// vertical timeline of games (newest first), colour-coded by result.
+function Timeline({ games, onPick }: { games: EnrichedGame[]; onPick: (g: Game) => void }) {
+  const recent = games // already newest-first from the API
+  const chrono = useMemo(() => [...games].reverse(), [games])
+
+  const net = useMemo(() => {
+    const out: number[] = []
+    let run = 0
+    for (const g of chrono) {
+      run += g.result === 'Win' ? 1 : g.result === 'Loss' ? -1 : 0
+      out.push(run)
+    }
+    return out
+  }, [chrono])
+
+  if (games.length === 0) {
+    return (
+      <aside className="history-timeline empty" aria-label="Game timeline">
+        <p className="hint">Your timeline will appear here once games match.</p>
+      </aside>
+    )
+  }
+
+  const finalNet = net[net.length - 1] ?? 0
+
+  return (
+    <aside className="history-timeline" aria-label="Game timeline">
+      <div className="tl-head">
+        <span className="tl-title">Timeline</span>
+        <span className={`tl-net ${finalNet > 0 ? 'up' : finalNet < 0 ? 'down' : ''}`}>
+          {finalNet > 0 ? `+${finalNet}` : finalNet} net
+        </span>
+      </div>
+
+      <TrendChart net={net} />
+
+      <ol className="tl-list">
+        {recent.map((g) => {
+          const r = g.result.toLowerCase()
+          const tag = g.sizeLabel !== UNSIZED ? g.sizeLabel : g.systemName
+          return (
+            <li key={g.id} className={`tl-node ${r}`}>
+              <span className="tl-dot" aria-hidden="true" />
+              <button type="button" className="tl-entry" onClick={() => onPick(g)}>
+                <span className="tl-row">
+                  <span className="tl-opp">vs {g.opponentName}</span>
+                  <span className={`tl-result ${r}`}>{g.result[0]}</span>
+                </span>
+                <span className="tl-sub">
+                  <span className="tl-date">{formatShort(g.playedOn)}</span>
+                  {tag && <span className="tl-tag">{tag}</span>}
+                </span>
+              </button>
+            </li>
+          )
+        })}
+      </ol>
+    </aside>
+  )
+}
+
+// Cumulative net-record sparkline (wins minus losses over time). Draws hold the
+// line flat. Rendered as a themed SVG so it works in light and dark.
+function TrendChart({ net }: { net: number[] }) {
+  const W = 100
+  const H = 54
+  const PAD = 6
+  const n = net.length
+  const maxV = Math.max(0, ...net)
+  const minV = Math.min(0, ...net)
+  const range = maxV - minV || 1
+
+  const x = (i: number) => (n <= 1 ? W / 2 : PAD + (i / (n - 1)) * (W - 2 * PAD))
+  const y = (v: number) => PAD + (1 - (v - minV) / range) * (H - 2 * PAD)
+  const zeroY = y(0)
+
+  const pts = net.map((v, i) => `${x(i).toFixed(2)},${y(v).toFixed(2)}`)
+  const line = n === 1 ? `M0,${zeroY.toFixed(2)} L${W},${zeroY.toFixed(2)}` : `M${pts.join(' L')}`
+  const area =
+    n === 1
+      ? `M0,${zeroY.toFixed(2)} L${W},${zeroY.toFixed(2)} L${W},${zeroY.toFixed(2)} Z`
+      : `M${pts[0]} L${pts.slice(1).join(' L')} L${x(n - 1).toFixed(2)},${zeroY.toFixed(2)} L${x(0).toFixed(2)},${zeroY.toFixed(2)} Z`
+  const last = net[n - 1] ?? 0
+
+  return (
+    <svg
+      className="tl-chart"
+      viewBox={`0 0 ${W} ${H}`}
+      preserveAspectRatio="none"
+      role="img"
+      aria-label="Cumulative win/loss trend"
+    >
+      <defs>
+        <linearGradient id="tl-fill" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.28" />
+          <stop offset="100%" stopColor="var(--accent)" stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      <line className="tl-zero" x1="0" y1={zeroY} x2={W} y2={zeroY} />
+      <path className="tl-area" d={area} fill="url(#tl-fill)" />
+      <path className="tl-line" d={line} />
+      <circle className={`tl-end ${last >= 0 ? 'up' : 'down'}`} cx={x(n - 1)} cy={y(last)} r="2.6" />
+    </svg>
+  )
+}
+
 function GameHistory({
   games,
+  filtersActive,
+  onClear,
   onEdit,
   onDelete,
   onNew,
   onDetails,
 }: {
   games: Game[] | null
+  filtersActive: boolean
+  onClear: () => void
   onEdit: (g: Game) => void
   onDelete: (g: Game) => void
   onNew: () => void
@@ -341,6 +588,16 @@ function GameHistory({
 }) {
   if (games === null) return <p className="hint">Loading…</p>
   if (games.length === 0) {
+    if (filtersActive) {
+      return (
+        <p className="hint">
+          No games match these filters.{' '}
+          <button type="button" className="link-button" onClick={onClear}>
+            Clear filters
+          </button>
+        </p>
+      )
+    }
     return (
       <p className="hint">
         No games yet. Press{' '}
@@ -358,6 +615,48 @@ function GameHistory({
       ))}
     </ul>
   )
+}
+
+// Recompute the record for the currently filtered set so the stats strip and
+// timeline stay in step with the active filters.
+function computeStats(games: Game[]): GameStats {
+  let wins = 0
+  let losses = 0
+  let draws = 0
+  for (const g of games) {
+    if (g.result === 'Win') wins++
+    else if (g.result === 'Loss') losses++
+    else draws++
+  }
+  const total = wins + losses + draws
+  const winRate = total === 0 ? 0 : Math.round((wins * 1000) / total) / 10
+  return { total, wins, losses, draws, winRate }
+}
+
+// Battle sizes first (in play order), then points-based sizes ascending, then
+// Unsized last, so the dropdown reads naturally.
+function compareSizes(a: string, b: string): number {
+  const rank = (s: string) => {
+    if (s === UNSIZED) return 3
+    const idx = BATTLE_SIZES.indexOf(s as (typeof BATTLE_SIZES)[number])
+    if (idx >= 0) return idx
+    return 2
+  }
+  const ra = rank(a)
+  const rb = rank(b)
+  if (ra !== rb) return ra - rb
+  if (ra === 2) {
+    const pa = parseInt(a, 10)
+    const pb = parseInt(b, 10)
+    if (!Number.isNaN(pa) && !Number.isNaN(pb)) return pa - pb
+  }
+  return a.localeCompare(b)
+}
+
+function formatShort(iso: string): string {
+  const d = new Date(iso + 'T00:00:00')
+  if (Number.isNaN(d.getTime())) return iso
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
 }
 
 function GameRow({

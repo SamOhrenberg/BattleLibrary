@@ -58,6 +58,281 @@
   color: var(--muted);
 }
 
+/* ---- Filters ---- */
+.history-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px 12px;
+  margin: 4px 0 14px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--surface-2);
+}
+
+.filter-field {
+  display: grid;
+  gap: 5px;
+  flex: 1 1 150px;
+  min-width: 128px;
+}
+
+.filter-label {
+  font-size: 0.66rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.filter-field select {
+  width: 100%;
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+  cursor: pointer;
+}
+
+.filter-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
+  font-size: 0.8rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.filter-count {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- History layout (timeline + list) ---- */
+.history-layout {
+  display: grid;
+  gap: 16px;
+}
+
+.history-main {
+  min-width: 0;
+}
+
+@media (min-width: 860px) {
+  .history-layout {
+    grid-template-columns: 250px 1fr;
+    align-items: start;
+  }
+}
+
+/* ---- Timeline ---- */
+.history-timeline {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+  align-content: start;
+}
+
+@media (min-width: 860px) {
+  .history-timeline {
+    position: sticky;
+    top: 12px;
+  }
+}
+
+.tl-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.tl-title {
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.tl-net {
+  font-family: var(--f-mono);
+  font-weight: 700;
+  font-size: 0.82rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.tl-net.up {
+  color: var(--ok);
+}
+.tl-net.down {
+  color: var(--err);
+}
+
+.tl-chart {
+  width: 100%;
+  height: 54px;
+  display: block;
+  overflow: visible;
+}
+.tl-line {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.8;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+.tl-zero {
+  stroke: var(--border);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+  vector-effect: non-scaling-stroke;
+}
+.tl-end {
+  stroke: var(--surface);
+  stroke-width: 1.2;
+}
+.tl-end.up {
+  fill: var(--ok);
+}
+.tl-end.down {
+  fill: var(--err);
+}
+
+.tl-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  max-height: 440px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.tl-node {
+  position: relative;
+  display: grid;
+  grid-template-columns: 16px 1fr;
+  gap: 8px;
+  align-items: start;
+}
+
+/* The connector line runs through the dot column; the dot's ring masks it. */
+.tl-node::before {
+  content: '';
+  position: absolute;
+  left: 7px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--border);
+}
+.tl-node:first-child::before {
+  top: 10px;
+}
+.tl-node:last-child::before {
+  bottom: auto;
+  height: 10px;
+}
+
+.tl-dot {
+  position: relative;
+  z-index: 1;
+  width: 12px;
+  height: 12px;
+  margin: 4px 0 0 1px;
+  border-radius: 50%;
+  background: var(--muted);
+  box-shadow: 0 0 0 3px var(--surface);
+}
+.tl-node.win .tl-dot {
+  background: var(--ok);
+}
+.tl-node.loss .tl-dot {
+  background: var(--err);
+}
+.tl-node.draw .tl-dot {
+  background: var(--planned);
+}
+
+.tl-entry {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  min-width: 0;
+  padding: 5px 6px;
+  border: none;
+  border-radius: 7px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.tl-entry:hover {
+  background: var(--bg);
+}
+
+.tl-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+.tl-opp {
+  font-weight: 600;
+  font-size: 0.85rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tl-result {
+  flex: none;
+  font-family: var(--f-mono);
+  font-weight: 700;
+  font-size: 0.78rem;
+}
+.tl-result.win {
+  color: var(--ok);
+}
+.tl-result.loss {
+  color: var(--err);
+}
+.tl-result.draw {
+  color: var(--planned);
+}
+
+.tl-sub {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.71rem;
+  color: var(--muted);
+  min-width: 0;
+}
+.tl-date {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+.tl-tag {
+  max-width: 120px;
+  padding: 1px 7px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* ---- History ---- */
 .game-list {
   list-style: none;
