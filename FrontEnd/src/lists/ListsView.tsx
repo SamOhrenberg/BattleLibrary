@@ -14,6 +14,7 @@ export function ListsView() {
   const tour = useTour()
   const [view, setView] = useState<View>('index')
   const [lists, setLists] = useState<ArmyListSummary[] | null>(null)
+  const [systemNames, setSystemNames] = useState<Record<string, string>>({})
   const [active, setActive] = useState<ArmyList | null>(null)
   const toast = useToast()
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -24,6 +25,19 @@ export function ListsView() {
       .then(setLists)
       .catch(() => toast.push('Could not load your lists.', 'error'))
   }, [toast])
+
+  // Readable game names for the "by game" grouping; keyed by gameSystemKey.
+  useEffect(() => {
+    getCatalogueSystems()
+      .then((systems) => {
+        const map: Record<string, string> = {}
+        for (const s of systems) map[s.key] = s.name
+        setSystemNames(map)
+      })
+      .catch(() => {
+        /* Grouping falls back to the raw system key if names can't be loaded. */
+      })
+  }, [])
 
   // Offer the tour automatically, once, to a brand-new user with no lists yet.
   useEffect(() => {
@@ -145,6 +159,7 @@ export function ListsView() {
       {view === 'index' && (
         <ListIndex
           lists={lists}
+          systemNames={systemNames}
           onOpen={(id) => void openList(id)}
           onNew={openCreate}
           onDuplicate={(id) => void onDuplicate(id)}
@@ -162,8 +177,65 @@ export function ListsView() {
   )
 }
 
+// Lists shown as a two-level tree: game system, then army (faction). Each level
+// is collapsible, and its open/closed state is remembered per browser.
+const COLLAPSE_KEY = 'battlelibrary.lists.collapsed'
+
+// An army group within a game, and a game group holding its armies.
+interface ArmyGroup {
+  key: string
+  faction: string
+  lists: ArmyListSummary[]
+}
+interface GameGroup {
+  key: string
+  game: string
+  count: number
+  armies: ArmyGroup[]
+}
+
+function groupLists(lists: ArmyListSummary[], systemNames: Record<string, string>): GameGroup[] {
+  const games = new Map<string, Map<string, ArmyListSummary[]>>()
+  for (const l of lists) {
+    const game = systemNames[l.gameSystemKey] ?? l.gameSystemKey
+    let armies = games.get(game)
+    if (!armies) {
+      armies = new Map<string, ArmyListSummary[]>()
+      games.set(game, armies)
+    }
+    const faction = l.factionName || 'Unknown army'
+    const bucket = armies.get(faction)
+    if (bucket) bucket.push(l)
+    else armies.set(faction, [l])
+  }
+  return [...games.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([game, armies]) => {
+      const armyGroups = [...armies.entries()]
+        .sort((a, b) => a[0].localeCompare(b[0]))
+        .map(([faction, groupLists]) => ({ key: `${game}\u0000${faction}`, faction, lists: groupLists }))
+      return {
+        key: game,
+        game,
+        count: armyGroups.reduce((n, a) => n + a.lists.length, 0),
+        armies: armyGroups,
+      }
+    })
+}
+
+function loadCollapsed(): Set<string> {
+  try {
+    const raw = localStorage.getItem(COLLAPSE_KEY)
+    if (raw) return new Set<string>(JSON.parse(raw) as string[])
+  } catch {
+    /* ignore unavailable or malformed storage */
+  }
+  return new Set<string>()
+}
+
 function ListIndex({
   lists,
+  systemNames,
   onOpen,
   onNew,
   onDuplicate,
@@ -171,12 +243,31 @@ function ListIndex({
   onExport,
 }: {
   lists: ArmyListSummary[] | null
+  systemNames: Record<string, string>
   onOpen: (id: string) => void
   onNew: () => void
   onDuplicate: (id: string) => void
   onDelete: (id: string) => void
   onExport: (id: string, name: string) => void
 }) {
+  const [collapsed, setCollapsed] = useState<Set<string>>(loadCollapsed)
+
+  function toggle(key: string) {
+    setCollapsed((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      try {
+        localStorage.setItem(COLLAPSE_KEY, JSON.stringify([...next]))
+      } catch {
+        /* persistence is best-effort */
+      }
+      return next
+    })
+  }
+
+  const games = useMemo(() => groupLists(lists ?? [], systemNames), [lists, systemNames])
+
   if (lists === null) return <p className="hint">Loading…</p>
   if (lists.length === 0) {
     return (
@@ -186,62 +277,136 @@ function ListIndex({
       </p>
     )
   }
+
   return (
-    <ul className="list-index">
-      {lists.map((l) => (
-        <li key={l.id} onClick={() => onOpen(l.id)}>
-          <div>
-            <div className="li-name">
-              {l.name}
-              {l.usesLegends && <span className="tier-tag legends">Legends</span>}
-              {l.usesCrucible && <span className="tier-tag crucible">Crucible</span>}
-            </div>
-            <div className="li-meta">
-              {l.factionName} · {l.entryCount} {l.entryCount === 1 ? 'entry' : 'entries'}
-            </div>
-          </div>
-          <div className="li-right">
-            <div className="li-points">
-              {l.total}
-              {l.pointsLimit != null ? ` / ${l.pointsLimit}` : ''} pts
-            </div>
+    <div className="list-groups">
+      {games.map((game) => {
+        const gameOpen = !collapsed.has(game.key)
+        return (
+          <section className="list-group game-group" key={game.key}>
             <button
               type="button"
-              className="li-dup"
-              title="Duplicate list"
-              onClick={(e) => {
-                e.stopPropagation()
-                onDuplicate(l.id)
-              }}
+              className="group-head game-head"
+              aria-expanded={gameOpen}
+              onClick={() => toggle(game.key)}
             >
-              Duplicate
+              <span className={`group-caret${gameOpen ? ' open' : ''}`} aria-hidden="true">▸</span>
+              <span className="group-title">{game.game}</span>
+              <span className="group-count">
+                {game.count} {game.count === 1 ? 'list' : 'lists'}
+              </span>
             </button>
-            <button
-              type="button"
-              className="li-dup"
-              title="Export as BattleScribe .rosz"
-              onClick={(e) => {
-                e.stopPropagation()
-                onExport(l.id, l.name)
-              }}
-            >
-              Export
-            </button>
-            <button
-              type="button"
-              className="li-del"
-              title="Delete list"
-              onClick={(e) => {
-                e.stopPropagation()
-                if (confirm(`Delete "${l.name}"? This cannot be undone.`)) onDelete(l.id)
-              }}
-            >
-              Delete
-            </button>
-          </div>
-        </li>
-      ))}
-    </ul>
+
+            {gameOpen && (
+              <div className="group-body">
+                {game.armies.map((army) => {
+                  const armyOpen = !collapsed.has(army.key)
+                  return (
+                    <section className="list-group army-group" key={army.key}>
+                      <button
+                        type="button"
+                        className="group-head army-head"
+                        aria-expanded={armyOpen}
+                        onClick={() => toggle(army.key)}
+                      >
+                        <span className={`group-caret${armyOpen ? ' open' : ''}`} aria-hidden="true">▸</span>
+                        <span className="group-title">{army.faction}</span>
+                        <span className="group-count">
+                          {army.lists.length} {army.lists.length === 1 ? 'list' : 'lists'}
+                        </span>
+                      </button>
+
+                      {armyOpen && (
+                        <ul className="list-index">
+                          {army.lists.map((l) => (
+                            <ListRow
+                              key={l.id}
+                              list={l}
+                              onOpen={onOpen}
+                              onDuplicate={onDuplicate}
+                              onDelete={onDelete}
+                              onExport={onExport}
+                            />
+                          ))}
+                        </ul>
+                      )}
+                    </section>
+                  )
+                })}
+              </div>
+            )}
+          </section>
+        )
+      })}
+    </div>
+  )
+}
+
+function ListRow({
+  list: l,
+  onOpen,
+  onDuplicate,
+  onDelete,
+  onExport,
+}: {
+  list: ArmyListSummary
+  onOpen: (id: string) => void
+  onDuplicate: (id: string) => void
+  onDelete: (id: string) => void
+  onExport: (id: string, name: string) => void
+}) {
+  return (
+    <li onClick={() => onOpen(l.id)}>
+      <div>
+        <div className="li-name">
+          {l.name}
+          {l.usesLegends && <span className="tier-tag legends">Legends</span>}
+          {l.usesCrucible && <span className="tier-tag crucible">Crucible</span>}
+        </div>
+        <div className="li-meta">
+          {l.factionName} · {l.entryCount} {l.entryCount === 1 ? 'entry' : 'entries'}
+        </div>
+      </div>
+      <div className="li-right">
+        <div className="li-points">
+          {l.total}
+          {l.pointsLimit != null ? ` / ${l.pointsLimit}` : ''} pts
+        </div>
+        <button
+          type="button"
+          className="li-dup"
+          title="Duplicate list"
+          onClick={(e) => {
+            e.stopPropagation()
+            onDuplicate(l.id)
+          }}
+        >
+          Duplicate
+        </button>
+        <button
+          type="button"
+          className="li-dup"
+          title="Export as BattleScribe .rosz"
+          onClick={(e) => {
+            e.stopPropagation()
+            onExport(l.id, l.name)
+          }}
+        >
+          Export
+        </button>
+        <button
+          type="button"
+          className="li-del"
+          title="Delete list"
+          onClick={(e) => {
+            e.stopPropagation()
+            if (confirm(`Delete "${l.name}"? This cannot be undone.`)) onDelete(l.id)
+          }}
+        >
+          Delete
+        </button>
+      </div>
+    </li>
   )
 }
 

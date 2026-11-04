@@ -40,10 +40,85 @@
   cursor: default;
 }
 
+/* Two-level grouping of the lists index: game system, then army. */
+.list-groups {
+  display: grid;
+  gap: 12px;
+  margin: 14px 0 0;
+}
+
+.list-group {
+  display: grid;
+  gap: 8px;
+}
+
+.group-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.group-head:hover {
+  border-color: var(--accent);
+}
+
+.group-head.game-head {
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.group-head.army-head {
+  font-size: 0.9rem;
+  font-weight: 600;
+  background: transparent;
+  border-style: dashed;
+}
+
+.group-caret {
+  display: inline-block;
+  color: var(--muted);
+  transition: transform 0.15s ease;
+  transform: rotate(0deg);
+}
+
+.group-caret.open {
+  transform: rotate(90deg);
+}
+
+.group-title {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.group-count {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 500;
+}
+
+/* Indent the army groups (and their lists) under their game. */
+.game-group > .group-body {
+  display: grid;
+  gap: 8px;
+  padding-left: 14px;
+  border-left: 2px solid var(--border);
+  margin-left: 6px;
+}
+
 .list-index {
   display: grid;
   gap: 8px;
-  margin: 14px 0 0;
+  margin: 0;
   padding: 0;
   list-style: none;
 }
