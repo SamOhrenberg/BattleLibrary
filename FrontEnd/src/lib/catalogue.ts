@@ -155,6 +155,14 @@ export interface ModelVariantGroup {
   variants: ModelVariant[]
 }
 
+// Leader attachment (11e): which units this datasheet (a Leader character) can
+// attach to. label is the association label ("Leader", "Supported by"); targets
+// are the unit/category names it may lead. Empty for non-leaders.
+export interface LeaderAttachment {
+  label: string
+  targets: string[]
+}
+
 export interface DatasheetDetail {
   id: string
   name: string
@@ -180,6 +188,8 @@ export interface DatasheetDetail {
   // Keyword changes that only apply under a selected detachment / config toggle
   // (empty for most units); feeds the Battleline and rule-of-N legality checks.
   conditionalKeywords?: ConditionalKeyword[]
+  // The units this Leader can attach to (empty for non-leaders / older data).
+  leaderAttachments?: LeaderAttachment[]
 }
 
 // Points adjustment from a datasheet's cost rules for a given set of selected

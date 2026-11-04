@@ -72,6 +72,7 @@ public sealed record Datasheet(
     IReadOnlyList<ModelVariantGroup> VariantGroups,
     int FixedModelCount,
     DatasheetAvailability Availability,
+    IReadOnlyList<LeaderAttachment> LeaderAttachments,
     IReadOnlyList<CostRule> CostRules = null!)
 {
     // Default to empty so older cached jsonb (written before cost rules existed)
@@ -116,6 +117,12 @@ public sealed record ConditionalKeyword(
     bool Add,
     IReadOnlyList<string> RequiredDetachmentIds,
     IReadOnlyList<string> RequiredToggles);
+
+// Leader attachment (11e): which units this datasheet - a Leader character -
+// can attach to. Label is the association label ("Leader", "Supported by");
+// Targets are the names of the units/categories it may lead. Empty for
+// non-character datasheets and characters that lead nothing.
+public sealed record LeaderAttachment(string Label, IReadOnlyList<string> Targets);
 
 // When a datasheet is selectable, from its BattleScribe "hidden" modifiers.
 // RequiredDetachmentIds: shown only when one of these detachments is selected

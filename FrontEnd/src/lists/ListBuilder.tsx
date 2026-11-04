@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ApiError } from '../lib/api'
-import { getDatasheets, getFactions, type CatalogueDatasheet, type CatalogueDetachment, type CatalogueFaction, type DatasheetDetail, type FactionDatasheets } from '../lib/catalogue'
+import { getDatasheet, getDatasheets, getFactions, type CatalogueDatasheet, type CatalogueDetachment, type CatalogueFaction, type DatasheetDetail, type FactionDatasheets } from '../lib/catalogue'
 import {
   addEntry,
   addForce,
@@ -63,6 +63,10 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
   // by default; a unit gated on one appears only when its toggle is enabled here.
   const [enabledToggles, setEnabledToggles] = useState<Set<string>>(new Set())
   const [tab, setTab] = useState<'catalogue' | 'list'>('catalogue')
+  // Leader-attachment targets per Leader datasheet (the unit names it may lead),
+  // fetched lazily from the datasheet detail. A datasheet id maps to [] once
+  // fetched with no declared targets, so we don't refetch it.
+  const [leaderTargets, setLeaderTargets] = useState<Record<string, string[]>>({})
   // How the list panel groups entries: by role (default) or the owner's custom order.
   const [listView, setListView] = useState<'role' | 'custom'>('role')
   // Role groups collapsed in the catalogue panel.
@@ -526,9 +530,51 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
     return { leadersByBodyguard: byBodyguard, nestedLeaderIds: nested }
   }, [list.entries])
 
-  // Non-Character units in the same force a given Leader can be attached to.
-  const bodyguardsFor = (leader: ListEntry) =>
-    list.entries.filter((e) => !isCharacter(e) && e.forceId === leader.forceId)
+  // Fetch each Leader's declared attach targets once, so the attach picker can
+  // be restricted to the units it can actually lead. A failed fetch caches [] so
+  // the Leader stays unrestricted rather than retried.
+  useEffect(() => {
+    const ids = Array.from(
+      new Set(list.entries.filter((e) => isCharacter(e)).map((e) => e.datasheetId)),
+    ).filter((id) => id && !(id in leaderTargets))
+    if (ids.length === 0) return
+    let cancelled = false
+    void Promise.all(
+      ids.map(async (id): Promise<[string, string[]]> => {
+        try {
+          const detail = await getDatasheet(id)
+          const targets = Array.from(
+            new Set((detail.leaderAttachments ?? []).flatMap((a) => a.targets)),
+          )
+          return [id, targets]
+        } catch {
+          return [id, []]
+        }
+      }),
+    ).then((pairs) => {
+      if (cancelled) return
+      setLeaderTargets((prev) => {
+        const next = { ...prev }
+        for (const [id, targets] of pairs) next[id] = targets
+        return next
+      })
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [list.entries, leaderTargets])
+
+  // Units in the same force a given Leader can be attached to. When the Leader's
+  // datasheet declares its targets, keep only units carrying a matching keyword
+  // (the target's datasheet category); otherwise (unknown / not yet loaded / no
+  // declared targets) fall back to every non-Character unit.
+  const bodyguardsFor = (leader: ListEntry) => {
+    const sameForce = list.entries.filter((e) => !isCharacter(e) && e.forceId === leader.forceId)
+    const targets = leaderTargets[leader.datasheetId]
+    if (!targets || targets.length === 0) return sameForce
+    const wanted = new Set(targets.map((t) => t.toLowerCase()))
+    return sameForce.filter((e) => e.keywords.some((k) => wanted.has(k.toLowerCase())))
+  }
 
   // Top-level entries (attached Leaders fold into their Bodyguard) for one force.
   const topLevelOf = (forceId: string) =>

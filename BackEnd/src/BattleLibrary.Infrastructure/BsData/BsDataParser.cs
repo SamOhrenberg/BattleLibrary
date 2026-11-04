@@ -551,10 +551,72 @@ public sealed class BsDataParser
         var modelGroups = ExtractModelGroups(entry, schema, index);
         var sizes = ExtractSizes(entry, ptsTypeId);
         var (variantGroups, fixedModels) = ExtractVariantGroups(entry, schema, ptsTypeId, index);
+        var leaderAttachments = ExtractLeaderAttachments(entry, index);
 
         return new Datasheet(
             entry.Id, entry.Name, points, keywords, primaryKeyword, unit, weapons, abilities, options, equipment, sizes,
-            modelGroups, variantGroups, fixedModels, DatasheetAvailability.None, costRules);
+            modelGroups, variantGroups, fixedModels, DatasheetAvailability.None, leaderAttachments, costRules);
+    }
+
+    // Leader attachment (11e): a character's "associations" name the units it can
+    // join. The joinable units are the association's "instanceOf" conditions that
+    // reference a unit category (the 11e datasheet-category mechanic); conditions
+    // referencing an entry (a wargear/enhancement prerequisite) or using other
+    // types (e.g. "lessThan" exclusions) gate the attachment and are not targets.
+    // Target names come from the category index, falling back to the condition's
+    // own ChildName.
+    private static IReadOnlyList<LeaderAttachment> ExtractLeaderAttachments(SelectionEntryNode entry, Index index)
+    {
+        var result = new List<LeaderAttachment>();
+        foreach (var association in entry.Associations)
+        {
+            var targets = AllConditions(association)
+                .Where(c => string.Equals(c.Type, "instanceOf", StringComparison.OrdinalIgnoreCase)
+                            && index.Categories.ContainsKey(c.ChildId))
+                .Select(c => index.Categories.TryGetValue(c.ChildId, out var name) && !string.IsNullOrWhiteSpace(name)
+                    ? name
+                    : c.ChildName)
+                .Where(n => !string.IsNullOrWhiteSpace(n))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            if (targets.Count > 0)
+            {
+                var label = string.IsNullOrWhiteSpace(association.Label) ? "Leader" : association.Label;
+                result.Add(new LeaderAttachment(label, targets));
+            }
+        }
+        return result;
+    }
+
+    // An association's conditions, flattening its nested AND/OR condition groups.
+    // Unlike the "hidden" modifier flattening, OR groups are kept (a leader's
+    // targets are a union across OR branches), since we collect targets, not a
+    // single boolean gate.
+    private static IEnumerable<ConditionNode> AllConditions(AssociationNode association)
+    {
+        foreach (var c in association.Conditions)
+        {
+            yield return c;
+        }
+        foreach (var c in AllConditionsInGroups(association.ConditionGroups))
+        {
+            yield return c;
+        }
+    }
+
+    private static IEnumerable<ConditionNode> AllConditionsInGroups(IEnumerable<ConditionGroupNode> groups)
+    {
+        foreach (var g in groups)
+        {
+            foreach (var c in g.Conditions)
+            {
+                yield return c;
+            }
+            foreach (var c in AllConditionsInGroups(g.ConditionGroups))
+            {
+                yield return c;
+            }
+        }
     }
 
     // Distributable model pools: a selection group holding more than one model
@@ -1732,7 +1794,8 @@ public sealed class BsDataParser
         // Where each entry id was defined, so library-sourced datasheets can be gated.
         public required Dictionary<string, CatalogueOrigin> EntryOrigin { get; init; }
         // Category entry id -> name, so a "category" modifier (which names its
-        // target category by id) can be resolved to the keyword it grants/strips.
+        // target category by id) can be resolved to the keyword it grants/strips,
+        // and a leader association's "instanceOf" conditions can be named.
         public required Dictionary<string, string> Categories { get; init; }
 
         public static Index Build(IEnumerable<DataDocument> documents)

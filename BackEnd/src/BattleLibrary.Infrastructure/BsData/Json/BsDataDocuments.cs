@@ -146,8 +146,9 @@ internal sealed class ConditionNode
     public string Field { get; set; } = "";
     public string ChildId { get; set; } = "";
 
-    // The referenced entry's name, used only for display (e.g. naming the battle
-    // size a cap modifier is gated on); matching is always by ChildId.
+    // The referenced thing's name (a category, entry, ...), used only for display
+    // (e.g. naming the battle size a cap modifier is gated on, or a leader-
+    // attachment target when the id can't be resolved); matching is always by ChildId.
     public string ChildName { get; set; } = "";
     public string Scope { get; set; } = "";
 }
@@ -158,6 +159,22 @@ internal sealed class ConditionNode
 internal sealed class ConditionGroupNode
 {
     public string Type { get; set; } = "";
+    public List<ConditionNode> Conditions { get; set; } = [];
+    public List<ConditionGroupNode> ConditionGroups { get; set; } = [];
+}
+
+// An 11e leader-attachment relationship on a character entry: a "Leader" (or
+// "Supported by") association naming the units it can attach to. The joinable
+// units are the "instanceOf" conditions (flat or grouped) referencing a unit
+// category; other conditions (wargear prerequisites, exclusions) gate the
+// attachment. Min/Max/Scope mirror the association's own bounds.
+internal sealed class AssociationNode
+{
+    public string Id { get; set; } = "";
+    public string Label { get; set; } = "";
+    public string Scope { get; set; } = "";
+    public int Min { get; set; }
+    public int Max { get; set; }
     public List<ConditionNode> Conditions { get; set; } = [];
     public List<ConditionGroupNode> ConditionGroups { get; set; } = [];
 }
@@ -230,6 +247,7 @@ internal abstract class SelectionNode
     public List<EntryLinkNode> EntryLinks { get; set; } = [];
     public List<InfoLinkNode> InfoLinks { get; set; } = [];
     public List<InfoGroupNode> InfoGroups { get; set; } = [];
+    public List<AssociationNode> Associations { get; set; } = [];
 }
 
 internal sealed class SelectionEntryNode : SelectionNode

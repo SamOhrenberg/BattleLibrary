@@ -331,6 +331,22 @@ export function UnitDetailModal({
               </div>
             )}
 
+            {detail.leaderAttachments && detail.leaderAttachments.length > 0 && (
+              <div className="detail-section">
+                <h4>Leads</h4>
+                {detail.leaderAttachments.map((a) => (
+                  <div key={a.label}>
+                    {a.label !== 'Leader' && <p>{a.label}:</p>}
+                    <ul>
+                      {a.targets.map((t) => (
+                        <li key={t}>{t}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            )}
+
             {detail.equipment && detail.equipment.length > 0 && (
               <div className="detail-section">
                 <h4>Equipment</h4>

@@ -553,6 +553,20 @@ public static partial class ListEndpoints
             return Problem("attach", "A Leader attaches to a non-Character unit, not another Character.");
         }
 
+        // Data-driven leader attachment: when the Leader's datasheet declares the
+        // units it can lead (parsed from BSData associations), the target must be
+        // one of them - matched by the target unit's keywords, which carry its
+        // datasheet category. A Leader with no declared targets (older data, or a
+        // system without the mechanic) is left unrestricted.
+        var leaderSheet = await LoadSheet(db, entry.DatasheetId, list.GameSystemKey, ct);
+        var targetNames = leaderSheet?.LeaderAttachments
+            .SelectMany(a => a.Targets)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (targetNames is { Count: > 0 } && !target.Keywords.Any(targetNames.Contains))
+        {
+            return Problem("attach", $"{entry.DatasheetName} can't lead {target.DatasheetName}.");
+        }
+
         entry.AttachedToEntryId = target.Id;
         list.UpdatedAt = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(ct);
@@ -1311,7 +1325,8 @@ public static partial class ListEndpoints
 
     private sealed record SheetInfo(
         string Name, int Points, IReadOnlyList<string> Keywords, IReadOnlyList<DatasheetOption> Options, IReadOnlyList<UnitSize> Sizes,
-        bool ForcedWarlord, IReadOnlyList<ModelVariantGroup> VariantGroups, IReadOnlyList<CostRule> CostRules);
+        bool ForcedWarlord, IReadOnlyList<ModelVariantGroup> VariantGroups, IReadOnlyList<CostRule> CostRules,
+        IReadOnlyList<LeaderAttachment> LeaderAttachments);
 
     // Pulls name/points/keywords/options/sizes/variants for a datasheet from the cached slim jsonb.
     private static async Task<SheetInfo?> LoadSheet(
@@ -1331,7 +1346,7 @@ public static partial class ListEndpoints
             ? null
             : new SheetInfo(
                 sheet.Name, sheet.Points ?? 0, sheet.Keywords, sheet.Options, sheet.Sizes ?? [], IsForcedWarlord(sheet),
-                sheet.VariantGroups ?? [], sheet.CostRules ?? []);
+                sheet.VariantGroups ?? [], sheet.CostRules ?? [], sheet.LeaderAttachments ?? []);
     }
 
     // An Epic Hero whose rules force it to be the army's Warlord ("...it must be
