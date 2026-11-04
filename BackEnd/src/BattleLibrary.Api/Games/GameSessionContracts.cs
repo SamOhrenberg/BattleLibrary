@@ -90,6 +90,9 @@ public sealed record SessionDto(
     int StartingCp,
     string Status,
     int CurrentRound,
+    // The standard battle-round count this game runs to. The host advances up to
+    // this cap and can finish earlier to end the game short.
+    int MaxRounds,
     Guid CreatedByUserId,
     bool IsHost,
     int MaxParticipants,

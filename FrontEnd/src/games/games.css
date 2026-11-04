@@ -764,6 +764,11 @@
   color: var(--accent-ink);
   border-color: var(--accent);
 }
+.final-round-note {
+  margin: 0;
+  align-self: center;
+  font-weight: 600;
+}
 
 /* Scoreboard */
 .scoreboard {

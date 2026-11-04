@@ -130,7 +130,7 @@ export function GameSessionView({ sessionId, onExit }: { sessionId: string; onEx
 }
 
 function statusLabel(s: GameSession): string {
-  if (s.status === 'Active') return `Round ${s.currentRound}`
+  if (s.status === 'Active') return `Round ${s.currentRound} of ${s.maxRounds}`
   if (s.status === 'Setup') return 'Setting up'
   if (s.status === 'Finished') return 'Finished'
   return 'Abandoned'
@@ -441,8 +441,14 @@ function ActiveView({
         </div>
         {session.isHost && (
           <div className="lists-actions">
-            <button className="btn-sm" onClick={() => act(() => advanceSession(session.id))}>Next round</button>
-            <button className="btn-sm primary" onClick={() => act(() => finishSession(session.id))}>Finish</button>
+            {session.currentRound < session.maxRounds ? (
+              <button className="btn-sm" onClick={() => act(() => advanceSession(session.id))}>Next round</button>
+            ) : (
+              <span className="hint final-round-note">Final round</span>
+            )}
+            <button className="btn-sm primary" onClick={() => act(() => finishSession(session.id))}>
+              {session.currentRound < session.maxRounds ? 'End early' : 'Finish'}
+            </button>
           </div>
         )}
       </div>

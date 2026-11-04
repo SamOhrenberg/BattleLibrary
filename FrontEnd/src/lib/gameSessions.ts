@@ -75,6 +75,9 @@ export interface GameSession {
   startingCp: number
   status: SessionStatus
   currentRound: number
+  // The standard battle-round count this game runs to (4 for Kill Team, 5 for
+  // 40k). The host advances up to this cap and can finish earlier to end short.
+  maxRounds: number
   createdByUserId: string
   isHost: boolean
   maxParticipants: number

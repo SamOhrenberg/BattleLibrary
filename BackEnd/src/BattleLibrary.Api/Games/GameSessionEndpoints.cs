@@ -13,6 +13,17 @@ public static class GameSessionEndpoints
     private const int MaxParticipants = 4;
     private const int MaxUnits = 100;
 
+    // The standard number of battle rounds a game runs to, used as a cap the
+    // host advances up to. Kill Team runs 4; 40k (and anything else) runs 5.
+    // The host can always Finish before reaching the cap to end a game early.
+    private const int KillTeamRounds = 4;
+    private const int DefaultRounds = 5;
+
+    private static int StandardRounds(string gameSystemKey) =>
+        gameSystemKey.Contains("kill-team", StringComparison.OrdinalIgnoreCase)
+            ? KillTeamRounds
+            : DefaultRounds;
+
     // Battle sizes and their points caps (40k 11e). A named size sets the cap
     // authoritatively; a null size means a custom or point-less game.
     private static readonly IReadOnlyDictionary<string, int> BattleSizeCaps = new Dictionary<string, int>
@@ -383,6 +394,13 @@ public static class GameSessionEndpoints
         {
             return Problem("status", "The game is not in progress.");
         }
+        // The round cap is the system's standard length; past it the host must
+        // Finish rather than advance. (Ending early is always done via Finish.)
+        var cap = StandardRounds(session.GameSystemKey);
+        if (session.CurrentRound >= cap)
+        {
+            return Problem("round", $"This game runs to {cap} rounds. Finish the game to end it.");
+        }
         session.CurrentRound += 1;
         await db.SaveChangesAsync(ct);
         await Broadcast(hub, session, ct);
@@ -740,7 +758,8 @@ public static class GameSessionEndpoints
             .ToList();
         return new SessionDto(
             s.Id, s.Name, s.GameSystemKey, s.PointsLimit, s.BattleSize, s.StartingCp, s.Status.ToString(), s.CurrentRound,
-            s.CreatedByUserId, s.CreatedByUserId == me, MaxParticipants, s.StartedAt, s.FinishedAt, participants);
+            StandardRounds(s.GameSystemKey), s.CreatedByUserId, s.CreatedByUserId == me, MaxParticipants,
+            s.StartedAt, s.FinishedAt, participants);
     }
 
     private static ParticipantDto ToParticipant(GameParticipant p, Guid me, int startingCp, string? listIssue = null)
