@@ -57,6 +57,11 @@ public sealed record Datasheet(
     string Name,
     int? Points,
     IReadOnlyList<string> Keywords,
+    // The unit's primary category (its battlefield role / faction keyword), from
+    // the categoryLink flagged primary in BSData. Also the first entry of Keywords
+    // (the parser orders it first), surfaced here too so callers that have only
+    // this field can read it directly. Empty when none is flagged primary.
+    string PrimaryKeyword,
     IReadOnlyList<UnitProfile> Profiles,
     IReadOnlyList<WeaponProfile> Weapons,
     IReadOnlyList<Ability> Abilities,

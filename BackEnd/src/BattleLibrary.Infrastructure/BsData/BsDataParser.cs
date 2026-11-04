@@ -482,8 +482,20 @@ public sealed class BsDataParser
                 .Select(c => (int?)(int)Math.Round(c.Value))
                 .FirstOrDefault();
 
-        var keywords = entry.CategoryLinks
+        // The category flagged primary is the unit's battlefield role / faction
+        // keyword; surface it distinctly (it also stays in the keyword list).
+        var primaryKeyword = entry.CategoryLinks
+            .Where(c => c.Primary && !string.IsNullOrWhiteSpace(c.Name))
             .Select(c => c.Name)
+            .FirstOrDefault() ?? "";
+
+        // Keywords with the primary category first. Consumers that group a unit by
+        // a single role (the UI's role sections) read that role off the front,
+        // which is why the order matters here; the rest follow in source order.
+        // Dedup is case-insensitive and keeps the first occurrence, so prepending
+        // the primary both orders it first and removes its later duplicate.
+        var keywords = Enumerable.Repeat(primaryKeyword, 1)
+            .Concat(entry.CategoryLinks.Select(c => c.Name))
             .Where(n => !string.IsNullOrWhiteSpace(n))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
@@ -536,8 +548,8 @@ public sealed class BsDataParser
         var (variantGroups, fixedModels) = ExtractVariantGroups(entry, schema, ptsTypeId, index);
 
         return new Datasheet(
-            entry.Id, entry.Name, points, keywords, unit, weapons, abilities, options, equipment, sizes, modelGroups,
-            variantGroups, fixedModels, DatasheetAvailability.None, costRules);
+            entry.Id, entry.Name, points, keywords, primaryKeyword, unit, weapons, abilities, options, equipment, sizes,
+            modelGroups, variantGroups, fixedModels, DatasheetAvailability.None, costRules);
     }
 
     // Distributable model pools: a selection group holding more than one model

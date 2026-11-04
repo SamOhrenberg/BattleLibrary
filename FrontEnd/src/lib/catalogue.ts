@@ -148,6 +148,9 @@ export interface DatasheetDetail {
   name: string
   points: number | null
   keywords: string[]
+  // The primary category (battlefield role / faction keyword); also in keywords.
+  // Empty when the source flags no primary category.
+  primaryKeyword?: string
   profiles: DatasheetProfile[]
   weapons: DatasheetWeapon[]
   abilities: AbilityText[]
