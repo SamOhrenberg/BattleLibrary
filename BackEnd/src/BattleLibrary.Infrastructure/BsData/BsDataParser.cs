@@ -644,9 +644,13 @@ public sealed class BsDataParser
             }
         }
 
-        // A group holding several model variants is a shared pool; a group with a
-        // single fixed-size model is just another fixed model. A single model with
-        // a size range is the unit's size (handled by ExtractSizes), not a pool.
+        // A group of model variants the player distributes across one shared pool.
+        // BSData marks such a pool with collective="true", so honor that flag
+        // rather than guessing from shape: a collective group is a pool even when
+        // it holds a single model variant. For data that omits the flag we fall
+        // back to the old heuristic (more than one variant => pool). A non-collective
+        // group with a single fixed-size model is just another fixed model, and a
+        // single model with a size range is the unit's size (ExtractSizes), not a pool.
         foreach (var g in entry.SelectionEntryGroups)
         {
             var models = g.SelectionEntries.Where(m => IsModel(m.Type)).ToList();
@@ -655,7 +659,7 @@ public sealed class BsDataParser
                 continue;
             }
             var (lo, hi) = GroupModelCount(g, models);
-            if (models.Count > 1)
+            if (g.Collective || models.Count > 1)
             {
                 var variants = models.Select(m => ToVariant(m, g, schema, ptsTypeId, index)).ToList();
                 groups.Add(new ModelVariantGroup(g.Id, g.Name, hi, variants));

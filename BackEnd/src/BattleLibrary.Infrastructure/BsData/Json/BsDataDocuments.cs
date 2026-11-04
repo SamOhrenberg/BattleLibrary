@@ -235,6 +235,12 @@ internal abstract class SelectionNode
     public string Id { get; set; } = "";
     public string Name { get; set; } = "";
     public bool Hidden { get; set; }
+
+    // True when the node is a shared/collective pool: its children's quantities
+    // are drawn from one pool spread across the parent (e.g. a weapon split
+    // across a squad) rather than counted per instance. BSData sets this on the
+    // group that holds distributable model variants.
+    public bool Collective { get; set; }
     public List<Cost> Costs { get; set; } = [];
     public List<ConstraintNode> Constraints { get; set; } = [];
     public List<ProfileNode> Profiles { get; set; } = [];
