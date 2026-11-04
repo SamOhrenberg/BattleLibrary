@@ -1,32 +1,33 @@
-# React + TypeScript + Vite
+# The Battle Library: frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+React 19 + TypeScript app built with Vite. See the
+[root README](../README.md#running-locally) for full local setup, including
+the API it talks to.
 
-Currently, two official plugins are available:
+## Commands
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```bash
+npm install
+npm run dev       # dev server at http://localhost:5173
+npm run lint      # oxlint
+npm run build     # type-check (tsc -b) and production build to dist/
+npm run preview   # serve the production build locally
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+## Configuration
+
+Build-time variables (see `.env.example`; `.env.development` is used by
+`npm run dev`):
+
+- `VITE_API_BASE_URL`: base URL of the API, no trailing slash
+- `VITE_BASE`: base path for the build, `/BattleLibrary/` on GitHub Pages
+
+## Layout
+
+`src/` is grouped by feature (`auth`, `lists`, `games`, `social`,
+`onboarding`), with API clients and shared helpers in `lib/`, shared
+components in `ui/`, and theme styles in `styles/`.
+
+The UI is mobile first: style for a phone, then enhance with `min-width`
+media queries. Use the theme tokens rather than fixed colors so every theme
+keeps working.

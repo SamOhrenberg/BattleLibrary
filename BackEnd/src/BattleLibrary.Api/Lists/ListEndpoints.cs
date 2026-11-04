@@ -1,8 +1,8 @@
 using System.Security.Claims;
-using System.Text.Json;
 using BattleLibrary.Api.Hosting;
 using BattleLibrary.Domain.Catalogue;
 using BattleLibrary.Domain.Lists;
+using BattleLibrary.Infrastructure.BsData.Caching;
 using BattleLibrary.Infrastructure.Persistence;
 using BattleLibrary.Infrastructure.Rosters;
 using Microsoft.EntityFrameworkCore;
@@ -11,9 +11,6 @@ namespace BattleLibrary.Api.Lists;
 
 public static partial class ListEndpoints
 {
-    // Cached datasheet jsonb is serialized with web defaults (camelCase).
-    private static readonly JsonSerializerOptions SlimJson = new(JsonSerializerDefaults.Web);
-
     public static RouteGroupBuilder MapListEndpoints(this IEndpointRouteBuilder routes)
     {
         var group = routes.MapGroup("/api/lists").RequireAuthorization();
@@ -70,7 +67,7 @@ public static partial class ListEndpoints
     }
 
     private static async Task<IResult> CreateList(
-        CreateListRequest request, ClaimsPrincipal principal, BattleLibraryDbContext db, CancellationToken ct)
+        CreateListRequest request, ClaimsPrincipal principal, BattleLibraryDbContext db, CatalogueStore catalogue, CancellationToken ct)
     {
         if (CurrentUserId(principal) is not { } userId)
         {
@@ -91,11 +88,7 @@ public static partial class ListEndpoints
             return Problem("pointsLimit", "Points limit cannot be negative.");
         }
 
-        var factionName = await db.CachedFactions
-            .Where(f => f.BsDataId == request.FactionId && f.GameSystemKey == request.GameSystemKey)
-            .Where(f => db.CachedGameSystems.Any(s => s.Key == request.GameSystemKey && s.Enabled))
-            .Select(f => f.Name)
-            .FirstOrDefaultAsync(ct);
+        var factionName = catalogue.FindFaction(request.GameSystemKey, request.FactionId)?.Name;
         if (factionName is null)
         {
             return Results.NotFound(new { error = "Unknown game system or faction." });
@@ -331,7 +324,7 @@ public static partial class ListEndpoints
     }
 
     private static async Task<IResult> AddForce(
-        Guid id, AddForceRequest request, ClaimsPrincipal principal, BattleLibraryDbContext db, CancellationToken ct)
+        Guid id, AddForceRequest request, ClaimsPrincipal principal, BattleLibraryDbContext db, CatalogueStore catalogue, CancellationToken ct)
     {
         if (CurrentUserId(principal) is not { } userId)
         {
@@ -347,11 +340,7 @@ public static partial class ListEndpoints
             return Problem("faction", "A faction is required.");
         }
 
-        var factionName = await db.CachedFactions
-            .Where(f => f.BsDataId == request.FactionId && f.GameSystemKey == list.GameSystemKey)
-            .Where(f => db.CachedGameSystems.Any(s => s.Key == list.GameSystemKey && s.Enabled))
-            .Select(f => f.Name)
-            .FirstOrDefaultAsync(ct);
+        var factionName = catalogue.FindFaction(list.GameSystemKey, request.FactionId)?.Name;
         if (factionName is null)
         {
             return Results.NotFound(new { error = "Unknown faction for this list's game system." });
@@ -434,7 +423,7 @@ public static partial class ListEndpoints
     }
 
     private static async Task<IResult> SetDetachments(
-        Guid id, SetDetachmentsRequest request, ClaimsPrincipal principal, BattleLibraryDbContext db, CancellationToken ct)
+        Guid id, SetDetachmentsRequest request, ClaimsPrincipal principal, BattleLibraryDbContext db, CatalogueStore catalogue, CancellationToken ct)
     {
         if (CurrentUserId(principal) is not { } userId)
         {
@@ -446,11 +435,11 @@ public static partial class ListEndpoints
             return Results.NotFound();
         }
 
-        var available = await LoadDetachments(db, list.GameSystemKey, list.FactionId, ct);
+        var available = LoadDetachments(catalogue, list.GameSystemKey, list.FactionId);
         var chosen = (request.DetachmentIds ?? [])
             .Distinct()
             .Select(did => available.FirstOrDefault(d => d.Id == did))
-            .OfType<DetachmentInfo>()
+            .OfType<Detachment>()
             .ToList();
 
         list.Detachments = chosen
@@ -519,7 +508,7 @@ public static partial class ListEndpoints
     // Attaches a Leader (a Character) to a Bodyguard (a non-Character unit) so the
     // two are grouped as one attached unit. A null target detaches.
     private static async Task<IResult> AttachEntry(
-        Guid id, Guid entryId, AttachEntryRequest request, ClaimsPrincipal principal, BattleLibraryDbContext db, CancellationToken ct)
+        Guid id, Guid entryId, AttachEntryRequest request, ClaimsPrincipal principal, BattleLibraryDbContext db, CatalogueStore catalogue, CancellationToken ct)
     {
         if (CurrentUserId(principal) is not { } userId)
         {
@@ -559,7 +548,7 @@ public static partial class ListEndpoints
         // one of them - matched by the target unit's keywords, which carry its
         // datasheet category. A Leader with no declared targets (older data, or a
         // system without the mechanic) is left unrestricted.
-        var leaderSheet = await LoadSheet(db, entry.DatasheetId, list.GameSystemKey, ct);
+        var leaderSheet = LoadSheet(catalogue, entry.DatasheetId, list.GameSystemKey);
         var targetNames = leaderSheet?.LeaderAttachments
             .SelectMany(a => a.Targets)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -575,7 +564,7 @@ public static partial class ListEndpoints
     }
 
     private static async Task<IResult> SetEnhancement(
-        Guid id, Guid entryId, SetEnhancementRequest request, ClaimsPrincipal principal, BattleLibraryDbContext db, CancellationToken ct)
+        Guid id, Guid entryId, SetEnhancementRequest request, ClaimsPrincipal principal, BattleLibraryDbContext db, CatalogueStore catalogue, CancellationToken ct)
     {
         if (CurrentUserId(principal) is not { } userId)
         {
@@ -609,7 +598,7 @@ public static partial class ListEndpoints
                 return Problem("enhancement", "That enhancement is already taken.");
             }
 
-            var detachments = await LoadDetachments(db, list.GameSystemKey, list.FactionId, ct);
+            var detachments = LoadDetachments(catalogue, list.GameSystemKey, list.FactionId);
             var chosenIds = list.Detachments.Select(d => d.DetachmentId).ToHashSet();
             var enhancement = detachments
                 .Where(d => chosenIds.Contains(d.Id))
@@ -646,7 +635,7 @@ public static partial class ListEndpoints
     }
 
     private static async Task<IResult> AddEntry(
-        Guid id, AddEntryRequest request, ClaimsPrincipal principal, BattleLibraryDbContext db, CancellationToken ct)
+        Guid id, AddEntryRequest request, ClaimsPrincipal principal, BattleLibraryDbContext db, CatalogueStore catalogue, CancellationToken ct)
     {
         if (CurrentUserId(principal) is not { } userId)
         {
@@ -662,7 +651,7 @@ public static partial class ListEndpoints
             return Problem("datasheetId", "A datasheet is required.");
         }
 
-        var sheet = await LoadSheet(db, request.DatasheetId, list.GameSystemKey, ct);
+        var sheet = LoadSheet(catalogue, request.DatasheetId, list.GameSystemKey);
         if (sheet is null)
         {
             return Results.NotFound(new { error = "Unknown datasheet for this list's game system." });
@@ -719,7 +708,7 @@ public static partial class ListEndpoints
     }
 
     private static async Task<IResult> UpdateEntry(
-        Guid id, Guid entryId, UpdateEntryRequest request, ClaimsPrincipal principal, BattleLibraryDbContext db, CancellationToken ct)
+        Guid id, Guid entryId, UpdateEntryRequest request, ClaimsPrincipal principal, BattleLibraryDbContext db, CatalogueStore catalogue, CancellationToken ct)
     {
         if (CurrentUserId(principal) is not { } userId)
         {
@@ -736,7 +725,7 @@ public static partial class ListEndpoints
         // sent separately.
         if (request.SelectedOptionIds is not null || request.Variants is not null)
         {
-            var sheet = await LoadSheet(db, entry.DatasheetId, list.GameSystemKey, ct);
+            var sheet = LoadSheet(catalogue, entry.DatasheetId, list.GameSystemKey);
             var groups = sheet?.VariantGroups ?? [];
             var plain = request.SelectedOptionIds is not null
                 ? ResolveOptions(sheet?.Options ?? [], request.SelectedOptionIds)
@@ -801,7 +790,7 @@ public static partial class ListEndpoints
     }
 
     private static async Task<IResult> SetModelCount(
-        Guid id, Guid entryId, SetModelCountRequest request, ClaimsPrincipal principal, BattleLibraryDbContext db, CancellationToken ct)
+        Guid id, Guid entryId, SetModelCountRequest request, ClaimsPrincipal principal, BattleLibraryDbContext db, CatalogueStore catalogue, CancellationToken ct)
     {
         if (CurrentUserId(principal) is not { } userId)
         {
@@ -814,7 +803,7 @@ public static partial class ListEndpoints
             return Results.NotFound();
         }
 
-        var sheet = await LoadSheet(db, entry.DatasheetId, list.GameSystemKey, ct);
+        var sheet = LoadSheet(catalogue, entry.DatasheetId, list.GameSystemKey);
         var size = sheet?.Sizes.FirstOrDefault(s => s.Models == request.Models);
         if (size is null)
         {
@@ -861,7 +850,7 @@ public static partial class ListEndpoints
 
     // Exports the list as a BattleScribe .rosz (zipped roster), referencing the
     // stable BSData ids so it opens in BattleScribe / NewRecruit.
-    private static async Task<IResult> ExportRoster(Guid id, ClaimsPrincipal principal, BattleLibraryDbContext db, CancellationToken ct)
+    private static async Task<IResult> ExportRoster(Guid id, ClaimsPrincipal principal, BattleLibraryDbContext db, CatalogueStore catalogue, CancellationToken ct)
     {
         if (CurrentUserId(principal) is not { } userId)
         {
@@ -873,18 +862,11 @@ public static partial class ListEndpoints
             return Results.NotFound();
         }
 
-        var header = await db.CachedGameSystems
-            .Where(s => s.Key == list.GameSystemKey && s.Enabled)
-            .Select(s => new { s.BsDataId, s.BsDataName, s.Revision, s.PointsCostTypeId, s.ForceEntryId, s.ForceEntryName })
-            .FirstOrDefaultAsync(ct);
-        if (header is null)
+        if (catalogue.Get(list.GameSystemKey) is not { } system)
         {
             return Results.NotFound(new { error = "This list's game system is no longer available." });
         }
-        var revisionByFaction = await db.CachedFactions
-            .Where(f => f.GameSystemKey == list.GameSystemKey)
-            .Select(f => new { f.BsDataId, f.Revision })
-            .ToDictionaryAsync(f => f.BsDataId, f => f.Revision, ct);
+        var header = system.System;
 
         static RosterSelection ToSelection(ListEntry e)
         {
@@ -916,7 +898,7 @@ public static partial class ListEndpoints
                 selections.AddRange(list.Detachments
                     .Select(d => new RosterSelection(d.DetachmentId, d.Name, 1, "upgrade", 0, [])));
             }
-            revisionByFaction.TryGetValue(f.FactionId, out var revision);
+            var revision = system.FactionsById.GetValueOrDefault(f.FactionId)?.Revision ?? 0;
             rosterForces.Add(new RosterForce(
                 f.FactionId, f.FactionName, revision, selections,
                 header.ForceEntryId, header.ForceEntryName));
@@ -931,9 +913,9 @@ public static partial class ListEndpoints
             rosterForces[0] = rosterForces[0] with { Selections = [.. rosterForces[0].Selections, .. orphanSelections] };
         }
 
-        var gameSystemName = string.IsNullOrEmpty(header.BsDataName) ? list.FactionName : header.BsDataName;
+        var gameSystemName = string.IsNullOrEmpty(header.Name) ? list.FactionName : header.Name;
         var roster = new RosterDocument(
-            list.Name, header.BsDataId, gameSystemName, header.Revision, header.PointsCostTypeId, rosterForces);
+            list.Name, header.Id, gameSystemName, header.Revision, header.PointsCostTypeId, rosterForces);
 
         var baseName = SafeFileName(list.Name);
         var bytes = RosterXml.Zip(baseName, RosterXml.Write(roster));
@@ -944,7 +926,7 @@ public static partial class ListEndpoints
     // selection's source entry id against the cached catalogue. Selections with no
     // match are reported, not dropped silently.
     private static async Task<IResult> ImportRoster(
-        IFormFile? file, ClaimsPrincipal principal, BattleLibraryDbContext db, CancellationToken ct)
+        IFormFile? file, ClaimsPrincipal principal, BattleLibraryDbContext db, CatalogueStore catalogue, CancellationToken ct)
     {
         if (CurrentUserId(principal) is not { } userId)
         {
@@ -970,7 +952,7 @@ public static partial class ListEndpoints
             return Problem("file", "That file isn't a readable BattleScribe roster.");
         }
 
-        var systemKey = await ResolveSystemKey(db, roster, ct);
+        var systemKey = ResolveSystemKey(catalogue, roster);
         if (systemKey is null)
         {
             return Problem("file", "This roster's game system isn't one Battle Library has loaded.");
@@ -981,13 +963,9 @@ public static partial class ListEndpoints
         var forceFactions = new List<(RosterForce RForce, string FactionId, string FactionName)>();
         foreach (var f in roster.Forces)
         {
-            var match = await db.CachedFactions
-                .Where(cf => cf.GameSystemKey == systemKey && cf.BsDataId == f.CatalogueId)
-                .Select(cf => new { cf.BsDataId, cf.Name })
-                .FirstOrDefaultAsync(ct);
-            if (match is not null)
+            if (catalogue.FindFaction(systemKey, f.CatalogueId) is { } match)
             {
-                forceFactions.Add((f, match.BsDataId, match.Name));
+                forceFactions.Add((f, match.Id, match.Name));
             }
         }
         if (forceFactions.Count == 0)
@@ -1025,21 +1003,19 @@ public static partial class ListEndpoints
         }
 
         // Detachments + enhancements belong to the army's primary faction.
-        var detachments = await LoadDetachments(db, systemKey, primaryFactionId, ct);
+        var detachments = LoadDetachments(catalogue, systemKey, primaryFactionId);
         var enhancementsById = detachments.SelectMany(d => d.Enhancements)
             .GroupBy(e => e.Id).ToDictionary(g => g.Key, g => g.First());
         var detachmentsById = detachments.GroupBy(d => d.Id).ToDictionary(g => g.Key, g => g.First());
         var detachmentIds = detachmentsById.Keys.ToHashSet();
 
-        // Datasheet ids per matched faction, to classify a selection without a DB
-        // round-trip per node.
+        // Datasheet ids per matched faction, to classify each selection node.
         var sheetIdsByFaction = new Dictionary<string, HashSet<string>>();
         foreach (var fid in forceByFaction.Keys)
         {
-            sheetIdsByFaction[fid] = (await db.CachedDatasheets
-                .Where(d => d.Faction.GameSystemKey == systemKey && d.Faction.BsDataId == fid)
-                .Select(d => d.BsDataId)
-                .ToListAsync(ct)).ToHashSet();
+            sheetIdsByFaction[fid] = (catalogue.FindFaction(systemKey, fid)?.Datasheets ?? [])
+                .Select(d => d.Id)
+                .ToHashSet();
         }
 
         var unmatched = new List<string>();
@@ -1091,7 +1067,7 @@ public static partial class ListEndpoints
         var importOrder = 0;
         foreach (var (sheetId, sel, force) in unitHits)
         {
-            var sheet = await LoadSheet(db, sheetId, systemKey, ct);
+            var sheet = LoadSheet(catalogue, sheetId, systemKey);
             if (sheet is null)
             {
                 unmatched.Add(string.IsNullOrWhiteSpace(sel.Name) ? sel.EntryId : sel.Name);
@@ -1146,34 +1122,21 @@ public static partial class ListEndpoints
     // Matches the roster to a loaded system by BattleScribe gameSystemId, then by
     // game-system name, then by any force's catalogue id (so files with a blank or
     // mis-spelled system header still resolve). Returns the key, or null.
-    private static async Task<string?> ResolveSystemKey(BattleLibraryDbContext db, RosterDocument roster, CancellationToken ct)
+    private static string? ResolveSystemKey(CatalogueStore catalogue, RosterDocument roster)
     {
-        var enabled = db.CachedGameSystems.Where(s => s.Enabled);
-        if (!string.IsNullOrEmpty(roster.GameSystemId))
+        var systems = catalogue.All.ToList();
+        if (!string.IsNullOrEmpty(roster.GameSystemId)
+            && systems.FirstOrDefault(s => s.System.Id == roster.GameSystemId) is { } byId)
         {
-            var byId = await enabled.Where(s => s.BsDataId == roster.GameSystemId).Select(s => s.Key).FirstOrDefaultAsync(ct);
-            if (byId is not null)
-            {
-                return byId;
-            }
+            return byId.Key;
         }
-        if (!string.IsNullOrEmpty(roster.GameSystemName))
+        if (!string.IsNullOrEmpty(roster.GameSystemName)
+            && systems.FirstOrDefault(s => s.System.Name == roster.GameSystemName) is { } byName)
         {
-            var byName = await enabled.Where(s => s.BsDataName == roster.GameSystemName).Select(s => s.Key).FirstOrDefaultAsync(ct);
-            if (byName is not null)
-            {
-                return byName;
-            }
+            return byName.Key;
         }
         var catalogueIds = roster.Forces.Select(f => f.CatalogueId).Where(id => !string.IsNullOrEmpty(id)).Distinct().ToList();
-        if (catalogueIds.Count > 0)
-        {
-            return await db.CachedFactions
-                .Where(f => catalogueIds.Contains(f.BsDataId) && db.CachedGameSystems.Any(s => s.Key == f.GameSystemKey && s.Enabled))
-                .Select(f => f.GameSystemKey)
-                .FirstOrDefaultAsync(ct);
-        }
-        return null;
+        return systems.FirstOrDefault(s => catalogueIds.Any(s.FactionsById.ContainsKey))?.Key;
     }
 
     // BattleScribe/NewRecruit write entry ids as "::"-joined link paths (e.g.
@@ -1329,20 +1292,10 @@ public static partial class ListEndpoints
         bool ForcedWarlord, IReadOnlyList<ModelVariantGroup> VariantGroups, IReadOnlyList<CostRule> CostRules,
         IReadOnlyList<LeaderAttachment> LeaderAttachments);
 
-    // Pulls name/points/keywords/options/sizes/variants for a datasheet from the cached slim jsonb.
-    private static async Task<SheetInfo?> LoadSheet(
-        BattleLibraryDbContext db, string datasheetId, string gameSystemKey, CancellationToken ct)
+    // Pulls name/points/keywords/options/sizes/variants for a datasheet from the loaded catalogue.
+    private static SheetInfo? LoadSheet(CatalogueStore catalogue, string datasheetId, string gameSystemKey)
     {
-        var json = await db.CachedDatasheets
-            .Where(d => d.BsDataId == datasheetId && d.Faction.GameSystemKey == gameSystemKey)
-            .Where(d => db.CachedGameSystems.Any(s => s.Key == gameSystemKey && s.Enabled))
-            .Select(d => d.ModelJson)
-            .FirstOrDefaultAsync(ct);
-        if (json is null)
-        {
-            return null;
-        }
-        var sheet = JsonSerializer.Deserialize<Datasheet>(json, SlimJson);
+        var sheet = catalogue.Get(gameSystemKey)?.DatasheetsById.GetValueOrDefault(datasheetId);
         return sheet is null
             ? null
             : new SheetInfo(
@@ -1371,24 +1324,9 @@ public static partial class ListEndpoints
         return sizes.OrderBy(s => s.Models).First();
     }
 
-    // Faction detachments (+ enhancements) from the cached jsonb.
-    private sealed record EnhancementInfo(string Id, string Name, int Points);
-    private sealed record DetachmentInfo(string Id, string Name, int Dp, IReadOnlyList<EnhancementInfo> Enhancements);
-
-    private static async Task<List<DetachmentInfo>> LoadDetachments(
-        BattleLibraryDbContext db, string gameSystemKey, string factionId, CancellationToken ct)
-    {
-        var json = await db.CachedFactions
-            .Where(f => f.BsDataId == factionId && f.GameSystemKey == gameSystemKey)
-            .Where(f => db.CachedGameSystems.Any(s => s.Key == gameSystemKey && s.Enabled))
-            .Select(f => f.DetachmentsJson)
-            .FirstOrDefaultAsync(ct);
-        if (string.IsNullOrWhiteSpace(json))
-        {
-            return [];
-        }
-        return JsonSerializer.Deserialize<List<DetachmentInfo>>(json, SlimJson) ?? [];
-    }
+    // Faction detachments (+ enhancements) from the loaded catalogue.
+    private static IReadOnlyList<Detachment> LoadDetachments(CatalogueStore catalogue, string gameSystemKey, string factionId) =>
+        catalogue.FindFaction(gameSystemKey, factionId)?.Detachments ?? [];
 
     private static bool HasKeyword(ListEntry e, string keyword) =>
         e.Keywords.Any(k => string.Equals(k, keyword, StringComparison.OrdinalIgnoreCase));

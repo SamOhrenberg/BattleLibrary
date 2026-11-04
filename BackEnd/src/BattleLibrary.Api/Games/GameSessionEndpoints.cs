@@ -129,7 +129,8 @@ public static class GameSessionEndpoints
         return Results.Created($"/api/game-sessions/{session.Id}", ToDto(full!, me));
     }
 
-    private static async Task<IResult> Get(Guid id, ClaimsPrincipal principal, BattleLibraryDbContext db, CancellationToken ct)
+    private static async Task<IResult> Get(
+        Guid id, ClaimsPrincipal principal, BattleLibraryDbContext db, CatalogueStore catalogue, CancellationToken ct)
     {
         if (Me(principal) is not { } me)
         {
@@ -146,7 +147,7 @@ public static class GameSessionEndpoints
         if (session.Status == GameSessionStatus.Setup)
         {
             var accepted = session.Participants.Where(p => p.Status == ParticipantStatus.Accepted).ToList();
-            legality = await ListIssuesByParticipant(db, session, accepted, ct);
+            legality = await ListIssuesByParticipant(db, catalogue, session, accepted, ct);
         }
         return Results.Ok(ToDto(session, me, legality));
     }
@@ -335,7 +336,8 @@ public static class GameSessionEndpoints
     }
 
     private static async Task<IResult> Start(
-        Guid id, ClaimsPrincipal principal, BattleLibraryDbContext db, IHubContext<GameHub> hub, CancellationToken ct)
+        Guid id, ClaimsPrincipal principal, BattleLibraryDbContext db, CatalogueStore catalogue, IHubContext<GameHub> hub,
+        CancellationToken ct)
     {
         if (Me(principal) is not { } me)
         {
@@ -357,7 +359,7 @@ public static class GameSessionEndpoints
         }
 
         // Every player needs a valid, legal army list before the game can begin.
-        var issues = await ListIssuesByParticipant(db, session, players, ct);
+        var issues = await ListIssuesByParticipant(db, catalogue, session, players, ct);
         foreach (var p in players)
         {
             if (p.ArmyListId is null)
@@ -680,7 +682,8 @@ public static class GameSessionEndpoints
     // is both usable (system/points/non-empty) and legal (the builder's 11e
     // rules). Participants with no list are left out of the map.
     private static async Task<Dictionary<Guid, string?>> ListIssuesByParticipant(
-        BattleLibraryDbContext db, GameSession session, IReadOnlyList<GameParticipant> players, CancellationToken ct)
+        BattleLibraryDbContext db, CatalogueStore catalogue, GameSession session, IReadOnlyList<GameParticipant> players,
+        CancellationToken ct)
     {
         var withLists = players.Where(p => p.ArmyListId is not null).ToList();
         var listIds = withLists.Select(p => p.ArmyListId!.Value).Distinct().ToList();
@@ -693,22 +696,14 @@ public static class GameSessionEndpoints
         // only where one exists).
         var sysKeys = lists.Select(l => l.GameSystemKey).Distinct().ToList();
         var factionIds = lists.Select(l => l.FactionId).Distinct().ToList();
-        var pointedSystems = sysKeys.Count == 0
-            ? []
-            : await db.CachedDatasheets
-                .Where(d => sysKeys.Contains(d.Faction.GameSystemKey) && d.Points != null)
-                .Select(d => d.Faction.GameSystemKey)
-                .Distinct()
-                .ToListAsync(ct);
-        var detachmentFactions = sysKeys.Count == 0
-            ? new HashSet<(string, string)>()
-            : (await db.CachedFactions
-                .Where(f => sysKeys.Contains(f.GameSystemKey) && factionIds.Contains(f.BsDataId)
-                    && f.DetachmentsJson != "" && f.DetachmentsJson != "[]")
-                .Select(f => new { f.GameSystemKey, f.BsDataId })
-                .ToListAsync(ct))
-                .Select(f => (f.GameSystemKey, f.BsDataId))
-                .ToHashSet();
+        var systems = sysKeys.Select(catalogue.Get).OfType<CatalogueSnapshot>().ToList();
+        var pointedSystems = systems.Where(s => !s.Pointless).Select(s => s.Key).ToList();
+        var detachmentFactions = systems
+            .SelectMany(s => factionIds
+                .Select(s.FactionsById.GetValueOrDefault)
+                .Where(f => f is { Detachments.Count: > 0 })
+                .Select(f => (s.Key, f!.Id)))
+            .ToHashSet();
 
         var map = new Dictionary<Guid, string?>();
         foreach (var p in withLists)

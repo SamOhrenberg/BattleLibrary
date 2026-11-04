@@ -37,9 +37,28 @@ public sealed class BsDataGitHubClient(HttpClient http)
         return paths;
     }
 
-    public Task<string> DownloadRawAsync(string repo, string sha, string path, CancellationToken ct)
+    // The raw CDN occasionally stalls or answers 5xx, so each file gets its own
+    // timeout and a few retries rather than failing the whole load.
+    public async Task<string> DownloadRawAsync(string repo, string sha, string path, CancellationToken ct)
     {
         var url = $"https://raw.githubusercontent.com/{repo}/{sha}/{Uri.EscapeDataString(path)}";
-        return http.GetStringAsync(url, ct);
+        for (var attempt = 1; ; attempt++)
+        {
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeout.CancelAfter(RawAttemptTimeout);
+            try
+            {
+                return await http.GetStringAsync(url, timeout.Token);
+            }
+            catch (Exception ex) when (
+                attempt < MaxRawAttempts && !ct.IsCancellationRequested
+                && ex is HttpRequestException or OperationCanceledException)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(2 * attempt), ct);
+            }
+        }
     }
+
+    private const int MaxRawAttempts = 4;
+    private static readonly TimeSpan RawAttemptTimeout = TimeSpan.FromSeconds(60);
 }

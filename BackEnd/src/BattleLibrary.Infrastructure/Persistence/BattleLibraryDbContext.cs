@@ -21,9 +21,7 @@ public class BattleLibraryDbContext(DbContextOptions<BattleLibraryDbContext> opt
     public DbSet<AppSetting> AppSettings => Set<AppSetting>();
     public DbSet<Friendship> Friendships => Set<Friendship>();
 
-    public DbSet<CachedGameSystem> CachedGameSystems => Set<CachedGameSystem>();
-    public DbSet<CachedFaction> CachedFactions => Set<CachedFaction>();
-    public DbSet<CachedDatasheet> CachedDatasheets => Set<CachedDatasheet>();
+    public DbSet<CatalogueSystemSetting> CatalogueSystemSettings => Set<CatalogueSystemSetting>();
 
     public DbSet<ArmyList> ArmyLists => Set<ArmyList>();
     public DbSet<ListForce> ListForces => Set<ListForce>();

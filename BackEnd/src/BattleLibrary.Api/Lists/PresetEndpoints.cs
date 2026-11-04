@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using BattleLibrary.Domain.Lists;
+using BattleLibrary.Infrastructure.BsData.Caching;
 using BattleLibrary.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -50,7 +51,8 @@ public static partial class ListEndpoints
     }
 
     private static async Task<IResult> CreatePreset(
-        CreatePresetRequest request, ClaimsPrincipal principal, BattleLibraryDbContext db, CancellationToken ct)
+        CreatePresetRequest request, ClaimsPrincipal principal, BattleLibraryDbContext db, CatalogueStore catalogue,
+        CancellationToken ct)
     {
         if (CurrentUserId(principal) is not { } userId)
         {
@@ -67,7 +69,7 @@ public static partial class ListEndpoints
             return Problem("datasheet", "A game system and datasheet are required.");
         }
 
-        var sheet = await LoadSheet(db, request.DatasheetId, request.GameSystemKey, ct);
+        var sheet = LoadSheet(catalogue, request.DatasheetId, request.GameSystemKey);
         if (sheet is null)
         {
             return Results.NotFound(new { error = "Unknown datasheet for this game system." });

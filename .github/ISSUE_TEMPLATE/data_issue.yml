@@ -1,0 +1,49 @@
+name: Data issue
+description: A unit's points, stats, wargear, or options look wrong in the app.
+labels: ["data"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The app reads its army data from the community [BSData](https://github.com/BSData) repositories. Most data errors come from those files, and fixing them upstream fixes every app that uses them.
+
+        Before filing, please check the faction's file in [wh40k-11e](https://github.com/BSData/wh40k-11e) or [wh40k-killteam](https://github.com/BSData/wh40k-killteam). If it is wrong there too, report it to that repository. Use this form when the data is right in BSData but wrong here.
+
+        Please don't paste rules text from books or apps; describe the difference instead.
+  - type: dropdown
+    id: system
+    attributes:
+      label: Game system
+      options:
+        - Warhammer 40,000 (11th Edition)
+        - Kill Team (2024)
+    validations:
+      required: true
+  - type: input
+    id: faction
+    attributes:
+      label: Faction or kill team
+      placeholder: e.g. Orks
+    validations:
+      required: true
+  - type: input
+    id: unit
+    attributes:
+      label: Unit, operative, or option
+      placeholder: e.g. Boyz, Big Shoota option
+    validations:
+      required: true
+  - type: textarea
+    id: difference
+    attributes:
+      label: What is wrong?
+      description: What the app shows, and what you expected.
+    validations:
+      required: true
+  - type: checkboxes
+    id: checked-upstream
+    attributes:
+      label: Upstream check
+      options:
+        - label: I checked the BSData file and it has the correct data.
+          required: true

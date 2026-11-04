@@ -9,6 +9,7 @@ using BattleLibrary.Api.Social;
 using BattleLibrary.Domain.Accounts;
 using BattleLibrary.Infrastructure;
 using BattleLibrary.Infrastructure.BsData;
+using BattleLibrary.Infrastructure.BsData.Caching;
 using BattleLibrary.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
@@ -37,6 +38,7 @@ builder.Services.AddInfrastructure(builder.Configuration);
 var bsDataOptions = builder.Configuration.GetSection(BsDataOptions.SectionName).Get<BsDataOptions>() ?? new BsDataOptions();
 builder.Services.AddSingleton(bsDataOptions);
 builder.Services.AddSingleton<BsDataParser>();
+builder.Services.AddSingleton<CatalogueStore>();
 builder.Services.AddScoped<BsDataRefreshService>();
 builder.Services.AddHttpClient<BsDataGitHubClient>(client =>
 {

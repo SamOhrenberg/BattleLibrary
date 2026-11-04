@@ -1,4 +1,4 @@
-# Build context is the backend/ directory (set Railway's root directory to it).
+# Build context is the BackEnd/ directory (set Railway's root directory to it).
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 COPY . .

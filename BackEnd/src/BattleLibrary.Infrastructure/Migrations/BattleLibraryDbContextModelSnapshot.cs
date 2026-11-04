@@ -566,152 +566,18 @@ namespace BattleLibrary.Infrastructure.Migrations
                     b.ToTable("Friendships");
                 });
 
-            modelBuilder.Entity("BattleLibrary.Infrastructure.BsData.Caching.CachedDatasheet", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("AvailabilityJson")
-                        .IsRequired()
-                        .HasColumnType("jsonb");
-
-                    b.Property<string>("BsDataId")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
-
-                    b.Property<Guid>("FactionId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("KeywordsCsv")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("ModelJson")
-                        .IsRequired()
-                        .HasColumnType("jsonb");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)");
-
-                    b.Property<int?>("Points")
-                        .HasColumnType("integer");
-
-                    b.Property<long>("SortIndex")
-                        .HasColumnType("bigint");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("BsDataId");
-
-                    b.HasIndex("FactionId");
-
-                    b.ToTable("CachedDatasheets");
-                });
-
-            modelBuilder.Entity("BattleLibrary.Infrastructure.BsData.Caching.CachedFaction", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("BsDataId")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
-
-                    b.Property<int>("DatasheetCount")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("DetachmentsJson")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("EquipmentJson")
-                        .IsRequired()
-                        .HasColumnType("jsonb");
-
-                    b.Property<string>("GameSystemKey")
-                        .IsRequired()
-                        .HasColumnType("character varying(100)");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)");
-
-                    b.Property<int>("Revision")
-                        .HasColumnType("integer");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("BsDataId");
-
-                    b.HasIndex("GameSystemKey");
-
-                    b.ToTable("CachedFactions");
-                });
-
-            modelBuilder.Entity("BattleLibrary.Infrastructure.BsData.Caching.CachedGameSystem", b =>
+            modelBuilder.Entity("BattleLibrary.Infrastructure.BsData.Caching.CatalogueSystemSetting", b =>
                 {
                     b.Property<string>("Key")
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
 
-                    b.Property<string>("BsDataId")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("BsDataName")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("CommitSha")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)");
-
-                    b.Property<string>("DispositionsJson")
-                        .IsRequired()
-                        .HasColumnType("text");
-
                     b.Property<bool>("Enabled")
                         .HasColumnType("boolean");
 
-                    b.Property<string>("ForceEntryId")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("ForceEntryName")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)");
-
-                    b.Property<string>("PointsCostTypeId")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<DateTimeOffset>("RefreshedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("Repo")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)");
-
-                    b.Property<int>("Revision")
-                        .HasColumnType("integer");
-
                     b.HasKey("Key");
 
-                    b.ToTable("CachedGameSystems");
+                    b.ToTable("CatalogueSystemSettings");
                 });
 
             modelBuilder.Entity("BattleLibrary.Domain.Accounts.Profile", b =>
@@ -1065,28 +931,6 @@ namespace BattleLibrary.Infrastructure.Migrations
                     b.Navigation("Requester");
                 });
 
-            modelBuilder.Entity("BattleLibrary.Infrastructure.BsData.Caching.CachedDatasheet", b =>
-                {
-                    b.HasOne("BattleLibrary.Infrastructure.BsData.Caching.CachedFaction", "Faction")
-                        .WithMany("Datasheets")
-                        .HasForeignKey("FactionId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Faction");
-                });
-
-            modelBuilder.Entity("BattleLibrary.Infrastructure.BsData.Caching.CachedFaction", b =>
-                {
-                    b.HasOne("BattleLibrary.Infrastructure.BsData.Caching.CachedGameSystem", "GameSystem")
-                        .WithMany("Factions")
-                        .HasForeignKey("GameSystemKey")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("GameSystem");
-                });
-
             modelBuilder.Entity("BattleLibrary.Domain.Accounts.User", b =>
                 {
                     b.Navigation("Profile")
@@ -1105,16 +949,6 @@ namespace BattleLibrary.Infrastructure.Migrations
                     b.Navigation("Entries");
 
                     b.Navigation("Forces");
-                });
-
-            modelBuilder.Entity("BattleLibrary.Infrastructure.BsData.Caching.CachedFaction", b =>
-                {
-                    b.Navigation("Datasheets");
-                });
-
-            modelBuilder.Entity("BattleLibrary.Infrastructure.BsData.Caching.CachedGameSystem", b =>
-                {
-                    b.Navigation("Factions");
                 });
 #pragma warning restore 612, 618
         }

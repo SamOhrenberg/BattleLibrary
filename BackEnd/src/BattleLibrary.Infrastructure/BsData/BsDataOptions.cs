@@ -26,13 +26,17 @@ public sealed record BsDataSource(
         "kill-team-2024", "Kill Team (2024)", "BSData/wh40k-killteam", "master",
         SourceFormat.Xml, "2024 - ", CatalogueSchema.KillTeam2024);
 
-    // Systems ingested into the cache. 40k is JSON; Kill Team is BattleScribe XML.
+    // Systems loaded into the in-memory catalogue. 40k is JSON; Kill Team is BattleScribe XML.
     public static readonly IReadOnlyList<BsDataSource> All = [Wh40k11e, KillTeam2024];
 }
 
 public sealed class BsDataOptions
 {
     public const string SectionName = "BsData";
+
+    // The catalogue lives only in memory, so it is loaded at every startup.
+    // Off only for offline work, where the catalogue stays empty.
+    public bool LoadOnStartup { get; set; } = true;
 
     // Background polling of every source for new commits on its branch.
     public bool AutoRefreshEnabled { get; set; } = true;

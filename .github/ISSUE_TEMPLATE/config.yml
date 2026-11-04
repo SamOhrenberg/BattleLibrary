@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Warhammer 40,000 data errors (BSData)
+    url: https://github.com/BSData/wh40k-11e/issues
+    about: Points, stats, or options that are also wrong in the BSData files.
+  - name: Kill Team data errors (BSData)
+    url: https://github.com/BSData/wh40k-killteam/issues
+    about: Kill Team data that is also wrong in the BSData files.
+  - name: Report a security vulnerability
+    url: https://github.com/SamOhrenberg/BattleLibrary/security/advisories/new
+    about: Please report security problems privately, not in a public issue.

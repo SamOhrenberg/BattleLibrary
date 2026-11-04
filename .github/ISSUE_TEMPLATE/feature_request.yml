@@ -1,0 +1,32 @@
+name: Feature request
+description: Suggest a new feature or an improvement.
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      description: Describe what you are trying to do and what gets in the way.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: Proposed solution
+      description: How you imagine it working. Sketches and screenshots are welcome.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives or workarounds
+      description: Anything you do today instead, or other tools that handle this well.
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope
+      description: The app stays non-commercial and does not reproduce rules text. See CONTRIBUTING.md.
+      options:
+        - label: This does not need full rules text, lore, or other Games Workshop content beyond names, points, and stats.
+          required: true
+        - label: I would like to work on this myself.

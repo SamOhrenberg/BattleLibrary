@@ -1,0 +1,62 @@
+name: Bug report
+description: Something in the app is broken or behaves unexpectedly.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. For wrong points, stats, or wargear, use the **Data issue** template instead.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Describe the problem and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open a list
+        2. Add a unit
+        3. Tap ...
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - List building (40k)
+        - Kill Team rosters
+        - Live games
+        - Game history
+        - Friends and profiles
+        - Sign in / registration
+        - Import / export
+        - Rule search
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where did it happen?
+      options:
+        - Hosted app (samohrenberg.github.io)
+        - Local development build
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Device and browser
+      placeholder: e.g. iPhone 15, Safari 18
+    validations:
+      required: true
+  - type: textarea
+    id: extra
+    attributes:
+      label: Screenshots, error messages, or logs
+      description: If the app showed an error with a trace id, include it. Please remove any personal details.
