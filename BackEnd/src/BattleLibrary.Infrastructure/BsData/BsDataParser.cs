@@ -528,10 +528,10 @@ public sealed class BsDataParser
         Gather(entry, MaxDepth, [], innateProfiles, index, descendGroups: false, innateRules);
         var abilities = innateProfiles
             .Where(p => schema.AbilityTypes.Contains(p.TypeName) && !string.IsNullOrWhiteSpace(p.Name))
-            .Select(p => new Ability(p.Name, DescriptionOf(p)))
+            .Select(p => new Ability(p.Name, DescriptionOf(p), CitationFor(p, index)))
             .Concat(innateRules
                 .Where(r => !string.IsNullOrWhiteSpace(r.Name))
-                .Select(r => new Ability(r.Name, (r.Description ?? "").Trim())))
+                .Select(r => new Ability(r.Name, (r.Description ?? "").Trim(), CitationFor(r, index))))
             .DistinctBy(a => a.Name, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
@@ -549,6 +549,11 @@ public sealed class BsDataParser
             .Select(p => new UnitProfile(p.Name, ToCharacteristics(p)))
             .ToList();
 
+        // Datasheet-level source: the citation on its stat profile(s).
+        var source = unitProfiles
+            .Select(p => CitationFor(p, index))
+            .FirstOrDefault(c => c is not null);
+
         var modelGroups = ExtractModelGroups(entry, schema, index);
         var sizes = ExtractSizes(entry, ptsTypeId);
         var (variantGroups, fixedModels) = ExtractVariantGroups(entry, schema, ptsTypeId, index);
@@ -557,7 +562,7 @@ public sealed class BsDataParser
         return new Datasheet(
             entry.Id, entry.Name, points, keywords, primaryKeyword, unit, weapons, abilities, options, equipment, sizes,
             modelGroups, variantGroups, fixedModels, DatasheetAvailability.None, leaderAttachments, costRules,
-            entry.SortIndex ?? long.MaxValue);
+            entry.SortIndex ?? long.MaxValue, source);
     }
 
     // Leader attachment (11e): a character's "associations" name the units it can
@@ -1716,6 +1721,26 @@ public sealed class BsDataParser
             .Select(c => new Characteristic(c.Name, c.Text ?? ""))
             .ToList();
 
+    private static Citation? CitationFor(ProfileNode profile, Index index) =>
+        ResolveCitation(profile.PublicationId, profile.Page, index);
+
+    private static Citation? CitationFor(RuleNode rule, Index index) =>
+        ResolveCitation(rule.PublicationId, rule.Page, index);
+
+    // Resolves a profile/rule's publicationId + page into a display citation:
+    // the book's short name (fallback to its full title), and the page. Null when
+    // no publication is cited and no page is given, so uncited content stays clean.
+    private static Citation? ResolveCitation(string publicationId, string page, Index index)
+    {
+        var book = "";
+        if (!string.IsNullOrEmpty(publicationId) && index.Publications.TryGetValue(publicationId, out var pub))
+        {
+            book = !string.IsNullOrWhiteSpace(pub.ShortName) ? pub.ShortName.Trim() : pub.Name.Trim();
+        }
+        var pg = (page ?? "").Trim();
+        return string.IsNullOrEmpty(book) && string.IsNullOrEmpty(pg) ? null : new Citation(book, pg);
+    }
+
     // An ability's rules text: the "Description" characteristic if present, else
     // all non-empty characteristic texts joined.
     private static string DescriptionOf(ProfileNode profile)
@@ -1806,6 +1831,8 @@ public sealed class BsDataParser
         // target category by id) can be resolved to the keyword it grants/strips,
         // and a leader association's "instanceOf" conditions can be named.
         public required Dictionary<string, string> Categories { get; init; }
+        // Source books keyed by publicationId, so a profile/rule citation resolves to a title.
+        public required Dictionary<string, Publication> Publications { get; init; }
 
         public static Index Build(IEnumerable<DataDocument> documents)
         {
@@ -1814,6 +1841,7 @@ public sealed class BsDataParser
             var groups = new Dictionary<string, SelectionEntryGroupNode>();
             var origins = new Dictionary<string, CatalogueOrigin>();
             var categories = new Dictionary<string, string>(StringComparer.Ordinal);
+            var publications = new Dictionary<string, Publication>();
 
             foreach (var doc in documents)
             {
@@ -1823,6 +1851,10 @@ public sealed class BsDataParser
                 foreach (var category in doc.CategoryEntries)
                 {
                     if (!string.IsNullOrEmpty(category.Id)) categories.TryAdd(category.Id, category.Name);
+                }
+                foreach (var publication in doc.Publications)
+                {
+                    if (!string.IsNullOrEmpty(publication.Id)) publications.TryAdd(publication.Id, publication);
                 }
                 foreach (var profile in doc.SharedProfiles)
                 {
@@ -1849,7 +1881,7 @@ public sealed class BsDataParser
             return new Index
             {
                 Profiles = refs.Profiles, Rules = refs.Rules, InfoGroups = refs.InfoGroups,
-                Entries = entries, Groups = groups, EntryOrigin = origins, Categories = categories,
+                Entries = entries, Groups = groups, EntryOrigin = origins, Categories = categories, Publications = publications,
             };
         }
 

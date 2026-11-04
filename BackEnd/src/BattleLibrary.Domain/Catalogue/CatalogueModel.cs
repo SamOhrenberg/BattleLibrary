@@ -50,7 +50,13 @@ public sealed record Detachment(
 public sealed record Enhancement(string Id, string Name, int Points, string Text);
 
 // A named rule with its text: a datasheet ability, a detachment rule, etc.
-public sealed record Ability(string Name, string Text);
+// Source, when known, cites the book and page it is printed in.
+public sealed record Ability(string Name, string Text, Citation? Source = null);
+
+// A source citation for a datasheet or ability: the book (its short name where
+// available, e.g. "Orks") and the page within it. Page may be empty when only
+// the publication is known.
+public sealed record Citation(string Publication, string Page);
 
 public sealed record Datasheet(
     string Id,
@@ -76,7 +82,10 @@ public sealed record Datasheet(
     IReadOnlyList<CostRule> CostRules = null!,
     // Upstream display order (BSData sortIndex); long.MaxValue when the source
     // omits it, so unindexed units sort after indexed ones, name breaking ties.
-    long SortIndex = long.MaxValue)
+    long SortIndex = long.MaxValue,
+    // The book and page this datasheet is printed in, from its stat profile;
+    // null when the source data carries no citation.
+    Citation? Source = null)
 {
     // Default to empty so older cached jsonb (written before cost rules existed)
     // deserializes without a null list.

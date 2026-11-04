@@ -59,6 +59,15 @@ internal static class BsDataXmlReader
         {
             doc.ProfileTypes.Add(new ProfileType { Id = Attr(p, "id"), Name = Attr(p, "name") });
         }
+        foreach (var p in Children(root, "publications", "publication"))
+        {
+            doc.Publications.Add(new Publication
+            {
+                Id = Attr(p, "id"),
+                Name = Attr(p, "name"),
+                ShortName = Attr(p, "shortName"),
+            });
+        }
         foreach (var c in Children(root, "categoryEntries", "categoryEntry"))
         {
             doc.CategoryEntries.Add(new CategoryEntry { Id = Attr(c, "id"), Name = Attr(c, "name") });
@@ -213,6 +222,8 @@ internal static class BsDataXmlReader
             Id = Attr(e, "id"),
             Name = Attr(e, "name"),
             Hidden = Bool(e, "hidden"),
+            PublicationId = Attr(e, "publicationId"),
+            Page = Attr(e, "page"),
             Description = desc?.Value,
         };
     }
@@ -262,6 +273,8 @@ internal static class BsDataXmlReader
             TypeId = Attr(e, "typeId"),
             TypeName = Attr(e, "typeName"),
             Hidden = Bool(e, "hidden"),
+            PublicationId = Attr(e, "publicationId"),
+            Page = Attr(e, "page"),
         };
         var chars = e.Elements().FirstOrDefault(x => x.Name.LocalName == "characteristics");
         if (chars is not null)

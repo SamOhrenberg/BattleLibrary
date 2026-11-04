@@ -22,6 +22,7 @@ internal abstract class DataDocument
     public int Revision { get; set; }
     public List<CostType> CostTypes { get; set; } = [];
     public List<ProfileType> ProfileTypes { get; set; } = [];
+    public List<Publication> Publications { get; set; } = [];
     public List<CategoryEntry> CategoryEntries { get; set; } = [];
     public List<ForceEntry> ForceEntries { get; set; } = [];
     public List<ProfileNode> SharedProfiles { get; set; } = [];
@@ -55,6 +56,15 @@ internal sealed class ProfileType
 {
     public string Id { get; set; } = "";
     public string Name { get; set; } = "";
+}
+
+// A source book a profile or rule can cite by publicationId. ShortName is the
+// abbreviated form ("Orks") where Name is the full title ("Codex: Orks").
+internal sealed class Publication
+{
+    public string Id { get; set; } = "";
+    public string Name { get; set; } = "";
+    public string ShortName { get; set; } = "";
 }
 
 internal sealed class CategoryEntry
@@ -127,6 +137,12 @@ internal sealed class ProfileNode
     public string TypeId { get; set; } = "";
     public string TypeName { get; set; } = "";
     public bool Hidden { get; set; }
+
+    // Source citation: the id of a Publication this profile is printed in, and
+    // the page within it. Page is a free-text string in BSData (e.g. "42").
+    public string PublicationId { get; set; } = "";
+    public string Page { get; set; } = "";
+
     public List<CharacteristicNode> Characteristics { get; set; } = [];
 }
 
@@ -137,6 +153,10 @@ internal sealed class RuleNode
     public string Name { get; set; } = "";
     public string? Description { get; set; }
     public bool Hidden { get; set; }
+
+    // Source citation, as on ProfileNode.
+    public string PublicationId { get; set; } = "";
+    public string Page { get; set; } = "";
 }
 
 internal sealed class ConditionNode

@@ -49,10 +49,19 @@ export interface CatalogueDatasheet {
   availability?: DatasheetAvailability
 }
 
+// A source citation: the book (its short name where available, e.g. "Orks") and
+// the page within it. page may be empty when only the publication is known.
+export interface Citation {
+  publication: string
+  page: string
+}
+
 // A named rule with its text: a datasheet ability, a detachment rule, etc.
+// source, when present, cites the book and page it is printed in.
 export interface AbilityText {
   name: string
   text: string
+  source?: Citation | null
 }
 
 export interface CatalogueEnhancement {
@@ -190,6 +199,8 @@ export interface DatasheetDetail {
   conditionalKeywords?: ConditionalKeyword[]
   // The units this Leader can attach to (empty for non-leaders / older data).
   leaderAttachments?: LeaderAttachment[]
+  // The book and page this datasheet is printed in; absent when uncited.
+  source?: Citation | null
 }
 
 // Points adjustment from a datasheet's cost rules for a given set of selected
