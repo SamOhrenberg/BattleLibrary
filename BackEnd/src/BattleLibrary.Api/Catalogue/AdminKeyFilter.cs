@@ -9,7 +9,7 @@ public sealed class AdminKeyFilter(IConfiguration configuration) : IEndpointFilt
         var expected = configuration["Admin:ApiKey"];
         var provided = context.HttpContext.Request.Headers["X-Admin-Key"].ToString();
 
-        if (string.IsNullOrEmpty(expected) || provided != expected)
+        if (string.IsNullOrEmpty(expected) || !BattleLibrary.Api.Hosting.HostingExtensions.FixedTimeEquals(provided, expected))
         {
             return Results.StatusCode(StatusCodes.Status403Forbidden);
         }

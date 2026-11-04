@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using BattleLibrary.Api.Hosting;
 using BattleLibrary.Domain.Accounts;
 using BattleLibrary.Domain.Lists;
 using BattleLibrary.Domain.Social;
@@ -16,7 +17,7 @@ public static class SocialEndpoints
         profile.MapPut("", UpdateProfile);
 
         var users = routes.MapGroup("/api/users").RequireAuthorization();
-        users.MapGet("/search", SearchUsers);
+        users.MapGet("/search", SearchUsers).RequireRateLimiting(HostingExtensions.SearchPolicy);
         users.MapGet("/{username}", GetPublicProfile);
 
         var friends = routes.MapGroup("/api/friends").RequireAuthorization();

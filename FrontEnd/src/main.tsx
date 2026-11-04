@@ -7,12 +7,14 @@ import { AuthProvider } from './auth/AuthContext'
 import { TourProvider } from './onboarding/TourContext'
 import { ToastProvider } from './ui/Toast'
 import { initTheme } from './styles/theme'
+import { ErrorBoundary } from './ui/ErrorBoundary'
 
 // Apply the saved (or default) theme before the first paint.
 initTheme()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
+    <ErrorBoundary>
     <AuthProvider>
       <ToastProvider>
         <TourProvider>
@@ -20,5 +22,6 @@ createRoot(document.getElementById('root')!).render(
         </TourProvider>
       </ToastProvider>
     </AuthProvider>
+    </ErrorBoundary>
   </StrictMode>,
 )

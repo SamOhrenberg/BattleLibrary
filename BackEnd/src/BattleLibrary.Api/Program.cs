@@ -3,6 +3,7 @@ using BattleLibrary.Api.Admin;
 using BattleLibrary.Api.Auth;
 using BattleLibrary.Api.Catalogue;
 using BattleLibrary.Api.Games;
+using BattleLibrary.Api.Hosting;
 using BattleLibrary.Api.Lists;
 using BattleLibrary.Api.Social;
 using BattleLibrary.Domain.Accounts;
@@ -24,6 +25,11 @@ if (!string.IsNullOrWhiteSpace(port))
 }
 
 const string FrontendCorsPolicy = "frontend";
+
+builder.AddStructuredLogging();
+builder.Services.AddErrorHandling();
+builder.Services.AddApiRateLimiting();
+builder.Services.AddForwardedHeaders();
 
 builder.Services.AddInfrastructure(builder.Configuration);
 
@@ -99,8 +105,13 @@ builder.Services.AddAuthorization();
 
 var app = builder.Build();
 
+app.UseForwardedHeaders();
+app.UseExceptionHandler();
+app.UseStatusCodePages();
+app.UseApiRequestLogging();
 app.UseCors(FrontendCorsPolicy);
 app.UseAuthentication();
+app.UseRateLimiter();
 app.UseAuthorization();
 
 if (app.Environment.IsDevelopment())
@@ -125,7 +136,7 @@ app.MapGet("/api/health/db", async (BattleLibraryDbContext db, CancellationToken
     return canConnect
         ? Results.Ok(new { status = "ok", database = "connected" })
         : Results.Problem("Cannot reach the database.", statusCode: StatusCodes.Status503ServiceUnavailable);
-});
+}).DisableRateLimiting();
 
 // Sample endpoint the frontend renders to prove the round-trip.
 app.MapGet("/api/game-systems", () => Results.Ok(new[]

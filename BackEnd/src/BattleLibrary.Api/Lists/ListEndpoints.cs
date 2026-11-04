@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using System.Text.Json;
+using BattleLibrary.Api.Hosting;
 using BattleLibrary.Domain.Catalogue;
 using BattleLibrary.Domain.Lists;
 using BattleLibrary.Infrastructure.Persistence;
@@ -19,7 +20,7 @@ public static partial class ListEndpoints
 
         group.MapGet("", GetLists);
         group.MapPost("", CreateList);
-        group.MapPost("/import", ImportRoster).DisableAntiforgery();
+        group.MapPost("/import", ImportRoster).DisableAntiforgery().RequireRateLimiting(HostingExtensions.ImportPolicy);
         group.MapGet("/{id:guid}/export", ExportRoster);
         group.MapGet("/{id:guid}", GetList);
         group.MapPut("/{id:guid}", UpdateList);

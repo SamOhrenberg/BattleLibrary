@@ -190,6 +190,8 @@ async function toApiError(res: Response): Promise<ApiError> {
       }
     } else if (typeof data?.error === 'string') {
       message = data.error
+    } else if (typeof data?.detail === 'string') {
+      message = data.detail
     } else if (typeof data?.title === 'string') {
       message = data.title
     }

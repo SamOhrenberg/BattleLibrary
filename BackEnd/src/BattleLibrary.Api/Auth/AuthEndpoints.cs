@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using BattleLibrary.Api.Admin;
+using BattleLibrary.Api.Hosting;
 using BattleLibrary.Domain.Accounts;
 using BattleLibrary.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Identity;
@@ -11,7 +12,7 @@ public static class AuthEndpoints
 {
     public static RouteGroupBuilder MapAuthEndpoints(this IEndpointRouteBuilder routes)
     {
-        var group = routes.MapGroup("/api/auth");
+        var group = routes.MapGroup("/api/auth").RequireRateLimiting(HostingExtensions.AuthPolicy);
 
         group.MapPost("/register", Register);
         group.MapGet("/registration-status", RegistrationStatus);
@@ -35,8 +36,10 @@ public static class AuthEndpoints
         IPasswordHasher<User> hasher,
         TokenService tokens,
         IConfiguration config,
+        ILoggerFactory loggers,
         CancellationToken ct)
     {
+        var log = loggers.CreateLogger("Auth");
         var username = request.Username?.Trim() ?? string.Empty;
         var email = request.Email?.Trim() ?? string.Empty;
 
@@ -82,6 +85,7 @@ public static class AuthEndpoints
         }
         if (!allowed)
         {
+            log.LogWarning("Registration blocked (invite-only) for {Email}", email);
             return Problem("registration", "Sign-ups are invite-only right now. Ask for an invite to join.");
         }
 
@@ -100,6 +104,7 @@ public static class AuthEndpoints
         };
         user.PasswordHash = hasher.HashPassword(user, request.Password);
         db.Users.Add(user);
+        log.LogInformation("User registered: {Username} (admin: {IsAdmin}, invited: {Invited})", username, user.IsAdmin, invite is not null);
         if (invite is not null)
         {
             invite.UseCount++;
@@ -115,8 +120,10 @@ public static class AuthEndpoints
         BattleLibraryDbContext db,
         IPasswordHasher<User> hasher,
         TokenService tokens,
+        ILoggerFactory loggers,
         CancellationToken ct)
     {
+        var log = loggers.CreateLogger("Auth");
         var identifier = request.UsernameOrEmail?.Trim() ?? string.Empty;
 
         var user = await db.Users
@@ -124,12 +131,14 @@ public static class AuthEndpoints
             .FirstOrDefaultAsync(u => u.Username == identifier || u.Email == identifier, ct);
         if (user is null)
         {
+            log.LogWarning("Login failed: unknown account {Identifier}", identifier);
             return Results.Unauthorized();
         }
 
         var result = hasher.VerifyHashedPassword(user, user.PasswordHash, request.Password ?? string.Empty);
         if (result == PasswordVerificationResult.Failed)
         {
+            log.LogWarning("Login failed: bad password for {Username}", user.Username);
             return Results.Unauthorized();
         }
         if (result == PasswordVerificationResult.SuccessRehashNeeded)
@@ -146,6 +155,7 @@ public static class AuthEndpoints
         RefreshRequest request,
         BattleLibraryDbContext db,
         TokenService tokens,
+        ILoggerFactory loggers,
         CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(request.RefreshToken))
@@ -160,6 +170,7 @@ public static class AuthEndpoints
 
         if (stored is null || !stored.IsActive)
         {
+            loggers.CreateLogger("Auth").LogWarning("Refresh rejected: {Reason}", stored is null ? "unknown token" : "revoked or expired token");
             return Results.Unauthorized();
         }
 

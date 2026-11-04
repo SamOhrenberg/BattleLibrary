@@ -1,4 +1,5 @@
 using System.Text.Json;
+using BattleLibrary.Api.Hosting;
 using BattleLibrary.Domain.Catalogue;
 using BattleLibrary.Infrastructure.BsData;
 using BattleLibrary.Infrastructure.Persistence;
@@ -92,7 +93,7 @@ public static class CatalogueEndpoints
         read.MapGet("/{systemKey}/factions", GetFactions);
         read.MapGet("/factions/{factionId}/datasheets", GetDatasheets);
         read.MapGet("/datasheets/{datasheetId}", GetDatasheet);
-        read.MapGet("/{systemKey}/search", Search);
+        read.MapGet("/{systemKey}/search", Search).RequireRateLimiting(HostingExtensions.SearchPolicy);
 
         var admin = routes.MapGroup("/api/admin/catalogue").AddEndpointFilter<AdminKeyFilter>();
         admin.MapPost("/refresh", Refresh);
