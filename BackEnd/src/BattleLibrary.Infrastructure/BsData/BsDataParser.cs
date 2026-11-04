@@ -537,9 +537,15 @@ public sealed class BsDataParser
         var abilities = innateProfiles
             .Where(p => schema.AbilityTypes.Contains(p.TypeName) && !string.IsNullOrWhiteSpace(p.Name))
             .Select(p => new Ability(p.Name, DescriptionOf(p), CitationFor(p, index)))
-            .Concat(innateRules
-                .Where(r => !string.IsNullOrWhiteSpace(r.Name))
-                .Select(r => new Ability(r.Name, (r.Description ?? "").Trim(), CitationFor(r, index))))
+            .DistinctBy(a => a.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        // Referenced core/keyword rules (from rule infoLinks) are kept apart from
+        // the datasheet's own abilities, and never duplicate one by name.
+        var abilityNames = abilities.Select(a => a.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var rules = innateRules
+            .Where(r => !string.IsNullOrWhiteSpace(r.Name) && !abilityNames.Contains(r.Name))
+            .Select(r => new Ability(r.Name, (r.Description ?? "").Trim(), CitationFor(r, index)))
             .DistinctBy(a => a.Name, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
@@ -570,7 +576,10 @@ public sealed class BsDataParser
         return new Datasheet(
             entry.Id, entry.Name, points, keywords, primaryKeyword, unit, weapons, abilities, options, equipment, sizes,
             modelGroups, variantGroups, fixedModels, DatasheetAvailability.None, leaderAttachments, costRules,
-            entry.SortIndex ?? long.MaxValue, source);
+            entry.SortIndex ?? long.MaxValue, source)
+        {
+            Rules = rules,
+        };
     }
 
     // Leader attachment (11e): a character's "associations" name the units it can

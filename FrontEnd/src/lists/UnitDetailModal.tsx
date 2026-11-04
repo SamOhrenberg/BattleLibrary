@@ -318,17 +318,31 @@ export function UnitDetailModal({
             )}
 
             {detail.abilities.length > 0 && (
-              <div className="detail-section">
-                <h4>Abilities</h4>
+              <details className="detail-section rules-group">
+                <summary className="rules-summary">Abilities</summary>
                 <dl className="rules-list">
                   {detail.abilities.map((a) => (
+                    <div className="rule" key={a.name}>
+                      <dt>{a.name}</dt>
+                      {a.text && <dd><RuleText text={a.text} rules={detail.rules} /></dd>}
+                    </div>
+                  ))}
+                </dl>
+              </details>
+            )}
+
+            {detail.rules && detail.rules.length > 0 && (
+              <details className="detail-section rules-group">
+                <summary className="rules-summary">Rules</summary>
+                <dl className="rules-list">
+                  {detail.rules.map((a) => (
                     <div className="rule" key={a.name}>
                       <dt>{a.name}</dt>
                       {a.text && <dd><RuleText text={a.text} /></dd>}
                     </div>
                   ))}
                 </dl>
-              </div>
+              </details>
             )}
 
             {detail.leaderAttachments && detail.leaderAttachments.length > 0 && (

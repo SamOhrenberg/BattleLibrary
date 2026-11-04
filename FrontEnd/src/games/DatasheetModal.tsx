@@ -67,17 +67,31 @@ export function DatasheetModal({
             <WeaponTable title="Melee weapons" weapons={melee} />
 
             {detail.abilities.length > 0 && (
-              <div className="ds-section">
-                <h4>Abilities</h4>
+              <details className="ds-section rules-group">
+                <summary className="rules-summary">Abilities</summary>
                 <dl className="ds-rules">
                   {detail.abilities.map((a) => (
+                    <div className="ds-rule" key={a.name}>
+                      <dt>{a.name}</dt>
+                      {a.text && <dd><RuleText text={a.text} rules={detail.rules} /></dd>}
+                    </div>
+                  ))}
+                </dl>
+              </details>
+            )}
+
+            {detail.rules && detail.rules.length > 0 && (
+              <details className="ds-section rules-group">
+                <summary className="rules-summary">Rules</summary>
+                <dl className="ds-rules">
+                  {detail.rules.map((a) => (
                     <div className="ds-rule" key={a.name}>
                       <dt>{a.name}</dt>
                       {a.text && <dd><RuleText text={a.text} /></dd>}
                     </div>
                   ))}
                 </dl>
-              </div>
+              </details>
             )}
           </div>
         )}

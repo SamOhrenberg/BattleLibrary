@@ -83,13 +83,16 @@ public class BsDataInfoLinkTests
         var boss = Assert.Single(model.Datasheets);
         var abilities = boss.Abilities.Select(a => a.Name).ToList();
 
+        // Ability-type profiles are the datasheet's own abilities.
         Assert.Contains("Leader", abilities);        // profile infoLink
-        Assert.Contains("Waaagh!", abilities);        // rule infoLink
         Assert.Contains("Feel No Pain", abilities);   // info-group-contained profile
+        // Rule infoLinks are kept apart as referenced rules.
+        Assert.DoesNotContain("Waaagh!", abilities);
+        Assert.Contains("Waaagh!", boss.Rules.Select(r => r.Name));
 
         var leader = boss.Abilities.Single(a => a.Name == "Leader");
         Assert.Equal("Attach to a Bodyguard unit.", leader.Text);
-        var waaagh = boss.Abilities.Single(a => a.Name == "Waaagh!");
+        var waaagh = boss.Rules.Single(r => r.Name == "Waaagh!");
         Assert.Equal("Once per battle, call a Waaagh!.", waaagh.Text);
     }
 
@@ -100,5 +103,6 @@ public class BsDataInfoLinkTests
 
         var boss = Assert.Single(model.Datasheets);
         Assert.DoesNotContain("Secret Rule", boss.Abilities.Select(a => a.Name));
+        Assert.DoesNotContain("Secret Rule", boss.Rules.Select(r => r.Name));
     }
 }

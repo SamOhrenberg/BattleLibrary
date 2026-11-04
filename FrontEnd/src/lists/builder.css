@@ -970,7 +970,7 @@
     padding: 16px;
   }
   .modal {
-    max-width: 560px;
+    max-width: 760px;
     max-height: 85vh;
     border: 1px solid var(--border);
     border-radius: 12px;
@@ -1132,6 +1132,85 @@
 .kw-text {
   font-weight: 600;
   color: var(--fg);
+}
+
+/* Collapsible ability/rule groups: the summary styled like a section heading
+   with a caret, collapsed until opened. */
+.rules-group {
+  margin-top: 6px;
+}
+
+.rules-group > .rules-summary {
+  margin: 18px 0 8px;
+  padding-bottom: 5px;
+  border-bottom: 1px solid var(--line);
+  font-family: var(--f-display);
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--fg);
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.rules-group > .rules-summary::-webkit-details-marker {
+  display: none;
+}
+
+.rules-group > .rules-summary::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-right: 2px solid var(--accent);
+  border-bottom: 2px solid var(--accent);
+  transform: rotate(-45deg);
+  transition: transform 0.15s ease;
+}
+
+.rules-group[open] > .rules-summary::before {
+  transform: rotate(45deg);
+}
+
+/* Inline reference to a rule inside an ability's text: a hover/tap target that
+   reveals the rule text in a tooltip. */
+.rule-ref {
+  position: relative;
+  color: var(--accent);
+  text-decoration: underline dotted;
+  text-underline-offset: 2px;
+  cursor: help;
+  font-weight: 600;
+}
+
+.rule-ref-pop {
+  position: fixed;
+  z-index: 900;
+  width: max-content;
+  max-width: min(24rem, 90vw);
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-solid);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 400;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  text-align: left;
+  text-decoration: none;
+  cursor: auto;
+}
+
+.rule-ref-title {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--fg);
+  font-weight: 700;
 }
 
 .enh-text {

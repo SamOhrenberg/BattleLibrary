@@ -95,7 +95,7 @@ public class BsDataCitationTests
         var model = new BsDataParser().ParseCatalogue(GameSystem, Catalogue);
 
         var boss = Assert.Single(model.Datasheets);
-        var waaagh = boss.Abilities.Single(a => a.Name == "Waaagh!");
+        var waaagh = boss.Rules.Single(r => r.Name == "Waaagh!");
         Assert.NotNull(waaagh.Source);
         Assert.Equal("Core Rules", waaagh.Source!.Publication);
         Assert.Equal("7", waaagh.Source.Page);
@@ -160,5 +160,6 @@ public class BsDataCitationTests
         var boss = Assert.Single(model.Datasheets);
         Assert.Null(boss.Source);
         Assert.All(boss.Abilities, a => Assert.Null(a.Source));
+        Assert.All(boss.Rules, r => Assert.Null(r.Source));
     }
 }

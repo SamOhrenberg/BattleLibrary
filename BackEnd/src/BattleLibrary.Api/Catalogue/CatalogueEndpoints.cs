@@ -228,7 +228,7 @@ public static class CatalogueEndpoints
             {
                 results.Add(new SearchResultDto("unit", sheet.Name, row.FactionName, null, row.DatasheetId, row.FactionId, row.FactionName));
             }
-            foreach (var a in sheet.Abilities.Where(a => contains(a.Name) || contains(a.Text)))
+            foreach (var a in sheet.Abilities.Concat(sheet.Rules).Where(a => contains(a.Name) || contains(a.Text)))
             {
                 results.Add(new SearchResultDto("ability", a.Name, sheet.Name, a.Text, row.DatasheetId, row.FactionId, row.FactionName));
             }

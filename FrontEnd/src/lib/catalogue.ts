@@ -182,7 +182,11 @@ export interface DatasheetDetail {
   primaryKeyword?: string
   profiles: DatasheetProfile[]
   weapons: DatasheetWeapon[]
+  // The datasheet's own abilities. Referenced core/keyword rules (Deep Strike,
+  // Devastating Wounds, ...) are kept apart in `rules`; absent on older cached
+  // data written before the split.
   abilities: AbilityText[]
+  rules?: AbilityText[]
   options: DatasheetOption[]
   equipment?: string[]
   sizes: UnitSize[]

@@ -979,7 +979,7 @@
 }
 @media (min-width: 640px) {
   .ds-backdrop { align-items: center; }
-  .ds-modal { max-width: 560px; border-bottom: 1px solid var(--border); border-radius: 14px; }
+  .ds-modal { max-width: 720px; border-bottom: 1px solid var(--border); border-radius: 14px; }
 }
 .ds-head {
   display: flex;

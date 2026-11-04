@@ -70,6 +70,8 @@ public sealed record Datasheet(
     string PrimaryKeyword,
     IReadOnlyList<UnitProfile> Profiles,
     IReadOnlyList<WeaponProfile> Weapons,
+    // The datasheet's own abilities (ability-type profiles). Referenced core and
+    // keyword rules (Deep Strike, Devastating Wounds, ...) are kept apart in Rules.
     IReadOnlyList<Ability> Abilities,
     IReadOnlyList<DatasheetOption> Options,
     IReadOnlyList<string> Equipment,
@@ -99,6 +101,12 @@ public sealed record Datasheet(
     // and rule-of-N checks. Empty for most units. Init-only with an empty default
     // so older cached models deserialize unchanged.
     public IReadOnlyList<ConditionalKeyword> ConditionalKeywords { get; init; } = [];
+
+    // Referenced core/keyword rules for the unit (Deep Strike, Deadly Demise,
+    // Devastating Wounds, ...), resolved from rule infoLinks. Kept separate from
+    // the datasheet's own Abilities. Empty default so older cached jsonb (written
+    // before the split) deserializes with no rules.
+    public IReadOnlyList<Ability> Rules { get; init; } = [];
 }
 
 // A selection-dependent points adjustment, used for Crucible warband characters
