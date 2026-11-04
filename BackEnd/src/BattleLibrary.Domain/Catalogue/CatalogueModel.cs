@@ -73,7 +73,10 @@ public sealed record Datasheet(
     int FixedModelCount,
     DatasheetAvailability Availability,
     IReadOnlyList<LeaderAttachment> LeaderAttachments,
-    IReadOnlyList<CostRule> CostRules = null!)
+    IReadOnlyList<CostRule> CostRules = null!,
+    // Upstream display order (BSData sortIndex); long.MaxValue when the source
+    // omits it, so unindexed units sort after indexed ones, name breaking ties.
+    long SortIndex = long.MaxValue)
 {
     // Default to empty so older cached jsonb (written before cost rules existed)
     // deserializes without a null list.

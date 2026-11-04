@@ -241,6 +241,12 @@ internal abstract class SelectionNode
     // across a squad) rather than counted per instance. BSData sets this on the
     // group that holds distributable model variants.
     public bool Collective { get; set; }
+
+    // Upstream display order within a container (siblings in a selectionEntries /
+    // selectionEntryGroups array). Null when the source omits it, so unindexed
+    // nodes can be ordered last; present throughout the 11e data. long because
+    // BattleScribe sortIndex values can exceed int range.
+    public long? SortIndex { get; set; }
     public List<Cost> Costs { get; set; } = [];
     public List<ConstraintNode> Constraints { get; set; } = [];
     public List<ProfileNode> Profiles { get; set; } = [];

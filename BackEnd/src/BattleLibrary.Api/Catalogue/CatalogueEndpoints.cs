@@ -134,7 +134,8 @@ public static class CatalogueEndpoints
 
         var rows = await db.CachedDatasheets
             .Where(d => d.FactionId == faction.Id)
-            .OrderBy(d => d.Name)
+            .OrderBy(d => d.SortIndex)
+            .ThenBy(d => d.Name)
             .Select(d => new { id = d.BsDataId, name = d.Name, points = d.Points, keywords = d.KeywordsCsv, availability = d.AvailabilityJson })
             .ToListAsync(ct);
         var datasheets = rows.Select(d => new

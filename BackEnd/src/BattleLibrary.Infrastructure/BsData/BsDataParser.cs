@@ -350,7 +350,7 @@ public sealed class BsDataParser
 
         if (!availability.Enabled)
         {
-            return pairs.Select(p => p.sheet).OrderBy(d => d.Name, StringComparer.OrdinalIgnoreCase).ToList();
+            return pairs.Select(p => p.sheet).OrderBy(d => d.SortIndex).ThenBy(d => d.Name, StringComparer.OrdinalIgnoreCase).ToList();
         }
 
         // A library supplying the bulk of this faction's datasheets is the
@@ -364,7 +364,8 @@ public sealed class BsDataParser
                 Availability = ComputeAvailability(p.entry, p.sheet.Id, availability, index, coreLibraries),
                 ConditionalKeywords = ComputeConditionalKeywords(p.entry, availability, index),
             })
-            .OrderBy(d => d.Name, StringComparer.OrdinalIgnoreCase)
+            .OrderBy(d => d.SortIndex)
+            .ThenBy(d => d.Name, StringComparer.OrdinalIgnoreCase)
             .ToList();
     }
 
@@ -555,7 +556,8 @@ public sealed class BsDataParser
 
         return new Datasheet(
             entry.Id, entry.Name, points, keywords, primaryKeyword, unit, weapons, abilities, options, equipment, sizes,
-            modelGroups, variantGroups, fixedModels, DatasheetAvailability.None, leaderAttachments, costRules);
+            modelGroups, variantGroups, fixedModels, DatasheetAvailability.None, leaderAttachments, costRules,
+            entry.SortIndex ?? long.MaxValue);
     }
 
     // Leader attachment (11e): a character's "associations" name the units it can
@@ -1637,7 +1639,10 @@ public sealed class BsDataParser
             // The group's selection bounds: how many of the set may be taken.
             // A "pick one" weapon swap carries max 1.
             var (gMin, gMax) = ConstraintRange(group);
-            foreach (var choice in group.SelectionEntries.Cast<SelectionNode>().Concat(group.EntryLinks))
+            // Honor the upstream display order of the choices (BSData sortIndex);
+            // OrderBy is stable, so unindexed choices keep their document order.
+            foreach (var choice in group.SelectionEntries.Cast<SelectionNode>().Concat(group.EntryLinks)
+                         .OrderBy(c => c.SortIndex ?? long.MaxValue))
             {
                 var (type, name, pts) = ResolveChoice(choice, index, ptsTypeId);
                 if (!IsModel(type))

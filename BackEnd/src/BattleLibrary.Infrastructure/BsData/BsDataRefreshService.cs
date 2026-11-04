@@ -103,6 +103,7 @@ public sealed class BsDataRefreshService(
                     BsDataId = sheet.Id,
                     Name = sheet.Name,
                     Points = sheet.Points,
+                    SortIndex = sheet.SortIndex,
                     KeywordsCsv = string.Join('|', sheet.Keywords),
                     AvailabilityJson = JsonSerializer.Serialize(sheet.Availability, CacheJson.Options),
                     ModelJson = JsonSerializer.Serialize(sheet, CacheJson.Options),

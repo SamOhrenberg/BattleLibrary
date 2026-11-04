@@ -59,6 +59,11 @@ public sealed class CachedDatasheet
     public string Name { get; set; } = "";
     public int? Points { get; set; }
 
+    // Upstream display order (BSData sortIndex), so the catalogue list can honor
+    // it without deserializing the full model. long.MaxValue when the source
+    // omits it, so unindexed units sort last, name breaking ties.
+    public long SortIndex { get; set; } = long.MaxValue;
+
     // Keywords joined (for grouping the catalogue by unit type without
     // deserializing the full model); the full set lives in ModelJson.
     public string KeywordsCsv { get; set; } = "";

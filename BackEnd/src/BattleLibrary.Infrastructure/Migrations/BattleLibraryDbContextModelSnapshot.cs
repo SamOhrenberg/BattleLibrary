@@ -600,6 +600,9 @@ namespace BattleLibrary.Infrastructure.Migrations
                     b.Property<int?>("Points")
                         .HasColumnType("integer");
 
+                    b.Property<long>("SortIndex")
+                        .HasColumnType("bigint");
+
                     b.HasKey("Id");
 
                     b.HasIndex("BsDataId");
