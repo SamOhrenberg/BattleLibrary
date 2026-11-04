@@ -129,9 +129,10 @@ public sealed class BsDataParser
         var datasheets = ExtractDatasheets(catalogue, schema, ptsTypeId, index, cataloguesById, availability);
 
         var force = system.ForceEntries.FirstOrDefault();
+        var limits = RosterLimitsReader.Read(system, schema, ptsTypeId);
         var info = new GameSystemInfo(
             system.Id, system.Name, system.Revision, ptsTypeId,
-            force?.Id ?? "", force?.Name ?? "");
+            force?.Id ?? "", force?.Name ?? "", limits);
         return new CatalogueModel(info, catalogue.Id, catalogue.Name, catalogue.Revision, datasheets, equipment, detachments);
     }
 

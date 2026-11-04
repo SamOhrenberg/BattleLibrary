@@ -6,10 +6,32 @@ namespace BattleLibrary.Domain.Catalogue;
 // PointsCostTypeId is the BSData cost-type id for list points ("pts"), needed to
 // write roster (.ros) cost nodes; empty on point-less systems. ForceEntryId/Name
 // identify the system's primary roster force slot, which a roster's <force> must
-// reference by id or importers reject it.
+// reference by id or importers reject it. Limits carries the data-driven roster
+// legality caps read from that force (null on systems that declare none).
 public sealed record GameSystemInfo(
     string Id, string Name, int Revision, string PointsCostTypeId = "",
-    string ForceEntryId = "", string ForceEntryName = "");
+    string ForceEntryId = "", string ForceEntryName = "", RosterLimits? Limits = null);
+
+// Data-driven roster legality limits read from the game system's primary force
+// entry, so the builder need not hardcode battle-size tables. BattleSizes lists
+// each battle size with the caps derived after applying that size's modifiers;
+// CategoryLimits holds per-category caps (e.g. battlefield-role counts) that
+// apply regardless of size.
+public sealed record RosterLimits(
+    IReadOnlyList<BattleSizeLimits> BattleSizes,
+    IReadOnlyList<CategoryLimit> CategoryLimits)
+{
+    public static readonly RosterLimits None = new([], []);
+}
+
+// Caps for a single battle size, derived from the force constraints after that
+// size's modifiers are applied. A null cap means unlimited (BattleScribe -1).
+public sealed record BattleSizeLimits(
+    string Name, int? PointsCap, int? DetachmentPointsCap, int? EnhancementCap);
+
+// A per-category roster cap (e.g. at most N of a battlefield role, at least one
+// Character). Min/Max are null when that bound is unset.
+public sealed record CategoryLimit(string CategoryId, string Name, int? Min, int? Max);
 
 public sealed record CatalogueModel(
     GameSystemInfo GameSystem,

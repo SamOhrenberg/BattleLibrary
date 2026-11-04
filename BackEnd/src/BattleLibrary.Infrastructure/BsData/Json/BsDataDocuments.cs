@@ -45,6 +45,10 @@ internal sealed class CostType
 {
     public string Id { get; set; } = "";
     public string Name { get; set; } = "";
+
+    // Default per-roster cap on this cost (e.g. a points budget); -1 means no
+    // limit. BattleScribe can override it per selection via modifiers.
+    public double DefaultCostLimit { get; set; } = -1;
 }
 
 internal sealed class ProfileType
@@ -61,10 +65,19 @@ internal sealed class CategoryEntry
 
 // A roster force slot defined by the game system (e.g. 40k's "Army Roster").
 // A roster's <force> must reference one by its entryId or importers reject it.
+// Its constraints carry the roster-level legality limits (enhancement cap,
+// Detachment Points cap, per-category caps); modifiers adjust those per the
+// selected battle size, and nested forceEntries describe sub-forces.
 internal sealed class ForceEntry
 {
     public string Id { get; set; } = "";
     public string Name { get; set; } = "";
+    public bool Hidden { get; set; }
+    public List<ConstraintNode> Constraints { get; set; } = [];
+    public List<CategoryLink> CategoryLinks { get; set; } = [];
+    public List<ModifierNode> Modifiers { get; set; } = [];
+    public List<ModifierGroupNode> ModifierGroups { get; set; } = [];
+    public List<ForceEntry> ForceEntries { get; set; } = [];
 }
 
 internal sealed class CatalogueLink
@@ -85,6 +98,10 @@ internal sealed class CategoryLink
     public string Name { get; set; } = "";
     public string TargetId { get; set; } = "";
     public bool Primary { get; set; }
+
+    // On a force's categoryLink, min/max bounds cap how many of that category the
+    // roster may hold (a data-driven per-category limit).
+    public List<ConstraintNode> Constraints { get; set; } = [];
 }
 
 internal sealed class Cost
@@ -128,6 +145,10 @@ internal sealed class ConditionNode
     public double Value { get; set; }
     public string Field { get; set; } = "";
     public string ChildId { get; set; } = "";
+
+    // The referenced entry's name, used only for display (e.g. naming the battle
+    // size a cap modifier is gated on); matching is always by ChildId.
+    public string ChildName { get; set; } = "";
     public string Scope { get; set; } = "";
 }
 
@@ -145,6 +166,9 @@ internal sealed class ConditionGroupNode
 // (field "selections", scope parent/self) rather than a range in its name.
 internal sealed class ConstraintNode
 {
+    // The constraint's own id; a modifier targets a constraint by naming it in
+    // the modifier's Field, so caps that vary by battle size can be resolved.
+    public string Id { get; set; } = "";
     public string Type { get; set; } = "";
     public string Field { get; set; } = "";
     public string Scope { get; set; } = "";

@@ -47,7 +47,13 @@ internal static class BsDataXmlReader
 
         foreach (var c in Children(root, "costTypes", "costType"))
         {
-            doc.CostTypes.Add(new CostType { Id = Attr(c, "id"), Name = Attr(c, "name") });
+            doc.CostTypes.Add(new CostType
+            {
+                Id = Attr(c, "id"),
+                Name = Attr(c, "name"),
+                DefaultCostLimit = c.Attribute("defaultCostLimit") is { } dl
+                    && double.TryParse(dl.Value, System.Globalization.CultureInfo.InvariantCulture, out var dlv) ? dlv : -1,
+            });
         }
         foreach (var p in Children(root, "profileTypes", "profileType"))
         {
@@ -59,7 +65,7 @@ internal static class BsDataXmlReader
         }
         foreach (var f in Children(root, "forceEntries", "forceEntry"))
         {
-            doc.ForceEntries.Add(new ForceEntry { Id = Attr(f, "id"), Name = Attr(f, "name") });
+            doc.ForceEntries.Add(ReadForceEntry(f));
         }
         foreach (var p in Children(root, "sharedProfiles", "profile"))
         {
@@ -112,6 +118,49 @@ internal static class BsDataXmlReader
         return node;
     }
 
+    private static ForceEntry ReadForceEntry(XElement e)
+    {
+        var node = new ForceEntry
+        {
+            Id = Attr(e, "id"),
+            Name = Attr(e, "name"),
+            Hidden = Bool(e, "hidden"),
+            Constraints = ReadConstraints(e),
+        };
+        foreach (var c in Children(e, "categoryLinks", "categoryLink"))
+        {
+            node.CategoryLinks.Add(ReadCategoryLink(c));
+        }
+        foreach (var f in Children(e, "forceEntries", "forceEntry"))
+        {
+            node.ForceEntries.Add(ReadForceEntry(f));
+        }
+        // Battle-size cap modifiers are a 40k-JSON concept; classic XML systems
+        // (Kill Team) declare no such modifiers, so none are read here.
+        return node;
+    }
+
+    private static CategoryLink ReadCategoryLink(XElement e) => new()
+    {
+        Id = Attr(e, "id"),
+        Name = Attr(e, "name"),
+        TargetId = Attr(e, "targetId"),
+        Primary = Bool(e, "primary"),
+        Constraints = ReadConstraints(e),
+    };
+
+    private static List<ConstraintNode> ReadConstraints(XElement e) =>
+        Children(e, "constraints", "constraint")
+            .Select(c => new ConstraintNode
+            {
+                Id = Attr(c, "id"),
+                Type = Attr(c, "type"),
+                Field = Attr(c, "field"),
+                Scope = Attr(c, "scope"),
+                Value = Double(c, "value"),
+            })
+            .ToList();
+
     private static void FillSelection(SelectionNode node, XElement e)
     {
         node.Id = Attr(e, "id");
@@ -128,13 +177,7 @@ internal static class BsDataXmlReader
         }
         foreach (var c in Children(e, "categoryLinks", "categoryLink"))
         {
-            node.CategoryLinks.Add(new CategoryLink
-            {
-                Id = Attr(c, "id"),
-                Name = Attr(c, "name"),
-                TargetId = Attr(c, "targetId"),
-                Primary = Bool(c, "primary"),
-            });
+            node.CategoryLinks.Add(ReadCategoryLink(c));
         }
         foreach (var child in Children(e, "selectionEntries", "selectionEntry"))
         {
