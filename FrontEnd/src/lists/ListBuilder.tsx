@@ -974,6 +974,8 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
         </div>
       )}
 
+      <div className={`builder-workspace${pointless ? ' no-rail' : ''}`}>
+        <aside className="builder-rail">
       {!pointless && (
         <div className="list-setup">
           <div className="setup-title">Configuration</div>
@@ -1118,7 +1120,9 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
           </div>
         </div>
       )}
+        </aside>
 
+        <div className="builder-main">
       <div className="builder-hud">
         <div className="hud-metrics">
           {pointless ? (
@@ -1318,6 +1322,8 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
               renderForceEntries(list.forces[0]?.id ?? activeForceId)
             )}
           </div>
+        </div>
+      </div>
         </div>
       </div>
 

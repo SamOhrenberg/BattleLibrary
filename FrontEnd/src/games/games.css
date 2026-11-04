@@ -67,6 +67,14 @@
   gap: 8px;
 }
 
+/* Two columns of history on a wide card rather than one long scroll. */
+@media (min-width: 1200px) {
+  .game-list {
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+}
+
 .game-row {
   display: flex;
   align-items: flex-start;
@@ -256,6 +264,48 @@
 .session-body {
   display: grid;
   gap: 18px;
+}
+
+/* Live-game workspace. Mobile-first: everything stacks in one column. On a wide
+   display the primary panel (your round, or the player/army setup) keeps the
+   main column and the secondary panel (opponents, or the invite search) moves
+   to a sticky right rail, so the view fills the width instead of a tall
+   single column. The :has() guard keeps a single column when there's no rail. */
+.session-layout {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.session-main,
+.session-aside {
+  display: grid;
+  gap: 18px;
+  align-content: start;
+  min-width: 0;
+}
+
+@media (min-width: 1100px) {
+  .session-layout:has(.session-aside) {
+    grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
+    align-items: start;
+  }
+
+  .session-aside {
+    position: sticky;
+    top: env(safe-area-inset-top, 0px);
+  }
+
+  /* The rail is narrow, so opponent cards stack rather than sit two-up. */
+  .session-aside .opponent-cards {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Final standings read as a result card, so keep them to a tidy column width
+   rather than stretching across the full workspace. */
+.session-finished {
+  max-width: 760px;
 }
 
 .invite-actions { display: grid; gap: 8px; }

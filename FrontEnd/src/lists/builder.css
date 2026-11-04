@@ -48,6 +48,15 @@
   list-style: none;
 }
 
+/* A single long column of list cards leaves most of a wide card empty, so flow
+   them into two columns once there's room. */
+@media (min-width: 1200px) {
+  .list-index {
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+}
+
 .list-index li {
   display: flex;
   flex-wrap: wrap;
@@ -181,10 +190,13 @@
 }
 
 /* ---- Create form ---- */
+/* A form reads best in a single comfortable column, so cap it rather than
+   letting fields stretch the full width of a wide card. */
 .create-form {
   display: grid;
   gap: 14px;
   margin-top: 6px;
+  max-width: 680px;
 }
 
 .create-form label {
@@ -422,6 +434,56 @@
   cursor: pointer;
 }
 
+/* Builder workspace: on phones everything stacks in one column (the rail's
+   configuration/legality cards sit above the catalogue + list panels, exactly
+   as before). On a wide display the rail becomes a left sidebar and the panels
+   take the remaining width, so the desktop layout stops wasting horizontal
+   space in a single narrow column. */
+.builder-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  margin-top: 4px;
+}
+
+.builder-rail,
+.builder-main {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+  min-width: 0;
+}
+
+/* The rail's own margin-top rules on child cards would double the grid gap. */
+.builder-rail > *,
+.builder-main > * {
+  margin-top: 0;
+}
+
+@media (min-width: 1100px) {
+  .builder-workspace:not(.no-rail) {
+    grid-template-columns: minmax(300px, 340px) minmax(0, 1fr);
+    align-items: start;
+    gap: 20px;
+  }
+
+  /* The configuration sidebar tracks the viewport while the panels scroll, so
+     battle size, detachments and legality stay in reach on tall lists. */
+  .builder-workspace:not(.no-rail) .builder-rail {
+    position: sticky;
+    top: env(safe-area-inset-top, 0px);
+    max-height: calc(100vh - 32px);
+    overflow-y: auto;
+    padding-right: 2px;
+  }
+}
+
+@media (min-width: 1536px) {
+  .builder-workspace:not(.no-rail) {
+    grid-template-columns: minmax(320px, 380px) minmax(0, 1fr);
+  }
+}
+
 /* Mobile-first: one panel at a time, chosen by the segmented tabs below.
    Wide screens show both panels side by side and hide the tabs. */
 .builder-tabs {
@@ -604,6 +666,15 @@
     /* Fill most of the viewport so there's less scrolling inside the box. */
     max-height: calc(100vh - 280px);
     min-height: 440px;
+  }
+}
+
+/* With the sidebar layout the panels sit near the top of the main column, so
+   they can run taller and use the vertical space instead of leaving it empty. */
+@media (min-width: 1100px) {
+  .scroll {
+    max-height: calc(100vh - 210px);
+    min-height: 480px;
   }
 }
 

@@ -169,6 +169,8 @@ function SetupView({
 
   return (
     <div className="session-body">
+      <div className="session-layout">
+        <div className="session-main">
       <div>
         <h3 className="section-title">Players ({acceptedCount} ready · max {session.maxParticipants})</h3>
         <ul className="people-list">
@@ -258,7 +260,14 @@ function SetupView({
         </div>
       )}
 
-      {session.isHost && <InvitePicker session={session} act={act} />}
+        </div>
+
+        {session.isHost && (
+          <aside className="session-aside">
+            <InvitePicker session={session} act={act} />
+          </aside>
+        )}
+      </div>
 
       <div className="create-actions">
         {session.isHost && (
@@ -440,6 +449,8 @@ function ActiveView({
 
       <Scoreboard session={session} />
 
+      <div className="session-layout">
+        <div className="session-main">
       <div className="my-panel">
         <h3 className="section-title">Your round {round}</h3>
 
@@ -486,15 +497,19 @@ function ActiveView({
 
         <ActionPanel session={session} me={me} act={act} setError={setError} />
       </div>
-
-      {opponents.length > 0 && (
-        <div>
-          <h3 className="section-title">Opponents</h3>
-          <div className="opponent-cards">
-            {opponents.map((o) => <OpponentCard key={o.id} p={o} />)}
-          </div>
         </div>
-      )}
+
+        {opponents.length > 0 && (
+          <aside className="session-aside">
+            <div>
+              <h3 className="section-title">Opponents</h3>
+              <div className="opponent-cards">
+                {opponents.map((o) => <OpponentCard key={o.id} p={o} />)}
+              </div>
+            </div>
+          </aside>
+        )}
+      </div>
 
       <div className="create-actions">
         <button className="btn" onClick={() => act(() => leaveSession(session.id).then(() => undefined))}>Leave game</button>
@@ -676,7 +691,7 @@ function FinishedView({ session }: { session: GameSession }) {
   const players = [...session.participants.filter((p) => p.status === 'Accepted')].sort((a, b) => b.totalScore - a.totalScore)
   const best = players[0]?.totalScore ?? 0
   return (
-    <div className="session-body">
+    <div className="session-body session-finished">
       <h3 className="section-title">{session.status === 'Abandoned' ? 'Game abandoned' : 'Final standings'}</h3>
       <ol className="standings">
         {players.map((p) => (

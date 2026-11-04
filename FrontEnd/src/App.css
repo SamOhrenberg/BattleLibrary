@@ -6,7 +6,8 @@ body {
 }
 
 .app {
-  max-width: 980px;
+  width: 100%;
+  max-width: 1040px;
   margin: 0 auto;
   /* Mobile-first: tighter gutters that respect notches; roomier on wider screens.
      Extra bottom room clears the fixed bottom nav on phones. */
@@ -21,8 +22,30 @@ body {
 
 @media (min-width: 640px) {
   .app {
-    padding: 48px 20px;
+    padding: 40px 24px;
     gap: 24px;
+  }
+}
+
+/* The workspace is a tool, not an article: let it grow with the display so the
+   builder and live-game views have room instead of a narrow centre column.
+   Reading-width views (auth, forms, profile) are capped individually below. */
+@media (min-width: 1200px) {
+  .app {
+    max-width: 1200px;
+  }
+}
+
+@media (min-width: 1536px) {
+  .app {
+    max-width: 1440px;
+    padding: 48px 32px;
+  }
+}
+
+@media (min-width: 1920px) {
+  .app {
+    max-width: 1680px;
   }
 }
 
@@ -51,6 +74,20 @@ h2 {
   border-radius: 10px;
   padding: 18px 20px;
   min-width: 0;
+}
+
+/* The sign-in card is a focused form, so keep it to a comfortable column and
+   centred rather than letting it span the full workspace width. */
+.card.auth {
+  width: 100%;
+  max-width: 460px;
+  margin-inline: auto;
+}
+
+@media (min-width: 640px) {
+  .card {
+    padding: 22px 24px;
+  }
 }
 
 .status {
@@ -279,6 +316,12 @@ code {
 }
 
 /* ---- Section navigation ---- */
+/* A segmented control reads as a compact switch, so it stays a fixed size and
+   sits at the start of the row rather than stretching across a wide workspace. */
+.main-nav {
+  max-width: 440px;
+}
+
 /* Desktop: inline segmented under the header. Phones use the bottom bar instead. */
 .main-nav.top {
   display: none;

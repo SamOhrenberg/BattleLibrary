@@ -32,6 +32,15 @@
   margin-top: 16px;
   display: grid;
   gap: 18px;
+  /* Profile content (account details, friends, themes) reads best in a column
+     rather than spanning the full width of a wide card. */
+  max-width: 820px;
+}
+
+/* The profile section switcher is a segmented control, so keep it compact and
+   at the start of the card instead of stretching it full width. */
+.card > .segmented[role="tablist"] {
+  max-width: 440px;
 }
 
 .section-title {
