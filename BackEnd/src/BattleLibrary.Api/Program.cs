@@ -2,6 +2,7 @@ using System.Text;
 using BattleLibrary.Api.Admin;
 using BattleLibrary.Api.Auth;
 using BattleLibrary.Api.Catalogue;
+using BattleLibrary.Api.Feedback;
 using BattleLibrary.Api.Games;
 using BattleLibrary.Api.Hosting;
 using BattleLibrary.Api.Lists;
@@ -10,6 +11,7 @@ using BattleLibrary.Domain.Accounts;
 using BattleLibrary.Infrastructure;
 using BattleLibrary.Infrastructure.BsData;
 using BattleLibrary.Infrastructure.BsData.Caching;
+using BattleLibrary.Infrastructure.Feedback;
 using BattleLibrary.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
@@ -52,6 +54,22 @@ builder.Services.AddHttpClient<BsDataGitHubClient>(client =>
     }
 });
 builder.Services.AddHostedService<CatalogueRefreshBackgroundService>();
+
+var feedbackOptions = builder.Configuration.GetSection(FeedbackOptions.SectionName).Get<FeedbackOptions>() ?? new FeedbackOptions();
+builder.Services.AddSingleton(feedbackOptions);
+builder.Services.AddHttpClient<GitHubIssuesClient>(client =>
+{
+    client.BaseAddress = new Uri("https://api.github.com/");
+    client.Timeout = TimeSpan.FromSeconds(15);
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("BattleLibrary/0.1");
+    client.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
+    client.DefaultRequestHeaders.Add("X-GitHub-Api-Version", "2022-11-28");
+    if (feedbackOptions.Enabled)
+    {
+        client.DefaultRequestHeaders.Authorization =
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", feedbackOptions.GitHubToken);
+    }
+});
 
 builder.Services.AddOpenApi();
 builder.Services.AddSignalR();
@@ -156,6 +174,7 @@ app.MapPresetEndpoints();
 app.MapSocialEndpoints();
 app.MapGameEndpoints();
 app.MapGameSessionEndpoints();
+app.MapFeedbackEndpoints();
 app.MapHub<GameHub>("/hubs/game");
 
 // Ensure the settings row exists and grant admin to configured seed emails.

@@ -1,0 +1,110 @@
+.fb-optional {
+  color: var(--faint);
+}
+
+.fb-need {
+  font-size: 0.78rem;
+  color: var(--planned);
+}
+
+.profile-form textarea.fb-details {
+  min-height: 160px;
+}
+
+.fb-check {
+  display: flex !important;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  cursor: pointer;
+}
+
+.fb-check input {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--accent);
+}
+
+/* List rows are whole-row buttons. */
+.fb-row {
+  width: 100%;
+  min-height: 56px;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.fb-row:hover {
+  border-color: var(--accent);
+}
+
+.fb-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.fb-head h2 {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.fb-labels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.fb-body {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.5;
+}
+
+.fb-thread {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.fb-comment {
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface);
+}
+
+.fb-comment.maintainer {
+  border-left: 3px solid var(--accent);
+}
+
+.fb-comment-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.fb-author {
+  font-weight: 600;
+}
+
+.fb-github {
+  display: inline-flex;
+  align-items: center;
+  justify-self: start;
+  text-decoration: none;
+}
+
+.status-pill.fb-open { color: var(--planned); background: rgba(169, 116, 31, 0.16); }
+.status-pill.fb-done { color: var(--ok); background: rgba(47, 125, 83, 0.16); }
+.status-pill.fb-not_planned,
+.status-pill.fb-duplicate { color: var(--muted); }
+.status-pill.s-maintainer { color: var(--accent-ink); background: var(--accent); }

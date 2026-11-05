@@ -5,11 +5,12 @@ import { AuthPage } from './auth/AuthPage'
 import { ListsView } from './lists/ListsView'
 import { GamesView } from './games/GamesView'
 import { ProfileView } from './social/ProfileView'
+import { FeedbackView } from './feedback/FeedbackView'
 import { TourOverlay } from './onboarding/TourOverlay'
 import './App.css'
 
 type Health = { state: 'loading' | 'ok' | 'error' }
-type MainView = 'lists' | 'games' | 'profile'
+type MainView = 'lists' | 'games' | 'profile' | 'feedback'
 
 const NAV: { id: MainView; label: string; icon: ReactNode }[] = [
   {
@@ -74,6 +75,9 @@ function App() {
             >
               {user.username}
             </button>
+            <button type="button" className="link-button" onClick={() => setMainView('feedback')}>
+              Feedback
+            </button>
             <button type="button" className="link-button" onClick={() => void logout()}>
               Sign out
             </button>
@@ -119,6 +123,7 @@ function App() {
           {mainView === 'lists' && <ListsView />}
           {mainView === 'games' && <GamesView />}
           {mainView === 'profile' && <ProfileView username={user.username} email={user.email} />}
+          {mainView === 'feedback' && <FeedbackView />}
 
           <nav className="bottom-nav" aria-label="Sections">
             <div className="bottom-nav-in">

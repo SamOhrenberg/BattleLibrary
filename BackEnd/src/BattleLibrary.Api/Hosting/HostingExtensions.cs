@@ -19,6 +19,7 @@ public static class HostingExtensions
     public const string AuthPolicy = "auth";
     public const string SearchPolicy = "search";
     public const string ImportPolicy = "import";
+    public const string FeedbackPolicy = "feedback";
 
     // Console always; Axiom (OTLP over HTTP) when Axiom:Token is set.
     public static void AddStructuredLogging(this WebApplicationBuilder builder)
@@ -107,6 +108,11 @@ public static class HostingExtensions
             options.AddPolicy(ImportPolicy, http => RateLimitPartition.GetFixedWindowLimiter(
                 $"import:{ClientKey(http)}",
                 _ => new FixedWindowRateLimiterOptions { PermitLimit = 10, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
+
+            // Each submission opens a public GitHub issue.
+            options.AddPolicy(FeedbackPolicy, http => RateLimitPartition.GetFixedWindowLimiter(
+                $"feedback:{ClientKey(http)}",
+                _ => new FixedWindowRateLimiterOptions { PermitLimit = 5, Window = TimeSpan.FromHours(1), QueueLimit = 0 }));
 
             // Everything else: generous per-user/IP cap.
             options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(http =>

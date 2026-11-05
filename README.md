@@ -69,8 +69,7 @@ docker compose up -d
 ```
 
 **2. Create the database schema.** Migrations apply automatically in
-production, but not in Development, so run them once (and again after pulling
-new migrations):
+production, but not in Development.
 
 ```bash
 cd BackEnd
@@ -86,14 +85,11 @@ dotnet run --project src/BattleLibrary.Api
 ```
 
 **4. Load the army data.** The catalogue starts empty. With the API running,
-trigger a refresh (the dev admin key is `dev-admin-key`). It downloads and
-parses both data sources, which takes a minute or two:
+trigger a refresh.
 
 ```bash
 curl -X POST -H "X-Admin-Key: dev-admin-key" http://localhost:5080/api/admin/catalogue/refresh
 ```
-
-On Windows PowerShell, use `curl.exe` instead of `curl`.
 
 **5. Run the UI** at http://localhost:5173:
 
@@ -103,35 +99,27 @@ npm install
 npm run dev
 ```
 
-The landing page shows a green API status when the UI can reach the API.
-
-**6. Create an account.** Registration is invite-only by default, but the first
-account on an empty database is always allowed and becomes the site admin. From
-there, the admin panel on the Profile page can open registration or create
+**6. Create an account.** Registration is invite-only by default. The first
+account after initial creation is allowed, though, and is made the admin. There is an admin panel on the Profile page can open registration or create
 invites for test accounts.
 
 ### Running the tests
+
+For the backend, which uses xUnit.
 
 ```bash
 cd BackEnd
 dotnet run --project tests/BattleLibrary.Tests
 ```
 
-The tests use xUnit v3 on Microsoft.Testing.Platform, so run the test project
-directly (`dotnet test` with VSTest is not used). Some parser tests need real
-BSData files and skip unless `BSDATA_TEST_DIR` points at a folder containing
-them. See [CONTRIBUTING.md](CONTRIBUTING.md#tests).
-
 For the UI, `npm run lint` runs oxlint and `npm run build` type-checks and
 builds.
 
 ## Configuration
 
-Development defaults live in `BackEnd/src/BattleLibrary.Api/appsettings.Development.json`
-and are enough to run locally. To override a setting without editing tracked
-files, create `appsettings.json` next to it (it is gitignored) or use
-environment variables, with `__` as the section separator
-(`BsData__GitHubToken=...`).
+Development defaults live in `BackEnd/src/BattleLibrary.Api/appsettings.Development.json`.
+
+Create an `appsettings.json` (gitignored) to override the defaults without modifying the development.json file. 
 
 | Setting | Purpose |
 |---|---|
@@ -162,21 +150,6 @@ All require the `X-Admin-Key` header.
   and drop it from memory. It stays off across restarts until re-enabled.
 - `POST /api/admin/catalogue/{key}/purge`: drop a game system from memory until
   the next refresh.
-
-## Deployment
-
-- **API + database (Railway):** set the service root directory to `BackEnd` so
-  its `Dockerfile` is used. Railway injects `PORT` and `DATABASE_URL`, both
-  honored automatically. Migrations run at startup. Non-secret production
-  settings are in `appsettings.Production.json`; set secrets as Railway
-  variables: `Jwt__Key`, `Admin__ApiKey`, `Cors__AllowedOrigins__0` (the Pages
-  origin), and optionally `Admin__SeedEmails__0`, `BsData__GitHubToken`, and
-  `Axiom__Token`.
-- **UI (GitHub Pages):** the `Deploy frontend to Pages` workflow builds and
-  publishes `FrontEnd/` on pushes to `main` that touch it. Set
-  **repository-level** Actions variables `VITE_API_BASE_URL` and `VITE_BASE`
-  (environment-level variables are not visible to the build job), and set the
-  Pages source to GitHub Actions.
 
 ## Data source and data rights
 

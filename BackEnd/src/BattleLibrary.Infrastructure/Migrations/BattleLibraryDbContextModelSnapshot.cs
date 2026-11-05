@@ -172,6 +172,69 @@ namespace BattleLibrary.Infrastructure.Migrations
                     b.ToTable("Users");
                 });
 
+            modelBuilder.Entity("BattleLibrary.Domain.Feedback.FeedbackReport", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Area")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<int>("CommentCount")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("IssueNumber")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("IssueUpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("IssueUrl")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("integer");
+
+                    b.PrimitiveCollection<List<string>>("Labels")
+                        .IsRequired()
+                        .HasColumnType("text[]");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<string>("StateReason")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<DateTimeOffset>("SyncedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("IssueNumber")
+                        .IsUnique();
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("FeedbackReports");
+                });
+
             modelBuilder.Entity("BattleLibrary.Domain.Games.Game", b =>
                 {
                     b.Property<Guid>("Id")
@@ -595,6 +658,17 @@ namespace BattleLibrary.Infrastructure.Migrations
                 {
                     b.HasOne("BattleLibrary.Domain.Accounts.User", "User")
                         .WithMany("RefreshTokens")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("BattleLibrary.Domain.Feedback.FeedbackReport", b =>
+                {
+                    b.HasOne("BattleLibrary.Domain.Accounts.User", "User")
+                        .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();

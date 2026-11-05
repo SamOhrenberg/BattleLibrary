@@ -1,5 +1,6 @@
 using BattleLibrary.Domain.Accounts;
 using BattleLibrary.Domain.Common;
+using BattleLibrary.Domain.Feedback;
 using BattleLibrary.Domain.Games;
 using BattleLibrary.Domain.Lists;
 using BattleLibrary.Domain.Social;
@@ -31,6 +32,8 @@ public class BattleLibraryDbContext(DbContextOptions<BattleLibraryDbContext> opt
     public DbSet<Game> Games => Set<Game>();
     public DbSet<GameSession> GameSessions => Set<GameSession>();
     public DbSet<GameParticipant> GameParticipants => Set<GameParticipant>();
+
+    public DbSet<FeedbackReport> FeedbackReports => Set<FeedbackReport>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
