@@ -291,6 +291,11 @@
   font: inherit;
 }
 
+.create-faction-region {
+  display: grid;
+  gap: 14px;
+}
+
 .create-grid {
   display: grid;
   grid-template-columns: 1fr;
@@ -736,6 +741,17 @@
   -webkit-overflow-scrolling: touch;
 }
 
+/* Phones: drop the inner scroll box so the page scrolls as one. An inner
+   max-height let the panel's bottom slip under the fixed bottom nav, hiding the
+   last row; page scroll uses the app's nav padding instead. */
+@media (max-width: 819px) {
+  .scroll {
+    max-height: none;
+    min-height: 0;
+    overflow: visible;
+  }
+}
+
 @media (min-width: 820px) {
   .scroll {
     /* Fill most of the viewport so there's less scrolling inside the box. */
@@ -756,9 +772,8 @@
 .unit-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 9px 14px;
+  gap: 12px;
+  padding: 11px 14px;
   border-bottom: 1px solid var(--border);
 }
 
@@ -767,6 +782,13 @@
 }
 
 .unit-row .unit-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  /* Undo the global .unit-name truncation (games.css) so names wrap in full. */
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  overflow-wrap: anywhere;
   background: none;
   border: none;
   padding: 0;
@@ -774,6 +796,7 @@
   color: var(--accent);
   font: inherit;
   font-weight: 500;
+  line-height: 1.3;
   cursor: pointer;
   text-decoration: underline;
   text-decoration-style: dotted;
@@ -794,15 +817,17 @@
 }
 
 .unit-row .unit-pts {
+  flex: none;
   color: var(--muted);
   font-size: 0.82rem;
   font-variant-numeric: tabular-nums;
-  margin-left: auto;
 }
 
 .add-btn {
-  padding: 8px 14px;
-  min-height: 38px;
+  flex: none;
+  padding: 8px 16px;
+  min-height: 44px;
+  min-width: 60px;
   border: 1px solid var(--accent);
   border-radius: 6px;
   background: transparent;
@@ -2958,4 +2983,157 @@
   border-radius: 999px;
   background: var(--surface);
   border: 1px solid var(--border);
+}
+
+/* ============================================================
+   Mobile rework (phones). Desktop (>=820px) keeps its layout.
+   ============================================================ */
+@media (max-width: 819px) {
+  /* --- Reclaim the side gutters: the builder is a full-screen tool, so the
+     card's own padding stacked on the app gutter wastes a lot of width. Cancel
+     the app gutter with matching negative margins (exact same expression, so it
+     zeroes out) and drop the side border/radius: the builder goes edge to edge,
+     with small inner padding doing the breathing. --- */
+  .card.builder-card {
+    margin-left: calc(-1 * max(16px, env(safe-area-inset-left)));
+    margin-right: calc(-1 * max(16px, env(safe-area-inset-right)));
+    padding-left: max(10px, env(safe-area-inset-left));
+    padding-right: max(10px, env(safe-area-inset-right));
+    border-left: none;
+    border-right: none;
+    border-radius: 0;
+  }
+
+  /* The panels full-bleed past the card's 10px padding, so the only side gutter
+     for units is the row's own padding (not padding on padding). The top chrome
+     and HUD keep the card's small gutter. */
+  .builder-grid {
+    margin-left: calc(-1 * max(10px, env(safe-area-inset-left)));
+    margin-right: calc(-1 * max(10px, env(safe-area-inset-right)));
+  }
+
+  .builder-grid .panel {
+    border-left: none;
+    border-right: none;
+    border-radius: 0;
+  }
+
+  /* --- Dense unit rows: pack more units in. Row height is the text (or the
+     Add button) plus a few px, not a fixed tall touch target. --- */
+  .unit-row {
+    gap: 10px;
+    padding: 4px 12px;
+  }
+
+  .unit-row .unit-name {
+    line-height: 1.2;
+  }
+
+  .unit-row .add-btn {
+    min-height: 32px;
+    padding: 5px 14px;
+  }
+
+  /* Tighten the role-group headers, and drop their sticky positioning: with the
+     page (not an inner box) scrolling, sticky headers would pile under the HUD. */
+  .role-summary {
+    position: static;
+    padding-top: 6px;
+    padding-bottom: 6px;
+  }
+
+  .role-group {
+    margin-bottom: 8px;
+  }
+
+  /* --- Top chrome: name on its own line, actions as a tidy full row --- */
+  .builder-meta {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .builder-meta .points-readout {
+    text-align: left;
+  }
+
+  .builder-meta .lists-actions {
+    display: flex;
+    gap: 8px;
+  }
+
+  /* Save carries the row; Export and Delete stay compact beside it. */
+  .builder-meta .lists-actions > .btn-primary {
+    flex: 1 1 auto;
+  }
+
+  .builder-meta .export-menu,
+  .builder-meta .export-menu > .btn {
+    flex: 0 0 auto;
+  }
+
+  /* --- Force tabs: one swipeable strip instead of a growing wrap --- */
+  .force-tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding-bottom: 2px;
+  }
+
+  .force-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .force-tab {
+    flex: 0 0 auto;
+    min-height: 40px;
+  }
+
+  /* --- Catalogue header: full-width search, roomier controls --- */
+  .panel-head {
+    flex-wrap: wrap;
+  }
+
+  .panel-head-actions {
+    width: 100%;
+    gap: 8px 10px;
+  }
+
+  .catalogue-search {
+    flex: 1 1 140px;
+    width: auto;
+    min-height: 42px;
+  }
+
+  .catalogue-sort {
+    flex: 0 0 auto;
+    min-height: 42px;
+  }
+
+  .collapse-all {
+    min-height: 40px;
+    padding: 2px 8px;
+  }
+
+  /* --- Roster entries: let long names wrap rather than clip --- */
+  .entry-row .entry-name {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+    overflow-wrap: anywhere;
+    line-height: 1.3;
+  }
+
+  /* --- Bigger thumb targets on the list-side controls --- */
+  .qty button,
+  .icon-btn {
+    width: 40px;
+    height: 40px;
+  }
+
+  .reorder-btn {
+    min-width: 38px;
+    min-height: 38px;
+  }
 }

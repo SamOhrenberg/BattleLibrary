@@ -11,12 +11,19 @@ import {
 // step can advance the moment the real task is done rather than on "Next".
 export type TourMilestone = 'open-create' | 'list-created' | 'entry-added' | 'saved'
 
+// How a step may be advanced. When the target is interactive the overlay works
+// this out from the DOM, so 'none' is only set to opt an informational step
+// (one that points at a container) out of requiring interaction.
+export type TourInteraction = 'click' | 'input' | 'none'
+
 export interface TourStep {
   target: string
   title: string
   body: string
   placement?: 'top' | 'bottom' | 'left' | 'right'
   advanceOn?: TourMilestone
+  // Override auto-detection of the target's interaction requirement.
+  interact?: TourInteraction
 }
 
 export const TOUR_STEPS: TourStep[] = [
@@ -57,6 +64,7 @@ export const TOUR_STEPS: TourStep[] = [
     title: 'Browse your units',
     body: 'Here is your faction’s catalogue. Search by name, and click any unit to see its stat line, weapons, and abilities.',
     placement: 'right',
+    interact: 'none',
   },
   {
     target: 'catalogue-add',
@@ -70,6 +78,7 @@ export const TOUR_STEPS: TourStep[] = [
     title: 'Watch the total',
     body: 'Your running points total lives here. Adjust quantities on the right; the total - and the over-limit warning - update live.',
     placement: 'bottom',
+    interact: 'none',
   },
   {
     target: 'save-list',

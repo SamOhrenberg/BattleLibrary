@@ -1,0 +1,351 @@
+/* Install-to-home-screen guide. A bottom sheet on phones, centered card on wider screens. */
+.install-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 950;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(4, 7, 14, 0.62);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  animation: install-fade 0.2s ease;
+}
+
+.install-sheet {
+  position: relative;
+  width: 100%;
+  max-height: 92vh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  padding: 14px 18px calc(18px + env(safe-area-inset-bottom, 0px));
+  border: 1px solid var(--line);
+  border-bottom: none;
+  border-radius: 22px 22px 0 0;
+  background:
+    radial-gradient(120% 60% at 50% -10%, color-mix(in srgb, var(--accent) 22%, transparent), transparent 60%),
+    radial-gradient(80% 40% at 100% 0%, color-mix(in srgb, var(--accent-2) 14%, transparent), transparent 70%),
+    var(--surface-solid);
+  color: var(--fg);
+  box-shadow: 0 -18px 50px rgba(0, 0, 0, 0.45);
+  animation: install-up 0.28s cubic-bezier(0.2, 0.9, 0.3, 1);
+}
+
+.install-sheet:focus {
+  outline: none;
+}
+
+.install-grip {
+  width: 40px;
+  height: 4px;
+  margin: 0 auto 6px;
+  border-radius: 999px;
+  background: var(--faint);
+  opacity: 0.5;
+}
+
+.install-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 44px;
+  height: 44px;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: var(--faint);
+  font-size: 1.6rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.install-close:hover,
+.install-close:focus-visible {
+  color: var(--fg);
+}
+
+/* Hero */
+.install-hero {
+  text-align: center;
+  padding: 10px 8px 4px;
+}
+
+.install-icon-wrap {
+  display: inline-grid;
+  place-items: center;
+  width: 84px;
+  height: 84px;
+  margin-bottom: 12px;
+  border-radius: 22px;
+  background: var(--bg);
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  box-shadow:
+    0 0 0 6px color-mix(in srgb, var(--accent) 10%, transparent),
+    0 10px 32px color-mix(in srgb, var(--accent) 30%, transparent);
+  animation: install-float 4s ease-in-out infinite;
+}
+
+.install-icon-wrap img {
+  width: 72px;
+  height: 72px;
+  border-radius: 18px;
+}
+
+.install-eyebrow {
+  margin: 0 0 4px;
+  font-family: var(--f-mono);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.install-hero h2 {
+  margin: 0 auto;
+  max-width: 22ch;
+  font-family: var(--f-display);
+  font-size: 1.45rem;
+  line-height: 1.2;
+  letter-spacing: 0.005em;
+}
+
+.install-lede {
+  margin: 8px auto 0;
+  max-width: 34ch;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+/* Benefits */
+.install-benefits {
+  list-style: none;
+  margin: 18px 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.install-benefits li {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface-2);
+  font-size: 0.8rem;
+  line-height: 1.35;
+}
+
+.install-benefits b {
+  display: block;
+  font-size: 0.86rem;
+  margin-bottom: 2px;
+}
+
+.install-benefit-body {
+  color: var(--muted);
+}
+
+.install-benefit-icon {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+.install-benefit-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* Steps */
+.install-steps {
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--accent) 6%, var(--surface-solid));
+}
+
+.install-steps-title {
+  margin: 0 0 10px;
+  font-family: var(--f-display);
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.install-steps ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.install-steps li {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  font-size: 0.88rem;
+  line-height: 1.55;
+}
+
+.install-step-n {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  margin-top: 1px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-family: var(--f-mono);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.install-step-text b {
+  color: var(--fg);
+}
+
+.install-glyph {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  margin: 0 1px;
+  vertical-align: -6px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface-2);
+  color: var(--accent);
+}
+
+.install-glyph svg {
+  width: 14px;
+  height: 14px;
+}
+
+.install-onetap {
+  margin: 14px 0 0;
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+/* Actions */
+.install-actions {
+  margin-top: 16px;
+  display: grid;
+  gap: 6px;
+}
+
+.install-btn {
+  min-height: 50px;
+  border: none;
+  border-radius: 14px;
+  font-family: var(--f-display);
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+}
+
+.install-btn.primary {
+  background: var(--accent);
+  color: var(--accent-ink);
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+.install-btn.primary:active {
+  transform: translateY(1px);
+}
+
+.install-btn:focus-visible,
+.install-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.install-secondary {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 4px;
+  color: var(--faint);
+}
+
+.install-link {
+  min-height: 44px;
+  padding: 0 10px;
+  border: none;
+  background: none;
+  color: var(--muted);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.install-link:hover {
+  color: var(--fg);
+}
+
+@media (min-width: 640px) {
+  .install-backdrop {
+    align-items: center;
+    padding: 16px;
+  }
+  .install-sheet {
+    max-width: 480px;
+    border-bottom: 1px solid var(--line);
+    border-radius: 22px;
+    padding: 18px 24px 22px;
+  }
+  .install-grip {
+    display: none;
+  }
+}
+
+@keyframes install-up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+@keyframes install-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes install-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-4px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .install-backdrop,
+  .install-sheet,
+  .install-icon-wrap {
+    animation: none;
+  }
+}

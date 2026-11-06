@@ -867,7 +867,7 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
   }
 
   return (
-    <section className="card">
+    <section className="card builder-card">
       <div className="builder-bar">
         <div className="builder-id">
           <button type="button" className="tour-skip" onClick={onBack} style={{ textAlign: 'left' }}>

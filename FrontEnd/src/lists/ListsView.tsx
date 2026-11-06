@@ -553,60 +553,62 @@ function CreateForm({ onCreated, onCancel }: { onCreated: (list: ArmyList) => vo
         <input value={name} onChange={(e) => setName(e.target.value)} maxLength={120} autoFocus required />
       </label>
 
-      <div className="create-grid" data-tour="create-faction">
-        <label>
-          Game system
-          <select value={systemKey} onChange={(e) => setSystemKey(e.target.value)}>
-            {systems.length === 0 && <option value="">Loading…</option>}
-            {systems.map((s) => (
-              <option key={s.key} value={s.key}>{s.name}</option>
-            ))}
-          </select>
-        </label>
-        {tree.hierarchical ? (
-          <label>
-            Alliance
-            <select value={alliance} onChange={(e) => pickAlliance(e.target.value)}>
-              {tree.alliances.map((a) => (
-                <option key={a} value={a}>{a}</option>
-              ))}
-            </select>
-          </label>
-        ) : (
-          <label>
-            Faction
-            <select value={factionId} onChange={(e) => setFactionId(e.target.value)}>
-              {factions.length === 0 && <option value="">Loading…</option>}
-              {factions.map((f) => (
-                <option key={f.id} value={f.id}>{f.name}</option>
-              ))}
-            </select>
-          </label>
-        )}
-      </div>
-
-      {tree.hierarchical && (
+      <div className="create-faction-region" data-tour="create-faction">
         <div className="create-grid">
           <label>
-            Faction
-            <select value={group} onChange={(e) => pickGroup(e.target.value)}>
-              {(tree.groups[alliance] ?? []).map((g) => (
-                <option key={g} value={g}>{g}</option>
+            Game system
+            <select value={systemKey} onChange={(e) => setSystemKey(e.target.value)}>
+              {systems.length === 0 && <option value="">Loading…</option>}
+              {systems.map((s) => (
+                <option key={s.key} value={s.key}>{s.name}</option>
               ))}
             </select>
           </label>
-          {leafOptions.length > 1 && (
+          {tree.hierarchical ? (
             <label>
-              Chapter
+              Alliance
+              <select value={alliance} onChange={(e) => pickAlliance(e.target.value)}>
+                {tree.alliances.map((a) => (
+                  <option key={a} value={a}>{a}</option>
+                ))}
+              </select>
+            </label>
+          ) : (
+            <label>
+              Faction
               <select value={factionId} onChange={(e) => setFactionId(e.target.value)}>
-                {leafOptions.map((l) => (
-                  <option key={l.id} value={l.id}>{l.label}</option>
+                {factions.length === 0 && <option value="">Loading…</option>}
+                {factions.map((f) => (
+                  <option key={f.id} value={f.id}>{f.name}</option>
                 ))}
               </select>
             </label>
           )}
         </div>
-      )}
+
+        {tree.hierarchical && (
+          <div className="create-grid">
+            <label>
+              Faction
+              <select value={group} onChange={(e) => pickGroup(e.target.value)}>
+                {(tree.groups[alliance] ?? []).map((g) => (
+                  <option key={g} value={g}>{g}</option>
+                ))}
+              </select>
+            </label>
+            {leafOptions.length > 1 && (
+              <label>
+                Chapter
+                <select value={factionId} onChange={(e) => setFactionId(e.target.value)}>
+                  {leafOptions.map((l) => (
+                    <option key={l.id} value={l.id}>{l.label}</option>
+                  ))}
+                </select>
+              </label>
+            )}
+          </div>
+        )}
+      </div>
 
       {!pointless && (
         <div className="create-grid" data-tour="create-limit">

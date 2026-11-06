@@ -132,6 +132,11 @@
   font-weight: 600;
 }
 
+.tour-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .tour-skip {
   border: none;
   background: none;

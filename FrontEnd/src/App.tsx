@@ -7,6 +7,7 @@ import { GamesView } from './games/GamesView'
 import { ProfileView } from './social/ProfileView'
 import { FeedbackView } from './feedback/FeedbackView'
 import { TourOverlay } from './onboarding/TourOverlay'
+import { InstallPrompt } from './onboarding/InstallPrompt'
 import './App.css'
 
 type Health = { state: 'loading' | 'ok' | 'error' }
@@ -144,6 +145,7 @@ function App() {
       )}
 
       <TourOverlay />
+      <InstallPrompt />
     </main>
   )
 }

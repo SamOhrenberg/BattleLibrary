@@ -30,6 +30,8 @@ Registration on the hosted app is currently invite-only.
 - **Rule search:** search unit abilities, weapons, and detachment rules while
   building or playing.
 - **Mobile first:** designed for a phone at the table, with five color themes.
+- **Installable:** a Progressive Web App. Army data is cached on the device. Saving lists and games still
+  needs a connection.
 
 ## Stack
 

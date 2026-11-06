@@ -8,6 +8,7 @@ import { TourProvider } from './onboarding/TourContext'
 import { ToastProvider } from './ui/Toast'
 import { initTheme } from './styles/theme'
 import { ErrorBoundary } from './ui/ErrorBoundary'
+import { PwaStatus } from './ui/PwaStatus'
 
 // Apply the saved (or default) theme before the first paint.
 initTheme()
@@ -20,6 +21,7 @@ createRoot(document.getElementById('root')!).render(
         <TourProvider>
           <App />
         </TourProvider>
+        <PwaStatus />
       </ToastProvider>
     </AuthProvider>
     </ErrorBoundary>

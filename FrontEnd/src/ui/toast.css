@@ -83,3 +83,15 @@
     animation: none;
   }
 }
+
+/* PWA status pins to the top so it never overlaps the toast stack. */
+.pwa-host,
+.pwa-host.toast-host {
+  z-index: 901;
+  top: calc(12px + env(safe-area-inset-top, 0px));
+  bottom: auto;
+}
+
+.pwa-host .toast {
+  align-items: center;
+}
