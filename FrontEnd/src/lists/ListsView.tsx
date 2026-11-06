@@ -5,6 +5,7 @@ import { BATTLE_SIZES, createList, deleteList, duplicateList, exportRoster, getL
 import { BATTLE_SIZE_RULES } from './validation'
 import { useTour } from '../onboarding/TourContext'
 import { useToast } from '../ui/Toast'
+import { OverflowMenu } from '../ui/OverflowMenu'
 import { ListBuilder } from './ListBuilder'
 import './builder.css'
 
@@ -134,11 +135,8 @@ export function ListsView() {
           )}
           {view === 'index' && (
             <>
-              <button type="button" className="btn" onClick={tour.start}>
-                {tour.hasRun ? 'Replay tour' : 'Take the tour'}
-              </button>
               <button type="button" className="btn" onClick={() => fileInputRef.current?.click()}>
-                Import .rosz
+                Import roster
               </button>
               <button type="button" className="btn btn-primary" data-tour="new-list" onClick={openCreate}>
                 New list
@@ -162,6 +160,8 @@ export function ListsView() {
           systemNames={systemNames}
           onOpen={(id) => void openList(id)}
           onNew={openCreate}
+          onTour={tour.start}
+          tourLabel={tour.hasRun ? 'Replay the tour' : 'Take the tour'}
           onDuplicate={(id) => void onDuplicate(id)}
           onDelete={(id) => void onDelete(id)}
           onExport={(id, name) => void onExport(id, name)}
@@ -177,50 +177,34 @@ export function ListsView() {
   )
 }
 
-// Lists shown as a two-level tree: game system, then army (faction). Each level
-// is collapsible, and its open/closed state is remembered per browser.
+// Lists grouped by army (faction), filtered by game system when more than one is in use.
+// Group open/closed state is remembered per browser.
 const COLLAPSE_KEY = 'battlelibrary.lists.collapsed'
+const ALL_SYSTEMS = ''
 
-// An army group within a game, and a game group holding its armies.
 interface ArmyGroup {
   key: string
   faction: string
+  system: string
   lists: ArmyListSummary[]
 }
-interface GameGroup {
-  key: string
-  game: string
-  count: number
-  armies: ArmyGroup[]
-}
 
-function groupLists(lists: ArmyListSummary[], systemNames: Record<string, string>): GameGroup[] {
-  const games = new Map<string, Map<string, ArmyListSummary[]>>()
+// "Chaos - Chaos Daemons" reads as "Chaos Daemons" once grouped under that faction.
+const shortFaction = (name: string) => name.split(' - ').pop() || name
+
+function groupLists(lists: ArmyListSummary[], systemNames: Record<string, string>): ArmyGroup[] {
+  const groups = new Map<string, ArmyGroup>()
   for (const l of lists) {
-    const game = systemNames[l.gameSystemKey] ?? l.gameSystemKey
-    let armies = games.get(game)
-    if (!armies) {
-      armies = new Map<string, ArmyListSummary[]>()
-      games.set(game, armies)
-    }
     const faction = l.factionName || 'Unknown army'
-    const bucket = armies.get(faction)
-    if (bucket) bucket.push(l)
-    else armies.set(faction, [l])
+    const key = `${l.gameSystemKey}\u0000${faction}`
+    let group = groups.get(key)
+    if (!group) {
+      group = { key, faction, system: systemNames[l.gameSystemKey] ?? l.gameSystemKey, lists: [] }
+      groups.set(key, group)
+    }
+    group.lists.push(l)
   }
-  return [...games.entries()]
-    .sort((a, b) => a[0].localeCompare(b[0]))
-    .map(([game, armies]) => {
-      const armyGroups = [...armies.entries()]
-        .sort((a, b) => a[0].localeCompare(b[0]))
-        .map(([faction, groupLists]) => ({ key: `${game}\u0000${faction}`, faction, lists: groupLists }))
-      return {
-        key: game,
-        game,
-        count: armyGroups.reduce((n, a) => n + a.lists.length, 0),
-        armies: armyGroups,
-      }
-    })
+  return [...groups.values()].sort((a, b) => a.faction.localeCompare(b.faction) || a.system.localeCompare(b.system))
 }
 
 function loadCollapsed(): Set<string> {
@@ -238,6 +222,8 @@ function ListIndex({
   systemNames,
   onOpen,
   onNew,
+  onTour,
+  tourLabel,
   onDuplicate,
   onDelete,
   onExport,
@@ -246,11 +232,15 @@ function ListIndex({
   systemNames: Record<string, string>
   onOpen: (id: string) => void
   onNew: () => void
+  onTour: () => void
+  tourLabel: string
   onDuplicate: (id: string) => void
   onDelete: (id: string) => void
   onExport: (id: string, name: string) => void
 }) {
   const [collapsed, setCollapsed] = useState<Set<string>>(loadCollapsed)
+  const [system, setSystem] = useState(ALL_SYSTEMS)
+  const [query, setQuery] = useState('')
 
   function toggle(key: string) {
     setCollapsed((prev) => {
@@ -266,78 +256,107 @@ function ListIndex({
     })
   }
 
-  const games = useMemo(() => groupLists(lists ?? [], systemNames), [lists, systemNames])
+  const systems = useMemo(
+    () =>
+      [...new Set((lists ?? []).map((l) => l.gameSystemKey))]
+        .map((key) => ({ key, name: systemNames[key] ?? key }))
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    [lists, systemNames],
+  )
+  const multiSystem = systems.length > 1
+  const term = query.trim().toLowerCase()
+
+  const visible = useMemo(
+    () =>
+      (lists ?? []).filter(
+        (l) =>
+          (system === ALL_SYSTEMS || l.gameSystemKey === system) &&
+          (!term || l.name.toLowerCase().includes(term) || l.factionName.toLowerCase().includes(term)),
+      ),
+    [lists, system, term],
+  )
+  const groups = useMemo(() => groupLists(visible, systemNames), [visible, systemNames])
 
   if (lists === null) return <p className="hint">Loading…</p>
   if (lists.length === 0) {
     return (
-      <p className="hint">
-        No lists yet. Press <button type="button" className="link-button" onClick={onNew}>New list</button> to build
-        your first - or take the tour.
-      </p>
+      <div className="empty-note">
+        <p>No lists yet. Build your first army list, or import a BattleScribe roster.</p>
+        <button type="button" className="btn btn-primary" onClick={onNew}>New list</button>
+        <p className="tour-link">
+          <button type="button" className="link-button" onClick={onTour}>{tourLabel}</button>
+        </p>
+      </div>
     )
   }
 
   return (
     <div className="list-groups">
-      {games.map((game) => {
-        const gameOpen = !collapsed.has(game.key)
+      {(multiSystem || lists.length > 5) && (
+        <div className="list-filters">
+          {lists.length > 5 && (
+            <input
+              className="list-search"
+              type="search"
+              enterKeyHint="search"
+              aria-label="Search lists"
+              placeholder="Search lists"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+          )}
+          {multiSystem && (
+            <select aria-label="Game system" className="list-system" value={system} onChange={(e) => setSystem(e.target.value)}>
+              <option value={ALL_SYSTEMS}>All game systems</option>
+              {systems.map((s) => (
+                <option key={s.key} value={s.key}>{s.name}</option>
+              ))}
+            </select>
+          )}
+        </div>
+      )}
+
+      {groups.length === 0 && <p className="hint">No lists match.</p>}
+
+      {groups.map((group) => {
+        const open = !collapsed.has(group.key) || !!term
         return (
-          <section className="list-group game-group" key={game.key}>
+          <section className="list-group army-group" key={group.key}>
             <button
               type="button"
-              className="group-head game-head"
-              aria-expanded={gameOpen}
-              onClick={() => toggle(game.key)}
+              className="group-head army-head"
+              aria-expanded={open}
+              onClick={() => toggle(group.key)}
             >
-              <span className={`group-caret${gameOpen ? ' open' : ''}`} aria-hidden="true">▸</span>
-              <span className="group-title">{game.game}</span>
-              <span className="group-count">
-                {game.count} {game.count === 1 ? 'list' : 'lists'}
+              <span className={`group-caret${open ? ' open' : ''}`} aria-hidden="true">▸</span>
+              <span className="group-title">
+                {group.faction}
+                {multiSystem && system === ALL_SYSTEMS && <span className="group-system">{group.system}</span>}
               </span>
+              <span className="group-count">{group.lists.length}</span>
             </button>
 
-            {gameOpen && (
-              <div className="group-body">
-                {game.armies.map((army) => {
-                  const armyOpen = !collapsed.has(army.key)
-                  return (
-                    <section className="list-group army-group" key={army.key}>
-                      <button
-                        type="button"
-                        className="group-head army-head"
-                        aria-expanded={armyOpen}
-                        onClick={() => toggle(army.key)}
-                      >
-                        <span className={`group-caret${armyOpen ? ' open' : ''}`} aria-hidden="true">▸</span>
-                        <span className="group-title">{army.faction}</span>
-                        <span className="group-count">
-                          {army.lists.length} {army.lists.length === 1 ? 'list' : 'lists'}
-                        </span>
-                      </button>
-
-                      {armyOpen && (
-                        <ul className="list-index">
-                          {army.lists.map((l) => (
-                            <ListRow
-                              key={l.id}
-                              list={l}
-                              onOpen={onOpen}
-                              onDuplicate={onDuplicate}
-                              onDelete={onDelete}
-                              onExport={onExport}
-                            />
-                          ))}
-                        </ul>
-                      )}
-                    </section>
-                  )
-                })}
-              </div>
+            {open && (
+              <ul className="list-index">
+                {group.lists.map((l) => (
+                  <ListRow
+                    key={l.id}
+                    list={l}
+                    onOpen={onOpen}
+                    onDuplicate={onDuplicate}
+                    onDelete={onDelete}
+                    onExport={onExport}
+                  />
+                ))}
+              </ul>
             )}
           </section>
         )
       })}
+
+      <p className="tour-link">
+        <button type="button" className="link-button" onClick={onTour}>{tourLabel}</button>
+      </p>
     </div>
   )
 }
@@ -356,56 +375,35 @@ function ListRow({
   onExport: (id: string, name: string) => void
 }) {
   return (
-    <li onClick={() => onOpen(l.id)}>
-      <div>
-        <div className="li-name">
-          {l.name}
+    <li className="list-card" onClick={() => onOpen(l.id)}>
+      <div className="lc-main">
+        <div className="lc-top">
+          <span className="li-name">{l.name}</span>
+          <span className="li-points">
+            {l.total}
+            {l.pointsLimit != null ? ` / ${l.pointsLimit}` : ''} pts
+          </span>
+        </div>
+        <div className="li-meta">
+          {shortFaction(l.factionName)} · {l.entryCount} {l.entryCount === 1 ? 'entry' : 'entries'}
           {l.usesLegends && <span className="tier-tag legends">Legends</span>}
           {l.usesCrucible && <span className="tier-tag crucible">Crucible</span>}
         </div>
-        <div className="li-meta">
-          {l.factionName} · {l.entryCount} {l.entryCount === 1 ? 'entry' : 'entries'}
-        </div>
       </div>
-      <div className="li-right">
-        <div className="li-points">
-          {l.total}
-          {l.pointsLimit != null ? ` / ${l.pointsLimit}` : ''} pts
-        </div>
-        <button
-          type="button"
-          className="li-dup"
-          title="Duplicate list"
-          onClick={(e) => {
-            e.stopPropagation()
-            onDuplicate(l.id)
-          }}
-        >
-          Duplicate
-        </button>
-        <button
-          type="button"
-          className="li-dup"
-          title="Export as BattleScribe .rosz"
-          onClick={(e) => {
-            e.stopPropagation()
-            onExport(l.id, l.name)
-          }}
-        >
-          Export
-        </button>
-        <button
-          type="button"
-          className="li-del"
-          title="Delete list"
-          onClick={(e) => {
-            e.stopPropagation()
-            if (confirm(`Delete "${l.name}"? This cannot be undone.`)) onDelete(l.id)
-          }}
-        >
-          Delete
-        </button>
-      </div>
+      <OverflowMenu
+        label={`Actions for ${l.name}`}
+        items={[
+          { label: 'Duplicate', onSelect: () => onDuplicate(l.id) },
+          { label: 'Export roster (.rosz)', onSelect: () => onExport(l.id, l.name) },
+          {
+            label: 'Delete',
+            danger: true,
+            onSelect: () => {
+              if (confirm(`Delete "${l.name}"? This cannot be undone.`)) onDelete(l.id)
+            },
+          },
+        ]}
+      />
     </li>
   )
 }

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { getDatasheet, dynamicPoints, type AbilityText, type DatasheetDetail, type DatasheetOption, type ModelVariantGroup } from '../lib/catalogue'
 import type { VariantQuantity } from '../lib/lists'
 import type { LoadoutPreset } from '../lib/presets'
@@ -95,6 +95,10 @@ export function UnitDetailModal({
   // Chosen count per loadout variant, keyed by variant id.
   const [variantQty, setVariantQty] = useState<Record<string, number>>({})
   const [presetName, setPresetName] = useState('')
+  // Edit mode: last-saved wargear, so Save enables only on change. Size saves immediately.
+  const isEdit = !!onSizeChange
+  const [baseSelected, setBaseSelected] = useState<string | null>(null)
+  const [baseVariants, setBaseVariants] = useState<string | null>(null)
 
   useEffect(() => {
     let active = true
@@ -115,16 +119,18 @@ export function UnitDetailModal({
         // always selected.
         const mandatory = d.options.filter((o) => o.mandatory).map((o) => o.id)
         const base = initialSelected ?? d.options.filter((o) => o.isDefault).map((o) => o.id)
-        setSelected(new Set([...base, ...mandatory]))
+        const startSelected = new Set([...base, ...mandatory])
+        setSelected(startSelected)
         // Seed the loadout pool: restore current counts in edit mode, else
         // auto-fill the default variant up to the pool target.
         const groups = d.variantGroups ?? []
-        if (groups.length > 0) {
-          const target = poolTarget(size, d.fixedModelCount ?? 0, d.sizes)
-          setVariantQty(reconcile(groups, initialQuantities ?? {}, target))
-        } else {
-          setVariantQty({})
-        }
+        const startQty =
+          groups.length > 0
+            ? reconcile(groups, initialQuantities ?? {}, poolTarget(size, d.fixedModelCount ?? 0, d.sizes))
+            : {}
+        setVariantQty(startQty)
+        setBaseSelected(selectionKey(startSelected))
+        setBaseVariants(quantityKey(startQty))
       })
       .catch(() => active && setError(true))
     return () => {
@@ -132,11 +138,23 @@ export function UnitDetailModal({
     }
   }, [datasheetId])
 
+  const dirty =
+    isEdit &&
+    baseSelected !== null &&
+    (selectionKey(selected) !== baseSelected || quantityKey(variantQty) !== baseVariants)
+
+  const requestClose = () => {
+    if (dirty && !window.confirm('Discard unsaved wargear changes?')) return
+    onClose()
+  }
+  const closeRef = useRef(requestClose)
+  closeRef.current = requestClose
+
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && closeRef.current()
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
+  }, [])
 
   const grouped = useMemo(() => groupOptions(detail?.options ?? []), [detail])
   const variantGroups = detail?.variantGroups ?? []
@@ -228,6 +246,8 @@ export function UnitDetailModal({
     if (hasPool) {
       next = reconcile(variantGroups, variantQty, poolTarget(m, detail?.fixedModelCount ?? 0, detail?.sizes ?? []))
       setVariantQty(next)
+      // The size change saves these counts with it.
+      setBaseVariants(quantityKey(next))
     }
     onSizeChange?.(m, hasPool ? toVariantPayload(next) : undefined)
   }
@@ -256,30 +276,30 @@ export function UnitDetailModal({
   const showPresets = (presets?.length ?? 0) > 0 || (!!onSavePreset && canConfigure)
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <div className="modal-backdrop" onClick={requestClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <div className="sheet-grip" aria-hidden="true" />
+        <div className="modal-top">
+          <div className="sheet-grip" aria-hidden="true" />
+          <button type="button" className="sheet-close" aria-label="Close" onClick={requestClose}>
+            ×
+          </button>
+          {detail && (
+            <div className="modal-head" data-tour="datasheet-head">
+              <h3>{detail.name}</h3>
+              {detail.points != null && <span className="unit-pts">{detail.points} pts</span>}
+            </div>
+          )}
+        </div>
         {error ? (
           <p className="builder-error">Could not load this unit.</p>
         ) : !detail ? (
           <p className="hint">Loading…</p>
         ) : (
           <>
-            <div className="modal-head">
-              <h3>{detail.name}</h3>
-              {detail.points != null && <span className="unit-pts">{detail.points} pts</span>}
-            </div>
-
-            {detail.keywords.length > 0 && (
-              <div className="keywords">
-                {detail.keywords.map((k) => (
-                  <span className="kw" key={k}>{k}</span>
-                ))}
-              </div>
-            )}
+            {detail.keywords.length > 0 && <KeywordRow keywords={detail.keywords} />}
 
             {detail.sizes.length > 1 && (
-              <div className="detail-section">
+              <div className="detail-section" data-tour="datasheet-size">
                 <h4>Unit size</h4>
                 <div className="size-pick">
                   {detail.sizes.map((s) => (
@@ -298,9 +318,11 @@ export function UnitDetailModal({
               </div>
             )}
 
-            {detail.profiles.map((p) => (
-              <StatTable key={p.name} labels={p.characteristics.map((c) => c.name)} row={p.characteristics} />
-            ))}
+            <div data-tour="datasheet-stats">
+              {detail.profiles.map((p) => (
+                <StatTable key={p.name} labels={p.characteristics.map((c) => c.name)} row={p.characteristics} />
+              ))}
+            </div>
 
             {detail.weapons.length > 0 && <WeaponTables weapons={detail.weapons} rules={detail.rules} />}
 
@@ -318,6 +340,7 @@ export function UnitDetailModal({
               </div>
             )}
 
+            <div data-tour="datasheet-abilities">
             {detail.abilities.length > 0 && (
               <details className="detail-section rules-group">
                 <summary className="rules-summary">Abilities</summary>
@@ -345,9 +368,10 @@ export function UnitDetailModal({
                 </dl>
               </details>
             )}
+            </div>
 
             {detail.leaderAttachments && detail.leaderAttachments.length > 0 && (
-              <div className="detail-section">
+              <div className="detail-section" data-tour="datasheet-leads">
                 <h4>Leads</h4>
                 {detail.leaderAttachments.map((a) => (
                   <div key={a.label}>
@@ -374,7 +398,7 @@ export function UnitDetailModal({
             )}
 
             {hasPool && (
-              <div className="detail-section">
+              <div className="detail-section" data-tour="datasheet-loadouts">
                 <div className="loadout-head">
                   <h4>Loadouts</h4>
                   <span className={`pool-count${assigned === target ? ' full' : ''}`}>
@@ -428,7 +452,7 @@ export function UnitDetailModal({
             )}
 
             {grouped.length > 0 && (
-              <div className="detail-section">
+              <div className="detail-section" data-tour="datasheet-options">
                 <h4>Options</h4>
                 {grouped.map((section) => (
                   <div className="option-model" key={section.model || '_unit'}>
@@ -479,7 +503,7 @@ export function UnitDetailModal({
                               ) : (
                                 o.isDefault && <span className="opt-default">Default</span>
                               )}
-                              <span className="opt-pts">{o.points > 0 ? `+${o.points}` : 'free'}</span>
+                              <span className="opt-pts">{o.points > 0 ? `+${o.points}` : 'Free'}</span>
                             </label>
                             {o.weapons?.length > 0 && (
                               <div className="opt-weapon">
@@ -509,7 +533,7 @@ export function UnitDetailModal({
             )}
 
             {showPresets && (
-              <div className="detail-section">
+              <div className="detail-section" data-tour="datasheet-presets">
                 <h4>Saved loadouts</h4>
                 {(presets?.length ?? 0) > 0 ? (
                   <div className="preset-list">
@@ -553,7 +577,7 @@ export function UnitDetailModal({
                       onClick={saveCurrentPreset}
                       disabled={presetName.trim().length === 0}
                     >
-                      Save
+                      Save loadout
                     </button>
                   </div>
                 )}
@@ -592,13 +616,15 @@ export function UnitDetailModal({
 
             <div className="modal-actions">
               {detail.points != null && (
-                <span className="modal-subtotal">
+                <span className="modal-subtotal" aria-live="polite">
                   Subtotal <b>{subtotal}</b> pts
                 </span>
               )}
               <button
                 type="button"
                 className="btn btn-primary"
+                data-tour={isEdit ? undefined : 'datasheet-add'}
+                disabled={busy || (isEdit && !dirty)}
                 onClick={() => onAdd([...selected], models, hasPool ? toVariantPayload(variantQty) : undefined)}
               >
                 {submitLabel ?? 'Add to list'}
@@ -658,47 +684,124 @@ function groupHint(g: OptionGroup): string | null {
   return null
 }
 
+const selectionKey = (sel: Set<string>) => [...sel].sort().join(',')
+const quantityKey = (qty: Record<string, number>) =>
+  Object.entries(qty)
+    .filter(([, n]) => n > 0)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([id, n]) => `${id}:${n}`)
+    .join(',')
+
+// Full names for abbreviated stat labels, read out by screen readers.
+const STAT_NAMES: Record<string, string> = {
+  M: 'Movement',
+  T: 'Toughness',
+  SV: 'Save',
+  W: 'Wounds',
+  LD: 'Leadership',
+  OC: 'Objective Control',
+  INSV: 'Invulnerable Save',
+  BS: 'Ballistic Skill',
+  WS: 'Weapon Skill',
+  A: 'Attacks',
+  S: 'Strength',
+  AP: 'Armour Penetration',
+  D: 'Damage',
+  APL: 'Action Point Limit',
+}
+const statName = (label: string) => STAT_NAMES[label.trim().toUpperCase()]
+
+// BSData prefixes some profile names with a decorative arrow.
+const cleanWeaponName = (name: string) => name.replace(/^\s*[➤►▶]\s*/, '')
+
+// Keywords on one row as plain text, collapsed past a handful behind a "+N"
+// expander so they no longer push the stats far down the sheet.
+function KeywordRow({ keywords }: { keywords: string[] }) {
+  const [expanded, setExpanded] = useState(false)
+  const limit = 6
+  const shown = expanded ? keywords : keywords.slice(0, limit)
+  const extra = keywords.length - shown.length
+  return (
+    <div className="keywords" data-tour="datasheet-keywords">
+      {shown.map((k) => (
+        <span className="kw" key={k}>{k}</span>
+      ))}
+      {keywords.length > limit && (
+        <button
+          type="button"
+          className="kw-more"
+          aria-expanded={expanded}
+          aria-label={expanded ? 'Show fewer keywords' : `Show ${extra} more keywords`}
+          onClick={() => setExpanded((v) => !v)}
+        >
+          {expanded ? 'less' : `+${extra}`}
+        </button>
+      )}
+    </div>
+  )
+}
+
+// Unit stat line. A table on wider screens; a label-over-value grid on phones
+// (no sideways scroll, nothing clipped). Both are rendered and swapped by CSS.
 function StatTable({ labels, row }: { labels: string[]; row: { name: string; value: string }[] }) {
   return (
-    <div className="stat-scroll">
-      <table className="stat-table">
-        <thead>
-          <tr>{labels.map((l) => <th key={l}>{l}</th>)}</tr>
-        </thead>
-        <tbody>
-          <tr>{row.map((c) => <td key={c.name}>{c.value || '-'}</td>)}</tr>
-        </tbody>
-      </table>
-    </div>
+    <>
+      <div className="stat-scroll stat-wide">
+        <table className="stat-table">
+          <thead>
+            <tr>
+              {labels.map((l) => (
+                <th key={l}>{statName(l) ? <abbr title={statName(l)}>{l}</abbr> : l}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            <tr>{row.map((c) => <td key={c.name}>{c.value || '-'}</td>)}</tr>
+          </tbody>
+        </table>
+      </div>
+      <dl className="stat-grid">
+        {row.map((c) => (
+          <div className="stat-cell" key={c.name}>
+            <dt aria-label={statName(c.name)}>{c.name}</dt>
+            <dd>{c.value || '-'}</dd>
+          </div>
+        ))}
+      </dl>
+    </>
   )
 }
 
 function WeaponTables({ weapons, rules }: { weapons: DatasheetDetail['weapons']; rules?: AbilityText[] }) {
   return (
-    <div className="detail-section">
+    <div className="detail-section" data-tour="datasheet-weapons">
       <h4>Weapons</h4>
-      {weapons.map((w) => (
-        <div className="stat-scroll" key={w.name}>
-          <table className="stat-table">
-            <thead>
-              <tr>
-                <th>{w.name}</th>
-                {w.characteristics.map((c) => <th key={c.name}>{c.name}</th>)}
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td>{w.ranged ? 'Ranged' : 'Melee'}</td>
-                {w.characteristics.map((c) => (
-                  <td key={c.name}>
-                    {c.value ? isKeywordChar(c.name) ? <RuleText text={c.value} rules={rules} /> : c.value : '-'}
-                  </td>
-                ))}
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      ))}
+      {weapons.map((w) => {
+        // Drop the keyword column from the stat grid; it renders full-width below.
+        const stats = w.characteristics.filter((c) => !isKeywordChar(c.name))
+        const kw = w.characteristics.find((c) => isKeywordChar(c.name) && c.value)
+        return (
+          <div className="weapon" key={w.name}>
+            <div className="weapon-head">
+              <span className="weapon-name">{cleanWeaponName(w.name)}</span>
+              <span className="weapon-type">{w.ranged ? 'Ranged' : 'Melee'}</span>
+            </div>
+            <dl className="weapon-stats">
+              {stats.map((c) => (
+                <div className="stat-cell" key={c.name}>
+                  <dt aria-label={statName(c.name)}>{c.name}</dt>
+                  <dd>{c.value || '-'}</dd>
+                </div>
+              ))}
+            </dl>
+            {kw && (
+              <div className="weapon-kw">
+                <RuleText text={kw.value} rules={rules} />
+              </div>
+            )}
+          </div>
+        )
+      })}
     </div>
   )
 }

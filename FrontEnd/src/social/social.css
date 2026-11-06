@@ -463,3 +463,88 @@
   color: var(--crit, #b8443a);
   border-color: var(--crit, #b8443a);
 }
+
+/* Selected segment reads at a glance: accent underline plus weight. */
+.segmented button.active,
+.segmented button[aria-checked='true'] {
+  background: var(--surface);
+  color: var(--accent);
+  box-shadow: inset 0 -2px 0 var(--accent), 0 1px 3px rgba(10, 15, 22, 0.12);
+}
+
+.tab-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.4em;
+  height: 1.4em;
+  margin-left: 6px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.char-count {
+  justify-self: end;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.theme-card {
+  position: relative;
+}
+
+.theme-check {
+  margin-left: auto;
+  flex: none;
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.search-wrap {
+  position: relative;
+}
+
+.search-wrap .search-box {
+  padding-left: 36px;
+  padding-right: 44px;
+}
+
+.search-wrap .search-box::-webkit-search-cancel-button {
+  display: none;
+}
+
+.search-icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--muted);
+  pointer-events: none;
+}
+
+.search-clear {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 44px;
+  height: 44px;
+  border: none;
+  background: none;
+  color: var(--muted);
+  font-size: 1.3rem;
+  cursor: pointer;
+}
+
+.status-pill.pending {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.empty-note > p {
+  margin: 0 0 12px;
+}

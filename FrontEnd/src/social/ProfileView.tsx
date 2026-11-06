@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { ApiError } from '../lib/api'
+import { useToast } from '../ui/Toast'
 import { AdminPanel } from './AdminPanel'
 import { getLists, setListFeatured, type ArmyListSummary } from '../lib/lists'
 import {
@@ -55,7 +56,12 @@ export function ProfileView({ username, email }: { username: string; email: stri
           You
         </button>
         <button role="tab" aria-selected={tab === 'friends'} className={tab === 'friends' ? 'active' : ''} onClick={() => setTab('friends')}>
-          Friends{friends.length > 0 ? ` (${friends.length})` : ''}{requests.incoming.length > 0 ? ' •' : ''}
+          Friends{friends.length > 0 ? ` (${friends.length})` : ''}
+          {requests.incoming.length > 0 && (
+            <span className="tab-badge" aria-label={`${requests.incoming.length} pending requests`}>
+              {requests.incoming.length}
+            </span>
+          )}
         </button>
         <button role="tab" aria-selected={tab === 'find'} className={tab === 'find' ? 'active' : ''} onClick={() => setTab('find')}>
           Find
@@ -66,7 +72,9 @@ export function ProfileView({ username, email }: { username: string; email: stri
 
       <div className="community-body">
         {tab === 'profile' && <ProfileTab username={username} email={email} onPreview={() => setViewing(username)} />}
-        {tab === 'friends' && <FriendsTab friends={friends} requests={requests} onView={setViewing} reload={reload} />}
+        {tab === 'friends' && (
+          <FriendsTab friends={friends} requests={requests} onView={setViewing} reload={reload} onFind={() => setTab('find')} />
+        )}
         {tab === 'find' && <FindTab onView={setViewing} reload={reload} />}
       </div>
     </section>
@@ -76,6 +84,7 @@ export function ProfileView({ username, email }: { username: string; email: stri
 function ProfileTab({ username, email, onPreview }: { username: string; email: string; onPreview: () => void }) {
   const [visibility, setVisibility] = useState('Private')
   const [bio, setBio] = useState('')
+  const [savedState, setSavedState] = useState({ visibility: 'Private', bio: '' })
   const [loaded, setLoaded] = useState(false)
   const [busy, setBusy] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -86,6 +95,7 @@ function ProfileTab({ username, email, onPreview }: { username: string; email: s
       .then((p) => {
         setVisibility(p.visibility)
         setBio(p.bio ?? '')
+        setSavedState({ visibility: p.visibility, bio: p.bio ?? '' })
       })
       .catch(() => setError('Could not load your profile.'))
       .finally(() => setLoaded(true))
@@ -98,6 +108,7 @@ function ProfileTab({ username, email, onPreview }: { username: string; email: s
       const p = await updateProfile(visibility, bio.trim() || null)
       setVisibility(p.visibility)
       setBio(p.bio ?? '')
+      setSavedState({ visibility: p.visibility, bio: p.bio ?? '' })
       setSaved(true)
       setTimeout(() => setSaved(false), 2000)
     } catch (err) {
@@ -105,6 +116,16 @@ function ProfileTab({ username, email, onPreview }: { username: string; email: s
     } finally {
       setBusy(false)
     }
+  }
+
+  const dirty = visibility !== savedState.visibility || bio.trim() !== savedState.bio.trim()
+
+  function choosePublic() {
+    if (visibility === 'Public') return
+    const ok = window.confirm(
+      'Make your profile public? Anyone signed in can then see your username, bio and army lists. Your email is never shown.',
+    )
+    if (ok) setVisibility('Public')
   }
 
   if (!loaded) return <p className="hint">Loading…</p>
@@ -126,18 +147,29 @@ function ProfileTab({ username, email, onPreview }: { username: string; email: s
 
       <div>
         <h3 className="section-title">Profile visibility</h3>
-        <div className="segmented">
-          <button className={visibility === 'Private' ? 'active' : ''} onClick={() => setVisibility('Private')}>
+        <div className="segmented" role="radiogroup" aria-label="Profile visibility">
+          <button
+            role="radio"
+            aria-checked={visibility === 'Private'}
+            className={visibility === 'Private' ? 'active' : ''}
+            onClick={() => setVisibility('Private')}
+          >
             Private
           </button>
-          <button className={visibility === 'Public' ? 'active' : ''} onClick={() => setVisibility('Public')}>
+          <button
+            role="radio"
+            aria-checked={visibility === 'Public'}
+            className={visibility === 'Public' ? 'active' : ''}
+            onClick={choosePublic}
+          >
             Public
           </button>
         </div>
         <p className="vis-hint">
           {visibility === 'Public'
-            ? 'Anyone can view your profile and army lists.'
+            ? 'Anyone signed in can view your profile and army lists.'
             : 'Only you and your friends can see your profile and lists.'}
+          {visibility !== savedState.visibility ? ' Press Save profile to apply.' : ''}
         </p>
       </div>
 
@@ -147,22 +179,25 @@ function ProfileTab({ username, email, onPreview }: { username: string; email: s
           value={bio}
           onChange={(e) => setBio(e.target.value)}
           maxLength={500}
+          aria-describedby="bio-count"
           placeholder="A line about you, your armies, your local scene…"
         />
+        <span className="char-count" id="bio-count">{bio.length} / 500</span>
       </label>
 
       <label>
         Email
-        <input className="search-box" value={email} disabled />
+        <input className="search-box" type="email" value={email} disabled />
+        <span className="char-count">Never shown on your profile.</span>
       </label>
 
       {error && <p className="builder-error">{error}</p>}
 
-      <button type="button" className="btn btn-primary" onClick={save} disabled={busy || saved}>
-        {busy ? 'Saving…' : saved ? 'Saved ✓' : 'Save profile'}
+      <button type="button" className="btn btn-primary" onClick={save} disabled={busy || saved || !dirty}>
+        {busy ? 'Saving…' : saved ? 'Saved ✓' : dirty ? 'Save profile' : 'No changes'}
       </button>
 
-      <HighlightLists />
+      <HighlightLists isPublic={savedState.visibility === 'Public'} />
       <AdminPanel />
     </div>
   )
@@ -180,14 +215,15 @@ function ThemeSelector() {
   return (
     <div>
       <h3 className="section-title">Appearance</h3>
-      <p className="vis-hint">Pick a theme - it applies instantly and is remembered on this device.</p>
-      <div className="theme-grid">
+      <p className="vis-hint">Applies instantly. Saved on this device only.</p>
+      <div className="theme-grid" role="radiogroup" aria-label="Theme">
         {THEMES.map((t) => (
           <button
             key={t.id}
             type="button"
+            role="radio"
             className={`theme-card${theme === t.id ? ' on' : ''}`}
-            aria-pressed={theme === t.id}
+            aria-checked={theme === t.id}
             onClick={() => pick(t.id)}
           >
             <span className="theme-sw" style={{ background: t.swatch }} aria-hidden="true" />
@@ -195,6 +231,7 @@ function ThemeSelector() {
               <span className="theme-name">{t.name}</span>
               <span className="theme-blurb">{t.blurb}</span>
             </span>
+            {theme === t.id && <span className="theme-check" aria-hidden="true">✓</span>}
           </button>
         ))}
       </div>
@@ -203,7 +240,7 @@ function ThemeSelector() {
 }
 
 // Pick which army lists are highlighted (shown first) on the public profile.
-function HighlightLists() {
+function HighlightLists({ isPublic }: { isPublic: boolean }) {
   const [lists, setLists] = useState<ArmyListSummary[] | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -230,7 +267,11 @@ function HighlightLists() {
   return (
     <div>
       <h3 className="section-title">Highlighted lists</h3>
-      <p className="vis-hint">Starred lists appear first on your public profile.</p>
+      <p className="vis-hint">
+        {isPublic
+          ? 'Starred lists appear first on your profile.'
+          : 'Starred lists appear first on your profile for friends, and for everyone if you go public.'}
+      </p>
       {error && <p className="builder-error">{error}</p>}
       {lists === null ? (
         <p className="hint">Loading…</p>
@@ -269,11 +310,13 @@ function FriendsTab({
   requests,
   onView,
   reload,
+  onFind,
 }: {
   friends: Friend[]
   requests: FriendRequests
   onView: (username: string) => void
   reload: () => Promise<void>
+  onFind: () => void
 }) {
   const [busy, setBusy] = useState(false)
 
@@ -345,9 +388,10 @@ function FriendsTab({
       <div>
         <h3 className="section-title">Friends</h3>
         {friends.length === 0 ? (
-          <p className="empty-note">
-            {nothing ? 'No friends yet. Use Find to look someone up by username.' : 'No friends yet.'}
-          </p>
+          <div className="empty-note">
+            <p>{nothing ? 'No friends yet. Look someone up by username.' : 'No friends yet.'}</p>
+            <button type="button" className="btn btn-primary" onClick={onFind}>Find players</button>
+          </div>
         ) : (
           <ul className="people-list">
             {friends.map((f) => (
@@ -378,6 +422,7 @@ function FindTab({ onView, reload }: { onView: (username: string) => void; reloa
   const [results, setResults] = useState<UserSearchResult[]>([])
   const [searching, setSearching] = useState(false)
   const [busyId, setBusyId] = useState<string | null>(null)
+  const toast = useToast()
 
   useEffect(() => {
     const q = query.trim()
@@ -399,8 +444,17 @@ function FindTab({ onView, reload }: { onView: (username: string) => void; reloa
     setBusyId(r.id)
     try {
       await sendFriendRequest(r.username)
-      setResults((prev) => prev.map((x) => (x.id === r.id ? { ...x, friendshipStatus: 'pending_outgoing' } : x)))
+      const accepted = r.friendshipStatus === 'pending_incoming'
+      setResults((prev) =>
+        prev.map((x) => (x.id === r.id ? { ...x, friendshipStatus: accepted ? 'friends' : 'pending_outgoing' } : x)),
+      )
+      toast.push(
+        accepted ? `You and ${r.username} are now friends.` : `Request sent to ${r.username}. Cancel it from Friends > Sent.`,
+        'success',
+      )
       await reload()
+    } catch (err) {
+      toast.push(err instanceof ApiError ? err.message : 'Could not send the request.', 'error')
     } finally {
       setBusyId(null)
     }
@@ -408,14 +462,27 @@ function FindTab({ onView, reload }: { onView: (username: string) => void; reloa
 
   return (
     <div>
-      <input
-        className="search-box"
-        placeholder="Search by username…"
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        autoComplete="off"
-        autoCapitalize="off"
-      />
+      <div className="search-wrap">
+        <span className="search-icon" aria-hidden="true">⌕</span>
+        <input
+          className="search-box"
+          type="search"
+          enterKeyHint="search"
+          aria-label="Search players by username"
+          placeholder="Search by username"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          autoComplete="off"
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck={false}
+        />
+        {query && (
+          <button type="button" className="search-clear" aria-label="Clear search" onClick={() => setQuery('')}>
+            ×
+          </button>
+        )}
+      </div>
       <div style={{ marginTop: 12 }}>
         {query.trim().length === 0 ? (
           <p className="empty-note">Type a username to find other players.</p>
@@ -448,8 +515,8 @@ function FindTab({ onView, reload }: { onView: (username: string) => void; reloa
 
 function FindAction({ result, busy, onAdd }: { result: UserSearchResult; busy: boolean; onAdd: () => void }) {
   if (result.friendshipStatus === 'friends') return <span className="status-pill">Friends</span>
-  if (result.friendshipStatus === 'pending_outgoing') return <span className="status-pill">Requested</span>
-  const label = result.friendshipStatus === 'pending_incoming' ? 'Accept' : 'Add'
+  if (result.friendshipStatus === 'pending_outgoing') return <span className="status-pill pending">Requested</span>
+  const label = result.friendshipStatus === 'pending_incoming' ? 'Accept' : 'Add friend'
   return (
     <button className="btn-sm primary" disabled={busy} onClick={onAdd}>
       {label}

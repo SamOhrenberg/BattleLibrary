@@ -52,6 +52,26 @@
   min-width: 0;
 }
 
+/* Inline action (Undo). A 44px tap target so it is reachable on touch. */
+.toast-action {
+  flex: none;
+  min-height: 32px;
+  padding: 4px 10px;
+  border: 1px solid var(--accent);
+  border-radius: 7px;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.toast-action:hover {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
 .toast-x {
   flex: none;
   border: none;

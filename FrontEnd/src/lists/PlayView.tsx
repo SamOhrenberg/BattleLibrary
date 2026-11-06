@@ -11,18 +11,42 @@ import type { ArmyList, ListEntry } from '../lib/lists'
 import { groupByRole } from './roles'
 import { RuleText } from './RuleText'
 import { RuleSearch } from './RuleSearch'
+import { DatasheetModal } from '../games/DatasheetModal'
+import { OverflowMenu } from '../ui/OverflowMenu'
 
 // A read-optimized, printable view of the list: one datasheet card per entry,
 // grouped by role, with the stat line, weapons, abilities (rules text) and the
 // entry's chosen wargear. Datasheet detail is fetched once per unique datasheet.
-export function PlayView({ list, onClose }: { list: ArmyList; onClose: () => void }) {
+const shortFaction = (name: string) => name.split(' - ').pop() || name
+
+// `context` adds a lead-in to the subtitle, e.g. the live game's name and round.
+export function PlayView({ list, context, onClose }: { list: ArmyList; context?: string; onClose: () => void }) {
   const [details, setDetails] = useState<Record<string, DatasheetDetail>>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
   const [factionDetachments, setFactionDetachments] = useState<CatalogueDetachment[]>([])
   const [showSearch, setShowSearch] = useState(false)
+  const [lookup, setLookup] = useState<{ id: string; name: string } | null>(null)
 
-  const ids = useMemo(() => [...new Set(list.entries.map((e) => e.datasheetId))], [list.entries])
+  // Escape closes, unless a sheet layered on top handles it first.
+  useEffect(() => {
+    if (showSearch || lookup) return
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [showSearch, lookup, onClose])
+
+  // Collapsed detachment rules still print in full.
+  useEffect(() => {
+    const expand = () =>
+      document.querySelectorAll<HTMLDetailsElement>('.play-det').forEach((d) => {
+        d.open = true
+      })
+    window.addEventListener('beforeprint', expand)
+    return () => window.removeEventListener('beforeprint', expand)
+  }, [])
+
+  const ids =useMemo(() => [...new Set(list.entries.map((e) => e.datasheetId))], [list.entries])
 
   useEffect(() => {
     let active = true
@@ -88,18 +112,25 @@ export function PlayView({ list, onClose }: { list: ArmyList; onClose: () => voi
   return (
     <div className="play-view">
       <header className="play-head">
-        <div>
+        <button type="button" className="play-back" aria-label="Close play view" onClick={onClose}>
+          <span aria-hidden="true">‹</span>
+        </button>
+        <div className="play-title">
           <h2>{list.name}</h2>
           <span className="play-sub">
-            {list.factionName}
-            {list.battleSize ? ` · ${list.battleSize}` : ''}
+            {context ? `${context} · ` : ''}
+            {shortFaction(list.factionName)}
             {list.pointsLimit != null || list.total > 0 ? ` · ${list.total} pts` : ''}
           </span>
         </div>
         <div className="play-actions">
-          <button type="button" className="btn" onClick={() => setShowSearch(true)}>Rule search</button>
-          <button type="button" className="btn" onClick={() => window.print()}>Print</button>
-          <button type="button" className="btn btn-primary" onClick={onClose}>Close</button>
+          <button type="button" className="play-icon" aria-label="Rule search" onClick={() => setShowSearch(true)}>
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+              <circle cx="11" cy="11" r="6.5" />
+              <path d="M16 16l4.5 4.5" strokeLinecap="round" />
+            </svg>
+          </button>
+          <OverflowMenu label="More play view actions" items={[{ label: 'Print', onSelect: () => window.print() }]} />
         </div>
       </header>
 
@@ -108,24 +139,6 @@ export function PlayView({ list, onClose }: { list: ArmyList; onClose: () => voi
       ) : (
         <>
           {error && <p className="builder-error">Some datasheets couldn’t load.</p>}
-          {detachmentRules.length > 0 && (
-            <section className="play-group">
-              <h3 className="play-role">Detachment rules</h3>
-              {detachmentRules.map((d) => (
-                <div className="pc-abilities" key={d.id}>
-                  <h5>{d.name}</h5>
-                  <dl className="rules-list">
-                    {d.rules.map((r) => (
-                      <div className="rule" key={r.name}>
-                        <dt>{r.name}</dt>
-                        {r.text && <dd><RuleText text={r.text} /></dd>}
-                      </div>
-                    ))}
-                  </dl>
-                </div>
-              ))}
-            </section>
-          )}
           <div className="play-cards">
             {forces.map((force) => (
               <div className="play-force-section" key={force.id || 'single'}>
@@ -155,12 +168,35 @@ export function PlayView({ list, onClose }: { list: ArmyList; onClose: () => voi
               </div>
             ))}
           </div>
+          {detachmentRules.length > 0 && (
+            <section className="play-group play-detachments">
+              <h3 className="play-role">Detachment rules</h3>
+              {detachmentRules.map((d) => (
+                <details className="pc-abilities play-det" key={d.id}>
+                  <summary>{d.name}</summary>
+                  <dl className="rules-list">
+                    {d.rules.map((r) => (
+                      <div className="rule" key={r.name}>
+                        <dt>{r.name}</dt>
+                        {r.text && <dd><RuleText text={r.text} /></dd>}
+                      </div>
+                    ))}
+                  </dl>
+                </details>
+              ))}
+            </section>
+          )}
         </>
       )}
 
       {showSearch && (
-        <RuleSearch systemKey={list.gameSystemKey} onClose={() => setShowSearch(false)} />
+        <RuleSearch
+          systemKey={list.gameSystemKey}
+          onOpenDatasheet={(id, name) => setLookup({ id, name })}
+          onClose={() => setShowSearch(false)}
+        />
       )}
+      {lookup && <DatasheetModal datasheetId={lookup.id} title={lookup.name} onClose={() => setLookup(null)} />}
     </div>
   )
 }

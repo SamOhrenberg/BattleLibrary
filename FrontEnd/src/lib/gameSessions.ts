@@ -139,6 +139,10 @@ export const setSessionList = (id: string, listId: string | null) =>
 
 export const leaveSession = (id: string) => send<void>(`${base}/${id}/leave`, 'POST')
 
+// Host-only, during setup: revoke an invite or remove a joined player.
+export const removeParticipant = (id: string, participantId: string) =>
+  send<GameSession>(`${base}/${id}/participants/${participantId}`, 'DELETE')
+
 export const startSession = (id: string) => send<GameSession>(`${base}/${id}/start`, 'POST')
 
 export const advanceSession = (id: string) => send<GameSession>(`${base}/${id}/advance`, 'POST')

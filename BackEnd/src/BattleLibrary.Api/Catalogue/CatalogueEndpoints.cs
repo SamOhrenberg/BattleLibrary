@@ -168,16 +168,24 @@ public static class CatalogueEndpoints
             }
         }
 
-        // Exact-ish name matches first, then by kind, capped.
+        // Exact, prefix, then any title match ahead of text-only hits; Legends sink below current content.
         var ordered = results
-            .OrderByDescending(r => string.Equals(r.Title, term, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(r => IsLegends(r.Title) || IsLegends(r.Subtitle))
+            .ThenByDescending(r => string.Equals(r.Title, term, StringComparison.OrdinalIgnoreCase))
             .ThenByDescending(r => r.Title.StartsWith(term, StringComparison.OrdinalIgnoreCase))
+            .ThenByDescending(r => r.Title.Contains(term, StringComparison.OrdinalIgnoreCase))
             .ThenBy(r => r.Kind)
             .ThenBy(r => r.Title)
+            // Shared-library units/rules are imported by many factions, so the same
+            // entry is emitted once per faction. Collapse identical hits (same kind,
+            // title, subtitle, datasheet and text) to one, keeping the best-ranked.
+            .DistinctBy(r => (r.Kind, r.Title, r.Subtitle, r.DatasheetId, r.Text))
             .Take(SearchLimit)
             .ToList();
         return Results.Ok(ordered);
     }
+
+    private static bool IsLegends(string? name) => name?.Contains("[Legends]", StringComparison.Ordinal) == true;
 
     private static bool IsKnownSystem(string key) => BsDataSource.All.Any(s => s.SystemKey == key);
 

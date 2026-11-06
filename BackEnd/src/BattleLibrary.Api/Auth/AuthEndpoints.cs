@@ -89,7 +89,10 @@ public static class AuthEndpoints
             return Problem("registration", "Sign-ups are invite-only right now. Ask for an invite to join.");
         }
 
-        var taken = await db.Users.AnyAsync(u => u.Username == username || u.Email == email, ct);
+        var usernameKey = UserKeys.Username(username);
+        var emailKey = UserKeys.Email(email);
+        var taken = await db.Users.AnyAsync(
+            u => u.Username.ToLower() == usernameKey || u.Email.ToLower() == emailKey, ct);
         if (taken)
         {
             return Results.Conflict(new { error = "That username or email is already taken." });
@@ -125,10 +128,15 @@ public static class AuthEndpoints
     {
         var log = loggers.CreateLogger("Auth");
         var identifier = request.UsernameOrEmail?.Trim() ?? string.Empty;
+        var usernameKey = UserKeys.Username(identifier);
+        var emailKey = UserKeys.Email(identifier);
 
+        // Exact-case match wins if legacy accounts differ only by case.
         var user = await db.Users
             .Include(u => u.Profile)
-            .FirstOrDefaultAsync(u => u.Username == identifier || u.Email == identifier, ct);
+            .Where(u => u.Username.ToLower() == usernameKey || u.Email.ToLower() == emailKey)
+            .OrderByDescending(u => u.Username == identifier || u.Email == identifier)
+            .FirstOrDefaultAsync(ct);
         if (user is null)
         {
             log.LogWarning("Login failed: unknown account {Identifier}", identifier);

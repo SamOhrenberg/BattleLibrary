@@ -7,6 +7,8 @@ import { getFriends, searchUsers, type Friend, type UserSearchResult } from '../
 import { joinSessionGroup, leaveSessionGroup, onSessionUpdated } from '../lib/gameHub'
 import { groupByRole } from '../lists/roles'
 import { DatasheetModal } from './DatasheetModal'
+import { getCatalogueSystems } from '../lib/catalogue'
+import { useToast } from '../ui/Toast'
 
 // Open a read-only datasheet for a unit by its catalogue id.
 type ViewUnit = (datasheetId: string, name: string) => void
@@ -18,6 +20,7 @@ import {
   inviteToSession,
   leaveSession,
   logSessionAction,
+  removeParticipant,
   respondToSession,
   setSessionList,
   setSessionRound,
@@ -35,6 +38,7 @@ export function GameSessionView({ sessionId, onExit }: { sessionId: string; onEx
   const [playList, setPlayList] = useState<ArmyList | null>(null)
   const [viewUnit, setViewUnit] = useState<{ datasheetId: string; name: string } | null>(null)
   const [showSearch, setShowSearch] = useState(false)
+  const [systemName, setSystemName] = useState<string | null>(null)
   const onViewUnit: ViewUnit = (datasheetId, name) => setViewUnit({ datasheetId, name })
 
   async function openPlayView(listId: string) {
@@ -66,6 +70,14 @@ export function GameSessionView({ sessionId, onExit }: { sessionId: string; onEx
     }
   }, [sessionId, reload])
 
+  const systemKey = session?.gameSystemKey ?? null
+  useEffect(() => {
+    if (!systemKey) return
+    getCatalogueSystems()
+      .then((all) => setSystemName(all.find((s) => s.key === systemKey)?.name ?? null))
+      .catch(() => {})
+  }, [systemKey])
+
   if (!session) {
     return (
       <section className="card">
@@ -77,14 +89,16 @@ export function GameSessionView({ sessionId, onExit }: { sessionId: string; onEx
 
   const me = session.participants.find((p) => p.isMe) ?? null
 
-  async function act(fn: () => Promise<GameSession | void>) {
+  async function act(fn: () => Promise<GameSession | void>): Promise<boolean> {
     setError(null)
     try {
       const next = await fn()
       if (next) setSession(next)
       else onExit()
+      return true
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Something went wrong.')
+      return false
     }
   }
 
@@ -109,21 +123,33 @@ export function GameSessionView({ sessionId, onExit }: { sessionId: string; onEx
         <span className={`status-pill s-${session.status.toLowerCase()}`}>{statusLabel(session)}</span>
         {session.battleSize && <span className="status-pill">{session.battleSize}</span>}
         {session.pointsLimit != null && <span className="status-pill">{session.pointsLimit} pts</span>}
-        {session.gameSystemKey && <span className="status-pill">{session.gameSystemKey}</span>}
+        {session.gameSystemKey && <span className="status-pill">{systemName ?? session.gameSystemKey}</span>}
       </div>
 
       {error && <p className="builder-error">{error}</p>}
 
-      {session.status === 'Setup' && <SetupView session={session} me={me} act={act} onViewUnit={onViewUnit} />}
+      {session.status === 'Setup' && (
+        <SetupView session={session} me={me} act={act} onUpdated={setSession} onViewUnit={onViewUnit} />
+      )}
       {session.status === 'Active' && me && <ActiveView session={session} me={me} act={act} setError={setError} onViewUnit={onViewUnit} />}
       {(session.status === 'Finished' || session.status === 'Abandoned') && <FinishedView session={session} />}
 
-      {playList && <PlayView list={playList} onClose={() => setPlayList(null)} />}
+      {playList && (
+        <PlayView
+          list={playList}
+          context={[session.name, session.status === 'Active' ? statusLabel(session) : null].filter(Boolean).join(' · ')}
+          onClose={() => setPlayList(null)}
+        />
+      )}
       {viewUnit && (
         <DatasheetModal datasheetId={viewUnit.datasheetId} title={viewUnit.name} onClose={() => setViewUnit(null)} />
       )}
       {showSearch && session.gameSystemKey && (
-        <RuleSearch systemKey={session.gameSystemKey} onClose={() => setShowSearch(false)} />
+        <RuleSearch
+          systemKey={session.gameSystemKey}
+          onOpenDatasheet={(id, name) => setViewUnit({ datasheetId: id, name })}
+          onClose={() => setShowSearch(false)}
+        />
       )}
     </section>
   )
@@ -142,18 +168,30 @@ function SetupView({
   session,
   me,
   act,
+  onUpdated,
   onViewUnit,
 }: {
   session: GameSession
   me: SessionParticipant | null
-  act: (fn: () => Promise<GameSession | void>) => Promise<void>
+  act: (fn: () => Promise<GameSession | void>) => Promise<boolean>
+  onUpdated: (s: GameSession) => void
   onViewUnit: ViewUnit
 }) {
   const [lists, setLists] = useState<ArmyListSummary[]>([])
   const accepted = session.participants.filter((p) => p.status === 'Accepted')
   const acceptedCount = accepted.length
-  // Every accepted player needs a chosen list with no legality issue.
-  const allReady = acceptedCount >= 2 && accepted.every((p) => p.armyListId && !p.listIssue)
+  const invitedCount = session.participants.filter((p) => p.status === 'Invited').length
+  // Mirrors the server's start checks so a disabled Start explains itself.
+  const noList = accepted.find((p) => !p.armyListId)
+  const badList = accepted.find((p) => p.listIssue)
+  const notReady =
+    acceptedCount < 2
+      ? 'Needs at least two players who have accepted.'
+      : noList
+        ? `Waiting for ${noList.username} to choose a list.`
+        : badList
+          ? `${badList.username}'s list can't be used yet.`
+          : null
 
   useEffect(() => {
     if (me && me.status === 'Accepted') getLists().then(setLists).catch(() => {})
@@ -172,7 +210,9 @@ function SetupView({
       <div className="session-layout">
         <div className="session-main">
       <div>
-        <h3 className="section-title">Players ({acceptedCount} ready · max {session.maxParticipants})</h3>
+        <h3 className="section-title">
+          Players ({acceptedCount} joined{invitedCount > 0 ? ` · ${invitedCount} invited` : ''} · max {session.maxParticipants})
+        </h3>
         <ul className="people-list">
           {session.participants
             .filter((p) => p.status !== 'Declined' && p.status !== 'Left')
@@ -188,7 +228,7 @@ function SetupView({
                     </span>
                     <span className={`person-sub${p.status === 'Accepted' && p.armyListId && p.listIssue ? ' warn' : ''}`}>
                       {p.status === 'Invited'
-                        ? 'invited…'
+                        ? 'awaiting reply'
                         : !p.armyListId
                           ? 'no list yet'
                           : p.listIssue
@@ -197,7 +237,24 @@ function SetupView({
                     </span>
                   </span>
                 </span>
-                <span className={`status-pill s-${p.status.toLowerCase()}`}>{p.status}</span>
+                <span className={`status-pill s-${p.status.toLowerCase()}${p.status === 'Accepted' && p.armyListId && !p.listIssue ? ' s-ready' : ''}`}>
+                  {p.status === 'Invited' ? 'Invited' : p.armyListId && !p.listIssue ? 'Ready' : 'Joined'}
+                </span>
+                {session.isHost && !p.isMe && (
+                  <button
+                    type="button"
+                    className="remove-btn"
+                    aria-label={p.status === 'Invited' ? `Revoke invite for ${p.username}` : `Remove ${p.username}`}
+                    onClick={() => {
+                      const ok = window.confirm(
+                        p.status === 'Invited' ? `Revoke the invite for ${p.username}?` : `Remove ${p.username} from this game?`,
+                      )
+                      if (ok) void act(() => removeParticipant(session.id, p.id))
+                    }}
+                  >
+                    ×
+                  </button>
+                )}
               </li>
             ))}
         </ul>
@@ -236,22 +293,24 @@ function SetupView({
           )}
           {me.units.length > 0 && (
             <>
-              <p className="empty-note">
-                Models default to your list. Bring fewer if you like; you can't bring more than your list allows.
-              </p>
+              <p className="empty-note left">Models default to your list. You can bring fewer, not more.</p>
               <ul className="unit-list">
                 {me.units.map((u) => (
                   <li className="unit-row" key={u.id}>
                     <button type="button" className="unit-link" onClick={() => onViewUnit(u.datasheetId, u.name)}>
                       {u.name}
                     </button>
-                    <Stepper
-                      value={u.startingModels}
-                      min={1}
-                      max={u.maxModels > 0 ? u.maxModels : undefined}
-                      onChange={(v) => act(() => updateSessionUnit(session.id, u.id, { startingModels: v }))}
-                      suffix={u.maxModels > 1 ? `/ ${u.maxModels} models` : 'models'}
-                    />
+                    {u.maxModels === 1 ? (
+                      <span className="step-fixed">1 model</span>
+                    ) : (
+                      <Stepper
+                        value={u.startingModels}
+                        min={1}
+                        max={u.maxModels > 0 ? u.maxModels : undefined}
+                        onChange={(v) => act(() => updateSessionUnit(session.id, u.id, { startingModels: v }))}
+                        suffix={u.maxModels > 1 ? `/ ${u.maxModels}` : u.startingModels === 1 ? 'model' : 'models'}
+                      />
+                    )}
                   </li>
                 ))}
               </ul>
@@ -264,18 +323,28 @@ function SetupView({
 
         {session.isHost && (
           <aside className="session-aside">
-            <InvitePicker session={session} act={act} />
+            <InvitePicker session={session} onUpdated={onUpdated} />
           </aside>
         )}
       </div>
 
+      {session.isHost && notReady && <p className="field-hint">{notReady}</p>}
       <div className="create-actions">
         {session.isHost && (
-          <button className="btn btn-primary" disabled={!allReady} onClick={() => act(() => startSession(session.id))}>
+          <button className="btn btn-primary" disabled={!!notReady} onClick={() => act(() => startSession(session.id))}>
             Start game
           </button>
         )}
-        <button className="btn" onClick={() => act(() => leaveSession(session.id).then(() => undefined))}>
+        <button
+          className={session.isHost ? 'btn btn-danger' : 'btn'}
+          onClick={() => {
+            const label = session.name || 'this game'
+            const ok = window.confirm(
+              session.isHost ? `Cancel "${label}" for everyone? This can't be undone.` : `Leave "${label}"?`,
+            )
+            if (ok) void act(() => leaveSession(session.id).then(() => undefined))
+          }}
+        >
           {session.isHost ? 'Cancel game' : 'Leave'}
         </button>
       </div>
@@ -287,12 +356,15 @@ function SetupView({
 // private-profile player can still be invited by exact username.
 function InvitePicker({
   session,
-  act,
+  onUpdated,
 }: {
   session: GameSession
-  act: (fn: () => Promise<GameSession | void>) => Promise<void>
+  onUpdated: (s: GameSession) => void
 }) {
+  const toast = useToast()
   const [query, setQuery] = useState('')
+  const [inviteError, setInviteError] = useState<string | null>(null)
+  const [sending, setSending] = useState(false)
   const [friends, setFriends] = useState<Friend[]>([])
   const [results, setResults] = useState<UserSearchResult[]>([])
 
@@ -327,7 +399,29 @@ function InvitePicker({
     (r) => r.friendshipStatus !== 'friends' && r.visibility === 'Public' && !taken.has(r.username.toLowerCase()),
   )
 
-  const invite = (username: string) => act(() => inviteToSession(session.id, username)).then(() => setQuery(''))
+  async function invite(username: string) {
+    setInviteError(null)
+    setSending(true)
+    try {
+      const next = await inviteToSession(session.id, username)
+      onUpdated(next)
+      setQuery('')
+      // Server matching is case-insensitive; show the stored spelling.
+      const key = username.trim().replace(/^@\s*/, '').toLowerCase()
+      const added = next.participants.find((p) => p.username.toLowerCase() === key)
+      toast.push(`Invited ${added?.username ?? username}`, 'success')
+    } catch (err) {
+      setInviteError(
+        err instanceof ApiError && err.status === 404
+          ? `No player named "${username.trim()}".`
+          : err instanceof ApiError
+            ? err.message
+            : 'Could not send the invite.',
+      )
+    } finally {
+      setSending(false)
+    }
+  }
 
   return (
     <div>
@@ -342,14 +436,30 @@ function InvitePicker({
       >
         <input
           className="search-box"
-          placeholder="Search by username…"
+          placeholder="Username"
+          aria-label="Username to invite"
+          aria-invalid={!!inviteError}
+          aria-describedby={inviteError ? 'invite-error' : undefined}
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          autoCapitalize="off"
+          onChange={(e) => {
+            setQuery(e.target.value)
+            setInviteError(null)
+          }}
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck={false}
           autoComplete="off"
+          enterKeyHint="send"
         />
-        <button className="btn" type="submit">Invite</button>
+        <button className="btn" type="submit" disabled={sending || !query.trim()}>
+          {sending ? 'Sending…' : 'Invite'}
+        </button>
       </form>
+      {inviteError ? (
+        <p className="field-error" id="invite-error" role="alert">{inviteError}</p>
+      ) : (
+        <p className="field-hint">Enter a username or pick a friend.</p>
+      )}
 
       {friendMatches.length > 0 && (
         <>
@@ -373,9 +483,6 @@ function InvitePicker({
         </>
       )}
 
-      {term.length > 0 && friendMatches.length === 0 && publicMatches.length === 0 && (
-        <p className="empty-note">No players found. Press Invite to send to that exact username.</p>
-      )}
     </div>
   )
 }
@@ -407,7 +514,7 @@ function ActiveView({
 }: {
   session: GameSession
   me: SessionParticipant
-  act: (fn: () => Promise<GameSession | void>) => Promise<void>
+  act: (fn: () => Promise<GameSession | void>) => Promise<boolean>
   setError: (m: string | null) => void
   onViewUnit: ViewUnit
 }) {
@@ -548,7 +655,7 @@ function UnitTracker({
 }: {
   session: GameSession
   me: SessionParticipant
-  act: (fn: () => Promise<GameSession | void>) => Promise<void>
+  act: (fn: () => Promise<GameSession | void>) => Promise<boolean>
   onViewUnit: ViewUnit
 }) {
   if (me.units.length === 0) return null
@@ -607,7 +714,7 @@ function ActionPanel({
 }: {
   session: GameSession
   me: SessionParticipant
-  act: (fn: () => Promise<GameSession | void>) => Promise<void>
+  act: (fn: () => Promise<GameSession | void>) => Promise<boolean>
   setError: (m: string | null) => void
 }) {
   const [kind, setKind] = useState<ActionKind>('Stratagem')

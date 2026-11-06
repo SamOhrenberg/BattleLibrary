@@ -1,6 +1,10 @@
 .tour-root {
-  position: fixed;
-  inset: 0;
+  /* Children use document coordinates, so they track the page under an open keyboard. */
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 0;
   z-index: 1000;
   pointer-events: none;
 }
@@ -8,7 +12,7 @@
 /* Dim everything except the target via a huge spread box-shadow; the box
    itself ignores clicks so the highlighted control stays usable. */
 .tour-spotlight {
-  position: fixed;
+  position: absolute;
   border-radius: 10px;
   box-shadow: 0 0 0 9999px rgba(10, 15, 22, 0.6);
   outline: 2px solid var(--accent);
@@ -18,9 +22,9 @@
 }
 
 .tour-card {
-  position: fixed;
+  position: absolute;
   pointer-events: auto;
-  background: var(--surface);
+  background: var(--surface-solid);
   color: var(--fg);
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -40,7 +44,7 @@
   position: absolute;
   width: 12px;
   height: 12px;
-  background: var(--surface);
+  background: var(--surface-solid);
   border: 1px solid var(--border);
   transform: rotate(45deg);
 }
@@ -146,4 +150,30 @@
   font-size: 0.82rem;
   cursor: pointer;
   text-decoration: underline;
+}
+
+/* Compact bar while the keyboard is open: no arrow, no body text. */
+.tour-docked {
+  transition: none;
+  padding: 10px 14px;
+  transform: none;
+}
+.tour-docked::after {
+  display: none;
+}
+.tour-docked-bottom {
+  transform: translateY(-100%);
+}
+.tour-docked .tour-title {
+  font-size: 0.95rem;
+  margin: 0;
+}
+.tour-docked .tour-step-count {
+  margin-bottom: 2px;
+}
+.tour-docked .tour-waiting {
+  margin-top: 4px;
+}
+.tour-docked .tour-actions {
+  margin-top: 8px;
 }

@@ -21,6 +21,10 @@
   --ok: #58e6b0;
   --warn: #ffd15c;
   --crit: #ff6f8d;
+  /* Warlord gets its own token so it never reads as a warning (amber). */
+  --warlord: #c08cff;
+  /* One focus-ring color for the whole app (was browser-blue in places). */
+  --focus: var(--accent);
   --radius: 14px;
 
   --f-display: "Space Grotesk", system-ui, sans-serif;
@@ -74,6 +78,7 @@
   --ok: #1f8a54;
   --warn: #b5781a;
   --crit: #c23b2e;
+  --warlord: #6d3bd0;
   --radius: 8px;
   --f-display: "Chakra Petch", system-ui, sans-serif;
   --f-body: "Inter", system-ui, sans-serif;
@@ -131,6 +136,12 @@
 body {
   font-family: var(--f-body);
   -webkit-font-smoothing: antialiased;
+}
+
+/* One consistent focus ring in the brand color (no stray browser-blue). */
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
 }
 h1,
 h2,

@@ -25,11 +25,11 @@ export function GamesView() {
   const [tab, setTab] = useState<'play' | 'history'>('play')
   return (
     <>
-      <nav className="segmented main-nav" aria-label="Games sections">
-        <button aria-selected={tab === 'play'} className={tab === 'play' ? 'active' : ''} onClick={() => setTab('play')}>
+      <nav className="segmented main-nav" role="tablist" aria-label="Games sections">
+        <button role="tab" aria-selected={tab === 'play'} className={tab === 'play' ? 'active' : ''} onClick={() => setTab('play')}>
           Play
         </button>
-        <button aria-selected={tab === 'history'} className={tab === 'history' ? 'active' : ''} onClick={() => setTab('history')}>
+        <button role="tab" aria-selected={tab === 'history'} className={tab === 'history' ? 'active' : ''} onClick={() => setTab('history')}>
           History
         </button>
       </nav>
@@ -74,7 +74,7 @@ function PlayTab() {
   return (
     <section className="card">
       <div className="lists-head">
-        <h2>Live games</h2>
+        <h2>{creating ? 'New game' : 'Live games'}</h2>
         <div className="lists-actions">
           {!creating && (
             <button type="button" className="btn btn-primary" onClick={() => setCreating(true)}>
@@ -89,16 +89,29 @@ function PlayTab() {
       {creating ? (
         <CreateSessionForm onCreated={(id) => { setCreating(false); setOpenId(id) }} onCancel={() => setCreating(false)} />
       ) : (
-        <SessionList sessions={sessions} onOpen={setOpenId} />
+        <SessionList sessions={sessions} onOpen={setOpenId} onNew={() => setCreating(true)} />
       )}
     </section>
   )
 }
 
-function SessionList({ sessions, onOpen }: { sessions: SessionSummary[] | null; onOpen: (id: string) => void }) {
+function SessionList({
+  sessions,
+  onOpen,
+  onNew,
+}: {
+  sessions: SessionSummary[] | null
+  onOpen: (id: string) => void
+  onNew: () => void
+}) {
   if (sessions === null) return <p className="hint">Loading…</p>
   if (sessions.length === 0) {
-    return <p className="hint">No live games. Press New game to start one and invite up to three friends.</p>
+    return (
+      <div className="empty-note">
+        <p>No live games yet. Start one and invite up to three players, or wait for an invite to appear here.</p>
+        <button type="button" className="btn btn-primary" onClick={onNew}>New game</button>
+      </div>
+    )
   }
   return (
     <ul className="list-index">
@@ -167,9 +180,16 @@ function CreateSessionForm({ onCreated, onCancel }: { onCreated: (id: string) =>
     <form className="create-form" onSubmit={submit}>
       <label>
         Game name (optional)
-        <input value={name} onChange={(e) => setName(e.target.value)} maxLength={120} placeholder="e.g. Friday night 2000pts" autoFocus />
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          maxLength={120}
+          placeholder="e.g. Friday night 2000pts"
+          enterKeyHint="next"
+          autoFocus
+        />
       </label>
-      {systems.length > 0 && (
+      {systems.length > 1 && (
         <label>
           Game system
           <select value={systemKey} onChange={(e) => setSystemKey(e.target.value)}>
@@ -185,7 +205,7 @@ function CreateSessionForm({ onCreated, onCancel }: { onCreated: (id: string) =>
           <select value={battleSize} onChange={(e) => setBattleSize(e.target.value)}>
             {BATTLE_SIZES.map((s) => (
               <option key={s} value={s}>
-                {s} ({BATTLE_SIZE_RULES[s].cap} pts)
+                {s} · {BATTLE_SIZE_RULES[s].cap} pts
               </option>
             ))}
             <option value="Custom">Custom</option>
@@ -200,8 +220,8 @@ function CreateSessionForm({ onCreated, onCancel }: { onCreated: (id: string) =>
       )}
       {!pointless && (
         <label>
-          Starting CP
-          <input inputMode="numeric" value={startingCp} onChange={(e) => setStartingCp(e.target.value.replace(/[^0-9]/g, ''))} placeholder="0" />
+          Starting Command Points (CP)
+          <input inputMode="numeric" enterKeyHint="done" value={startingCp} onChange={(e) => setStartingCp(e.target.value.replace(/[^0-9]/g, ''))} placeholder="0" />
         </label>
       )}
       {error && <p className="builder-error">{error}</p>}

@@ -40,8 +40,33 @@ const PAD = 6
 const GAP = 14
 const MAX_CARD_W = 300
 
-function cardWidth(): number {
-  return Math.min(MAX_CARD_W, window.innerWidth - 24)
+// The visible part of the page, in document coordinates. On phones the
+// on-screen keyboard shrinks and shifts this, so all positioning uses it.
+interface View {
+  top: number
+  left: number
+  width: number
+  height: number
+  keyboard: boolean
+}
+
+function getView(): View {
+  const vv = window.visualViewport
+  if (!vv) {
+    return { top: window.scrollY, left: window.scrollX, width: window.innerWidth, height: window.innerHeight, keyboard: false }
+  }
+  return {
+    top: vv.pageTop,
+    left: vv.pageLeft,
+    width: vv.width,
+    height: vv.height,
+    // A visual viewport well short of the layout viewport means the keyboard is up.
+    keyboard: vv.height < window.innerHeight * 0.8,
+  }
+}
+
+function cardWidth(view: View): number {
+  return Math.min(MAX_CARD_W, view.width - 24)
 }
 
 function findTarget(key: string): HTMLElement | null {
@@ -57,9 +82,9 @@ function place(
   placement: Placement,
   cardW: number,
   cardH: number,
+  vw: number,
+  vh: number,
 ): { style: Box; arrow: Placement } {
-  const vw = window.innerWidth
-  const vh = window.innerHeight
   const order: Placement[] = [placement, 'bottom', 'top', 'right', 'left']
 
   for (const p of order) {
@@ -105,8 +130,9 @@ function anchor(box: Box, p: Placement, vw: number, vh: number, cardW: number, c
 }
 
 export function TourOverlay() {
-  const { active, step, stepIndex, steps, next, back, stop } = useTour()
+  const { active, step, stepIndex, steps, next, back, stop, skipMissing } = useTour()
   const [box, setBox] = useState<Box | null>(null)
+  const [view, setView] = useState<View>(getView)
   const [missing, setMissing] = useState(false)
   const [interaction, setInteraction] = useState<TourInteraction>('none')
   const [satisfied, setSatisfied] = useState(false)
@@ -136,13 +162,18 @@ export function TourOverlay() {
         if (req === 'input' && !hasEditableControl(el)) setSatisfied(true)
         return
       }
+      // Sections only some units have: pass over the step rather than stall on it.
+      if (step.ifPresent && tries >= 12) {
+        skipMissing()
+        return
+      }
       if (tries++ < 90) requestAnimationFrame(resolve)
     }
     resolve()
     return () => {
       cancelled = true
     }
-  }, [active, step, stepIndex])
+  }, [active, step, stepIndex, skipMissing])
 
   // Watch for the required interaction on the target. Input steps unlock Next
   // once a value is entered; click steps advance on the press itself (unless a
@@ -191,16 +222,24 @@ export function TourOverlay() {
       return
     }
     let prev = ''
+    let prevView = ''
     const tick = () => {
+      const v = getView()
+      const viewKey = `${v.top}|${v.left}|${v.width}|${v.height}|${v.keyboard}`
+      if (viewKey !== prevView) {
+        prevView = viewKey
+        setView(v)
+      }
       const el = findTarget(step.target)
       if (!el) {
         setMissing(true)
       } else {
         setMissing(false)
+        // Document coordinates, so the highlight scrolls with the page itself.
         const r = el.getBoundingClientRect()
         const nextBox: Box = {
-          top: r.top - PAD,
-          left: r.left - PAD,
+          top: r.top + window.scrollY - PAD,
+          left: r.left + window.scrollX - PAD,
           width: r.width + PAD * 2,
           height: r.height + PAD * 2,
         }
@@ -227,8 +266,22 @@ export function TourOverlay() {
   if (!active || !step) return null
 
   const isLast = stepIndex === steps.length - 1
-  const cardW = cardWidth()
-  const placed = box ? place(box, step.placement ?? 'bottom', cardW, cardH || 180) : null
+  const cardW = cardWidth(view)
+  // Place against the visible area, then shift back into document coordinates.
+  const local = box ? { ...box, top: box.top - view.top, left: box.left - view.left } : null
+  const fitted = local ? place(local, step.placement ?? 'bottom', cardW, cardH || 180, view.width, view.height) : null
+  const placed = fitted
+    ? { arrow: fitted.arrow, style: { ...fitted.style, top: fitted.style.top + view.top, left: fitted.style.left + view.left } }
+    : null
+
+  // Keyboard up: a slim bar docked to whichever edge is away from the field.
+  const docked = view.keyboard
+  const dockTop = local ? local.top + local.height / 2 > view.height / 2 : false
+  const dockStyle = {
+    left: view.left + 8,
+    width: view.width - 16,
+    top: dockTop ? view.top + 8 : view.top + view.height - 8,
+  }
 
   const requireClick = interaction === 'click'
   const requireInput = interaction === 'input'
@@ -245,18 +298,22 @@ export function TourOverlay() {
 
       <div
         ref={cardRef}
-        className={`tour-card tour-arrow-${placed?.arrow ?? 'bottom'}`}
+        className={
+          docked ? `tour-card tour-docked${dockTop ? '' : ' tour-docked-bottom'}` : `tour-card tour-arrow-${placed?.arrow ?? 'bottom'}`
+        }
         style={
-          placed
-            ? { top: placed.style.top, left: placed.style.left, width: cardW }
-            : { top: 24, left: 24, width: cardW }
+          docked
+            ? dockStyle
+            : placed
+              ? { top: placed.style.top, left: placed.style.left, width: cardW }
+              : { top: view.top + 24, left: view.left + 24, width: cardW }
         }
       >
         <div className="tour-step-count">
           Step {stepIndex + 1} of {steps.length}
         </div>
         <h3 className="tour-title">{step.title}</h3>
-        <p className="tour-body">{step.body}</p>
+        {!docked && <p className="tour-body">{step.body}</p>}
         {missing ? (
           <p className="tour-waiting">Follow the highlighted step to continue…</p>
         ) : requireClick ? (

@@ -85,7 +85,7 @@ public static class SocialEndpoints
 
         var matches = await db.Users
             .Include(u => u.Profile)
-            .Where(u => u.Id != me && EF.Functions.ILike(u.Username, $"%{term}%"))
+            .Where(u => u.Id != me && EF.Functions.ILike(u.Username, $"%{UserKeys.EscapeLike(term)}%"))
             .OrderBy(u => u.Username)
             .Take(20)
             .Select(u => new { u.Id, u.Username, u.Profile.Visibility })
@@ -106,9 +106,12 @@ public static class SocialEndpoints
         {
             return Results.Unauthorized();
         }
+        var key = UserKeys.Username(username);
         var user = await db.Users
             .Include(u => u.Profile)
-            .FirstOrDefaultAsync(u => u.Username == username, ct);
+            .Where(u => u.Username.ToLower() == key)
+            .OrderByDescending(u => u.Username == username)
+            .FirstOrDefaultAsync(ct);
         if (user is null)
         {
             return Results.NotFound();
@@ -202,12 +205,16 @@ public static class SocialEndpoints
             return Results.Unauthorized();
         }
         var username = body.Username?.Trim() ?? string.Empty;
-        if (username.Length == 0)
+        var key = UserKeys.Username(username);
+        if (key.Length == 0)
         {
             return Problem("username", "A username is required.");
         }
 
-        var target = await db.Users.FirstOrDefaultAsync(u => u.Username == username, ct);
+        var target = await db.Users
+            .Where(u => u.Username.ToLower() == key)
+            .OrderByDescending(u => u.Username == username)
+            .FirstOrDefaultAsync(ct);
         if (target is null)
         {
             return Results.NotFound(new { error = "No user with that username." });

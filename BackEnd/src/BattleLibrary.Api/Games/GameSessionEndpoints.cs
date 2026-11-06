@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using BattleLibrary.Domain.Accounts;
 using BattleLibrary.Domain.Games;
 using BattleLibrary.Domain.Lists;
 using BattleLibrary.Infrastructure.BsData.Caching;
@@ -44,6 +45,7 @@ public static class GameSessionEndpoints
         group.MapPost("/{id:guid}/respond", Respond);
         group.MapPost("/{id:guid}/list", SetList);
         group.MapPost("/{id:guid}/leave", Leave);
+        group.MapDelete("/{id:guid}/participants/{participantId:guid}", RemoveParticipant);
         group.MapPost("/{id:guid}/start", Start);
         group.MapPost("/{id:guid}/advance", Advance);
         group.MapPut("/{id:guid}/rounds/{round:int}", SetRound);
@@ -176,7 +178,11 @@ public static class GameSessionEndpoints
         }
 
         var username = request.Username?.Trim() ?? string.Empty;
-        var target = await db.Users.FirstOrDefaultAsync(u => u.Username == username, ct);
+        var key = UserKeys.Username(username);
+        var target = await db.Users
+            .Where(u => u.Username.ToLower() == key)
+            .OrderByDescending(u => u.Username == username)
+            .FirstOrDefaultAsync(ct);
         if (target is null)
         {
             return Results.NotFound(new { error = "No user with that username." });
@@ -333,6 +339,41 @@ public static class GameSessionEndpoints
         await db.SaveChangesAsync(ct);
         await Broadcast(hub, session, ct);
         return Results.NoContent();
+    }
+
+    // Host-only, during setup: revokes a pending invite or removes a joined player.
+    private static async Task<IResult> RemoveParticipant(
+        Guid id, Guid participantId, ClaimsPrincipal principal, BattleLibraryDbContext db, IHubContext<GameHub> hub,
+        CancellationToken ct)
+    {
+        if (Me(principal) is not { } me)
+        {
+            return Results.Unauthorized();
+        }
+        var session = await LoadTracked(db, id, ct);
+        if (session is null || session.CreatedByUserId != me)
+        {
+            return Results.NotFound();
+        }
+        if (session.Status != GameSessionStatus.Setup)
+        {
+            return Problem("status", "Players can only be removed while the game is being set up.");
+        }
+        var target = session.Participants.FirstOrDefault(p => p.Id == participantId);
+        if (target is null || target.Status is not (ParticipantStatus.Invited or ParticipantStatus.Accepted))
+        {
+            return Results.NotFound();
+        }
+        if (target.UserId == me)
+        {
+            return Problem("participant", "The host can't remove themselves. Cancel the game instead.");
+        }
+
+        target.Status = ParticipantStatus.Left;
+        await db.SaveChangesAsync(ct);
+        var full = await LoadTracked(db, id, ct);
+        await Broadcast(hub, full!, ct);
+        return Results.Ok(ToDto(full!, me));
     }
 
     private static async Task<IResult> Start(

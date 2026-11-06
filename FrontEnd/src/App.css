@@ -1,5 +1,18 @@
 /* Color tokens and typography live in styles/theme.css (per-theme palettes). */
 
+:root {
+  /* Height the fixed bottom nav occupies on phones (icon+label + border),
+     without the safe-area inset. Sheets and overlays subtract this so their
+     footers never hide behind the nav. Zeroed at >=640px where the nav hides. */
+  --nav-h: 55px;
+}
+
+@media (min-width: 640px) {
+  :root {
+    --nav-h: 0px;
+  }
+}
+
 body {
   background: var(--bg);
   color: var(--fg);
@@ -352,6 +365,21 @@ code {
   }
 }
 
+/* While a full-screen sheet / overlay is open, hide the bottom nav and lock the
+   page behind it. The sheet then runs flush to the bottom edge (its footer CTA
+   is reachable) and the scrim fully covers the page with no translucent gap. */
+body:has(.modal-backdrop),
+body:has(.ds-backdrop),
+body:has(.play-view) {
+  overflow: hidden;
+}
+
+body:has(.modal-backdrop) .bottom-nav,
+body:has(.ds-backdrop) .bottom-nav,
+body:has(.play-view) .bottom-nav {
+  display: none;
+}
+
 .bottom-nav-in {
   max-width: 980px;
   margin: 0 auto;
@@ -371,9 +399,9 @@ code {
   background: none;
   color: var(--muted);
   font-family: var(--f-display);
-  font-size: 0.66rem;
+  font-size: 0.7rem;
   font-weight: 600;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   cursor: pointer;
 }
@@ -383,8 +411,10 @@ code {
   height: 22px;
 }
 
+/* Active tab: brand color plus a top indicator bar so it does not rely on color alone. */
 .bottom-nav button.active {
   color: var(--accent);
+  box-shadow: inset 0 2px 0 var(--accent);
 }
 
 .bottom-nav button:focus-visible {
@@ -392,3 +422,27 @@ code {
   outline-offset: -3px;
 }
 
+
+.nav-icon {
+  position: relative;
+  display: inline-flex;
+}
+
+/* Unanswered game invites. */
+.nav-dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  margin-left: 6px;
+  border-radius: 50%;
+  background: var(--err);
+  vertical-align: super;
+}
+
+.nav-icon .nav-dot {
+  position: absolute;
+  top: -2px;
+  right: -5px;
+  margin: 0;
+  box-shadow: 0 0 0 2px var(--surface-solid);
+}

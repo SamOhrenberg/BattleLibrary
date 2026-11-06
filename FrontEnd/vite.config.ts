@@ -5,6 +5,13 @@ import { VitePWA } from 'vite-plugin-pwa'
 // Base path is '/' in dev; the Pages subpath is passed via VITE_BASE at build.
 export default defineConfig({
   base: process.env.VITE_BASE ?? '/',
+  // Dev-only: lets a phone on the LAN reach the API through the dev server's port.
+  server: {
+    proxy: {
+      '/api': 'http://localhost:5080',
+      '/hubs': { target: 'http://localhost:5080', ws: true },
+    },
+  },
   plugins: [
     react(),
     VitePWA({

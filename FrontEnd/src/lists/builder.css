@@ -8,7 +8,9 @@
 
 .lists-head .lists-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 10px;
+  min-width: 0;
 }
 
 .btn {
@@ -77,14 +79,18 @@
 }
 
 .group-head.army-head {
-  font-size: 0.9rem;
-  font-weight: 600;
+  min-height: 44px;
+  font-size: 0.95rem;
+  font-weight: 700;
   background: transparent;
-  border-style: dashed;
+  border-color: transparent;
+  padding-left: 4px;
 }
 
 .group-caret {
   display: inline-block;
+  font-size: 1.1rem;
+  line-height: 1;
   color: var(--muted);
   transition: transform 0.15s ease;
   transform: rotate(0deg);
@@ -240,7 +246,7 @@
 .li-del {
   border: 1px solid var(--border);
   background: var(--bg);
-  color: var(--muted);
+  color: var(--err);
   font: inherit;
   font-size: 0.78rem;
   padding: 5px 10px;
@@ -272,10 +278,12 @@
   gap: 14px;
   margin-top: 6px;
   max-width: 680px;
+  min-width: 0;
 }
 
 .create-form label {
   display: grid;
+  min-width: 0;
   gap: 5px;
   font-size: 0.85rem;
   color: var(--muted);
@@ -283,6 +291,10 @@
 
 .create-form input,
 .create-form select {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  text-overflow: ellipsis;
   padding: 9px 11px;
   border: 1px solid var(--border);
   border-radius: 7px;
@@ -446,10 +458,10 @@
   margin-top: 14px;
   padding: 8px 14px;
   border: 1px solid var(--line);
+  border-bottom: 2px solid var(--accent);
   border-radius: var(--radius);
-  background: color-mix(in srgb, var(--surface) 92%, transparent);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  /* Opaque so tab labels and rows never show through while it floats. */
+  background: var(--surface-solid);
 }
 
 .hud-metrics {
@@ -457,6 +469,7 @@
   align-items: baseline;
   gap: 6px;
   min-width: 0;
+  white-space: nowrap;
 }
 
 .hud-total {
@@ -769,16 +782,28 @@
   }
 }
 
+/* The whole row opens the datasheet (a trailing chevron signals this); only the
+   Add button is a separate action. */
 .unit-row {
   display: flex;
   align-items: center;
   gap: 12px;
   padding: 11px 14px;
   border-bottom: 1px solid var(--border);
+  cursor: pointer;
 }
 
 .unit-row:last-child {
   border-bottom: none;
+}
+
+.unit-row:hover {
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+}
+
+.unit-row:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
 }
 
 .unit-row .unit-name {
@@ -789,31 +814,9 @@
   overflow: visible;
   text-overflow: clip;
   overflow-wrap: anywhere;
-  background: none;
-  border: none;
-  padding: 0;
-  text-align: left;
-  color: var(--accent);
-  font: inherit;
+  color: var(--fg);
   font-weight: 500;
   line-height: 1.3;
-  cursor: pointer;
-  text-decoration: underline;
-  text-decoration-style: dotted;
-  text-underline-offset: 2px;
-}
-
-/* An info glyph marks the name as opening the full datasheet. */
-.unit-row .unit-name::after {
-  content: 'ⓘ';
-  margin-left: 5px;
-  font-size: 0.8rem;
-  opacity: 0.65;
-  text-decoration: none;
-}
-
-.unit-row .unit-name:hover {
-  text-decoration-style: solid;
 }
 
 .unit-row .unit-pts {
@@ -821,6 +824,14 @@
   color: var(--muted);
   font-size: 0.82rem;
   font-variant-numeric: tabular-nums;
+}
+
+/* Trailing chevron: affordance that tapping the row opens the datasheet. */
+.unit-chevron {
+  flex: none;
+  color: var(--faint);
+  font-size: 1.2rem;
+  line-height: 1;
 }
 
 .add-btn {
@@ -943,6 +954,16 @@
   font-size: 0.88rem;
 }
 
+.empty-cta {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+}
+
+.empty-cta p {
+  margin: 0;
+}
+
 .builder-error {
   margin: 10px 0 0;
   color: var(--err);
@@ -955,7 +976,7 @@
   position: fixed;
   inset: 0;
   z-index: 800;
-  background: rgba(10, 15, 22, 0.5);
+  background: rgba(8, 12, 20, 0.64);
   display: flex;
   align-items: flex-end;
   justify-content: center;
@@ -967,16 +988,45 @@
   border-bottom: none;
   border-radius: 16px 16px 0 0;
   width: 100%;
-  max-height: 88vh;
+  max-height: 88dvh;
   overflow-y: auto;
+  overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
-  padding: 18px 18px calc(18px + env(safe-area-inset-bottom));
+  /* No bottom padding: a sticky footer stops above it, letting content show beneath. */
+  padding: 0 18px;
   animation: sheet-up 0.22s ease;
+}
+
+.modal > :last-child:not(.modal-actions) {
+  margin-bottom: 18px;
 }
 
 @keyframes sheet-up {
   from { transform: translateY(100%); }
   to { transform: translateY(0); }
+}
+
+/* Modals that keep their own (non-sticky) header still need top breathing room,
+   since the sheet's own padding-top is 0 (the sticky .modal-top supplies it). */
+.modal > .modal-head:first-child,
+.modal > .rs-head:first-child {
+  padding-top: 16px;
+}
+
+.modal > .sheet-grip:first-child {
+  margin-top: 12px;
+}
+
+/* Sticky header: grip + name/points + close stay pinned while the sheet scrolls.
+   Full-bleed background (negative margins cancel the sheet's side padding). */
+.modal-top {
+  position: sticky;
+  top: 0;
+  z-index: 6;
+  margin: 0 -18px 4px;
+  padding: 10px 18px 8px;
+  background: var(--surface-solid);
+  border-bottom: 1px solid var(--line);
 }
 
 /* Drag affordance on the bottom sheet (phones only). */
@@ -986,21 +1036,52 @@
   border-radius: 999px;
   background: var(--faint);
   opacity: 0.5;
-  margin: 0 auto 12px;
+  margin: 0 auto 10px;
+}
+
+/* Close (X) button, pinned top-right of the sticky header. */
+.sheet-close {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: none;
+  color: var(--muted);
+  font-size: 1.7rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.sheet-close:hover {
+  color: var(--fg);
 }
 
 @media (min-width: 640px) {
   .modal-backdrop {
     align-items: center;
     padding: 16px;
+    padding-bottom: 16px;
   }
   .modal {
     max-width: 760px;
     max-height: 85vh;
     border: 1px solid var(--border);
     border-radius: 12px;
-    padding: 20px 22px;
+    padding: 0 22px;
     animation: none;
+  }
+  .modal-top {
+    margin: 0 -22px 6px;
+    padding: 14px 22px 10px;
+  }
+  .rs-head {
+    margin: 0 -22px 10px;
+    padding: 0 22px 10px;
   }
   .sheet-grip {
     display: none;
@@ -1012,6 +1093,8 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
+  /* Leave room for the absolutely-positioned close button. */
+  padding-right: 44px;
 }
 
 .modal-head h3 {
@@ -1034,23 +1117,51 @@
   white-space: nowrap;
 }
 
-.modal .keywords {
+.modal .keywords,
+.play-view .keywords {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
   margin: 12px 0 0;
 }
 
-.modal .kw {
+/* Keywords read as plain text, not interactive button-styled chips. */
+.modal .keywords,
+.play-view .keywords {
+  gap: 4px 10px;
+  align-items: baseline;
+}
+
+.modal .kw,
+.play-view .kw {
   font-family: var(--f-mono);
-  font-size: 0.66rem;
-  letter-spacing: 0.06em;
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
-  padding: 3px 8px;
-  border-radius: 5px;
-  background: var(--surface-2);
-  border: 1px solid var(--line);
   color: var(--muted);
+}
+
+.modal .kw:not(:last-child)::after,
+.play-view .kw:not(:last-child)::after {
+  content: "·";
+  margin-left: 10px;
+  color: var(--faint);
+}
+
+.kw-more {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  min-width: 44px;
+  margin: -14px 0;
+  border: none;
+  background: none;
+  padding: 0 8px;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--accent);
+  cursor: pointer;
 }
 
 .stat-table {
@@ -1078,24 +1189,16 @@
 }
 
 .stat-table th {
-  font-size: 0.62rem;
-  letter-spacing: 0.08em;
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--muted);
-  font-weight: 500;
+  font-weight: 600;
   background: var(--surface-2);
 }
 
 .stat-table td {
   color: var(--fg);
-}
-
-.stat-table td:first-child,
-.stat-table th:first-child {
-  text-align: left;
-  color: var(--fg);
-  font-family: var(--f-body);
-  font-weight: 600;
 }
 
 .detail-section h4 {
@@ -1285,10 +1388,11 @@
   gap: 10px;
   margin-top: 18px;
   position: sticky;
-  bottom: calc(-1 * env(safe-area-inset-bottom, 0px));
+  bottom: 0;
   background: var(--surface-solid);
   border-top: 1px solid var(--line);
-  padding: 12px 0 calc(4px + env(safe-area-inset-bottom, 0px));
+  padding: 12px 0;
+  box-shadow: 0 -12px 16px -12px rgba(0, 0, 0, 0.35);
 }
 
 .modal-subtotal {
@@ -1307,6 +1411,129 @@
 .stat-scroll {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
+}
+
+/* ---- Stacked stat / weapon layout (phones) ----
+   Below 600px the tables would clip or spawn a scrollbar per row, so the stat
+   line becomes a label-over-value grid and each weapon stacks. The table markup
+   is kept for wider screens. */
+.stat-grid {
+  display: none;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  margin: 12px 0 0;
+}
+
+.stat-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 6px 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-2);
+  text-align: center;
+}
+
+.stat-cell dt {
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.stat-cell dd {
+  margin: 0;
+  font-family: var(--f-mono);
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--fg);
+  font-variant-numeric: tabular-nums;
+}
+
+.weapon {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.weapon:first-of-type {
+  border-top: none;
+  padding-top: 0;
+}
+
+.weapon-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+}
+
+.weapon-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-weight: 600;
+  color: var(--fg);
+  font-size: 0.92rem;
+}
+
+.weapon-type {
+  flex: none;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  padding: 1px 7px;
+}
+
+.weapon-stats {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 5px;
+  margin: 8px 0 0;
+}
+
+.weapon-kw {
+  margin-top: 7px;
+  font-family: var(--f-mono);
+  font-size: 0.8rem;
+  line-height: 1.7;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+}
+
+/* Narrow phones: fewer stat columns so cells stay legible. */
+@media (max-width: 360px) {
+  .stat-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .weapon-stats {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+/* Phones: swap the unit stat table for the stacked grid (the weapon layout is
+   the same stacked component at every width). */
+@media (max-width: 599px) {
+  .stat-wide {
+    display: none;
+  }
+  .stat-grid {
+    display: grid;
+  }
+}
+
+/* Wider weapon stat cells read better once there is room. */
+@media (min-width: 600px) {
+  .weapon-stats {
+    gap: 6px 10px;
+    max-width: 520px;
+  }
 }
 
 /* Unit size picker */
@@ -1679,7 +1906,6 @@
 
 .entry-notes-input {
   width: 100%;
-  margin-top: 6px;
   padding: 6px 9px;
   border: 1px solid var(--accent);
   border-radius: 7px;
@@ -1688,6 +1914,53 @@
   font: inherit;
   font-size: 0.78rem;
   resize: vertical;
+  min-height: 3.2em;
+}
+
+/* Full-width inline Name / Note editor with explicit Save + Cancel. */
+.inline-editor {
+  display: grid;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.inline-editor-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* Secondary (Cancel) button: lower emphasis than the primary Save. */
+.btn.ghost {
+  background: var(--bg);
+  border-color: var(--border);
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.btn.ghost:hover {
+  border-color: var(--accent);
+  color: var(--fg);
+}
+
+/* A just-added / duplicated entry briefly flashes so it is easy to spot. */
+.entry-row.flash {
+  animation: entry-flash 1.6s ease;
+}
+
+@keyframes entry-flash {
+  0%,
+  18% {
+    background: color-mix(in srgb, var(--accent) 26%, transparent);
+  }
+  100% {
+    background: transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .entry-row.flash {
+    animation: none;
+  }
 }
 
 /* Saved loadouts (presets) in the unit-detail sheet. */
@@ -2203,6 +2476,11 @@
   gap: 10px;
 }
 
+.legality-top .btn {
+  white-space: nowrap;
+  flex: none;
+}
+
 .btn-sm {
   min-height: 32px;
   padding: 5px 11px;
@@ -2299,6 +2577,10 @@
   padding-right: 2px;
 }
 
+.ai-warlord {
+  color: var(--warlord);
+}
+
 .ai-unit-name {
   min-width: 0;
   font-size: 0.86rem;
@@ -2344,15 +2626,16 @@
 }
 
 .warlord-btn.on {
-  border-color: var(--planned);
-  color: var(--planned);
+  border-color: var(--warlord);
+  color: var(--warlord);
+  background: color-mix(in srgb, var(--warlord) 12%, transparent);
   font-weight: 600;
 }
 
 /* Forced Warlord: locked on, so it reads as set rather than greyed-out. */
 .warlord-btn.locked:disabled {
-  border-color: var(--planned);
-  color: var(--planned);
+  border-color: var(--warlord);
+  color: var(--warlord);
   font-weight: 600;
   opacity: 1;
   cursor: not-allowed;
@@ -2426,8 +2709,8 @@
 .badge-warlord {
   font-size: 0.72rem;
   font-weight: 600;
-  color: var(--planned);
-  border: 1px solid var(--planned);
+  color: var(--warlord);
+  border: 1px solid var(--warlord);
   border-radius: 6px;
   padding: 2px 7px;
 }
@@ -2468,12 +2751,40 @@
    scroll. The desktop override below switches back to a wrapping row. */
 .det-chip-wrap {
   display: block;
+  width: 100%;
   position: relative;
 }
 
-/* Hover/focus preview of a detachment's rules. Accent-outlined with a caret so
-   it reads as attached to the chip, not a stray box far below it. The popover
-   is inside the wrap, so hovering it keeps the wrap :hover true. */
+/* The selectable chip and its info (ⓘ) button, side by side. */
+.det-chip-main {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+}
+
+/* ⓘ opens the rules in a sheet-like popover; a tap on the chip itself only
+   toggles selection (so an accidental tap never spends DP or opens a tooltip). */
+.det-info-btn {
+  flex: none;
+  width: 44px;
+  min-height: 44px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 0.95rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.det-info-btn:hover,
+.det-info-btn[aria-expanded="true"] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* Rules preview: opened by the ⓘ button (state-driven), with a close control.
+   Accent-outlined, spans the field width, never clipped by the chip row. */
 .det-popover {
   display: none;
   position: absolute;
@@ -2481,8 +2792,9 @@
   left: 0;
   right: 0;
   z-index: 60;
-  max-height: 280px;
+  max-height: 320px;
   overflow-y: auto;
+  overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
   padding: 12px 14px;
   border: 1px solid var(--accent);
@@ -2491,30 +2803,44 @@
   box-shadow: 0 14px 34px rgba(10, 15, 22, 0.4);
 }
 
-/* Caret pointing up to the chip the preview belongs to. */
-.det-popover::before {
-  content: "";
-  position: absolute;
-  top: -6px;
-  left: 18px;
-  width: 11px;
-  height: 11px;
-  background: var(--surface-solid);
-  border-left: 1px solid var(--accent);
-  border-top: 1px solid var(--accent);
-  transform: rotate(45deg);
+.det-popover.open {
+  display: block;
 }
 
-.det-chip-wrap:hover .det-popover,
-.det-chip-wrap:focus-within .det-popover {
-  display: block;
+.det-popover-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.det-popover-close {
+  width: 36px;
+  height: 36px;
+  flex: none;
+  border: none;
+  background: none;
+  color: var(--muted);
+  font-size: 1.4rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.det-popover-close:hover {
+  color: var(--fg);
 }
 
 .dp-title {
   font-size: 0.82rem;
   font-weight: 700;
   color: var(--accent);
-  margin-bottom: 8px;
+}
+
+/* Over-budget chip: dimmed but still focusable (aria-disabled), so a tap can
+   explain why instead of doing nothing. */
+.det-chip.over {
+  opacity: 0.45;
 }
 
 .dp-sub {
@@ -2553,7 +2879,9 @@
 }
 
 .det-chip {
-  width: 100%;
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
   text-align: left;
   padding: 8px 10px;
   border-radius: 8px;
@@ -2570,16 +2898,14 @@
 @media (min-width: 560px) {
   .det-chip-wrap {
     display: inline-flex;
+    width: auto;
     position: static;
   }
   .det-chip {
-    width: auto;
+    flex: 0 1 auto;
   }
   .det-popover {
     top: calc(100% + 6px);
-  }
-  .det-popover::before {
-    display: none;
   }
 }
 
@@ -2685,36 +3011,87 @@
   background: var(--bg);
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
   padding: 16px;
 }
 
+/* Compact sticky top bar: back, one-line title, icon actions. */
 .play-head {
   position: sticky;
   top: -16px;
+  z-index: 5;
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 16px 0 12px;
-  margin: -16px 0 0;
+  align-items: center;
+  gap: 4px;
+  padding: calc(8px + env(safe-area-inset-top)) 0 8px;
+  margin: -16px -16px 0;
+  padding-inline: 4px;
   background: var(--bg);
   border-bottom: 1px solid var(--border);
 }
 
+.play-title {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 .play-head h2 {
   margin: 0;
-  font-size: 1.3rem;
+  font-size: 1.05rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .play-sub {
-  font-size: 0.85rem;
+  display: block;
+  font-size: 0.78rem;
   color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.play-back,
+.play-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: var(--fg);
+  cursor: pointer;
+}
+
+.play-back {
+  font-size: 1.8rem;
+  line-height: 1;
 }
 
 .play-actions {
   display: flex;
-  gap: 8px;
+  align-items: center;
   flex: none;
+}
+
+.play-view .modal-backdrop {
+  padding-bottom: 0;
+}
+
+.play-detachments {
+  margin-top: 24px;
+}
+
+.play-det summary {
+  cursor: pointer;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  font-weight: 600;
 }
 
 .play-cards {
@@ -2850,9 +3227,75 @@
 
 /* Rule search modal. */
 .rs-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
   display: grid;
   gap: 8px;
-  margin-bottom: 10px;
+  margin: 0 -18px 10px;
+  padding: 0 18px 10px;
+  background: var(--surface-solid);
+  border-bottom: 1px solid var(--border);
+}
+
+.rs-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.rs-title-row h3 {
+  margin: 0;
+}
+
+.rs-close,
+.rs-clear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: var(--muted);
+  font-size: 1.4rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.rs-input-wrap {
+  position: relative;
+}
+
+.rs-input-wrap .rs-input {
+  padding-right: 44px;
+}
+
+.rs-input::-webkit-search-cancel-button {
+  display: none;
+}
+
+.rs-clear {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  transform: translateY(-50%);
+}
+
+.rs-count {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.rs-title mark {
+  background: none;
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 .rs-input {
@@ -2868,7 +3311,7 @@
 .rs-results {
   display: grid;
   gap: 8px;
-  max-height: 60vh;
+  min-width: 0;
 }
 
 .rs-item {
@@ -2937,7 +3380,8 @@
     padding: 0;
     overflow: visible;
   }
-  .play-actions {
+  .play-actions,
+  .play-back {
     display: none;
   }
   .play-head {
@@ -3106,6 +3550,15 @@
     min-height: 42px;
   }
 
+  /* 16px text inputs so iOS Safari does not zoom in on focus. */
+  .catalogue-search,
+  .catalogue-sort,
+  .entry-name-input,
+  .entry-notes-input,
+  .preset-input {
+    font-size: 16px;
+  }
+
   .catalogue-sort {
     flex: 0 0 auto;
     min-height: 42px;
@@ -3136,4 +3589,102 @@
     min-width: 38px;
     min-height: 38px;
   }
+
+  /* Roomier hit areas for the small secondary controls. */
+  .entry-links .entry-edit-link {
+    display: inline-flex;
+    align-items: center;
+    min-height: 40px;
+    padding: 4px 8px;
+    font-size: 0.82rem;
+  }
+
+  .tier-toggle {
+    min-height: 40px;
+  }
+
+  .tier-toggle input {
+    width: 20px;
+    height: 20px;
+  }
+
+  .warlord-btn {
+    min-height: 36px;
+    padding: 5px 12px;
+  }
+
+  .attach-select,
+  .enh-select {
+    min-height: 40px;
+  }
+}
+
+/* Touch: list-card actions meet the 44px target. */
+@media (pointer: coarse) {
+  .li-dup,
+  .li-del {
+    min-height: 44px;
+    padding: 8px 14px;
+  }
+}
+
+/* ---- List index: faction groups of full-width cards ---- */
+.list-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.list-search,
+.list-system {
+  flex: 1 1 180px;
+  min-width: 0;
+  min-height: 44px;
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+  text-overflow: ellipsis;
+}
+
+.group-system {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.list-index li.list-card {
+  flex-wrap: nowrap;
+  padding: 6px 4px 6px 14px;
+}
+
+.list-index li.list-card > .lc-main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.lc-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.lc-top .li-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.lc-top .li-points {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.tour-link {
+  margin: 4px 0 0;
+  text-align: center;
+  font-size: 0.85rem;
 }

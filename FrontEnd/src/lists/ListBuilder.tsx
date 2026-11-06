@@ -84,6 +84,10 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
   const [nameDraft, setNameDraft] = useState('')
   const [notesId, setNotesId] = useState<string | null>(null)
   const [notesDraft, setNotesDraft] = useState('')
+  // A just-added / duplicated entry briefly highlighted and scrolled into view.
+  const [highlightId, setHighlightId] = useState<string | null>(null)
+  // Which detachment's rule preview is open (mobile taps the ⓘ to open it).
+  const [detInfo, setDetInfo] = useState<string | null>(null)
   // Set by Escape so the blur that follows discards the edit instead of saving.
   const cancelEdit = useRef(false)
   const [showAssistant, setShowAssistant] = useState(false)
@@ -107,13 +111,18 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
       window.removeEventListener('keydown', onKey)
     }
   }, [exportOpen])
+  // Close the detachment rules popover on Escape.
+  useEffect(() => {
+    if (!detInfo) return
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setDetInfo(null)
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [detInfo])
   const [name, setName] = useState(initial.name)
   const [limit, setLimit] = useState(initial.pointsLimit?.toString() ?? '')
   const [busy, setBusy] = useState(false)
   const [saved, setSaved] = useState(false)
   const toast = useToast()
-  // Fire the 'entry-added' tour milestone only on the first add.
-  const addedOnce = useRef(initial.entries.length > 0)
 
   // The active force (falls back to the primary) and the factions in play.
   const activeForce = list.forces.find((f) => f.id === activeForceId) ?? list.forces[0]
@@ -284,12 +293,76 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
     }
   }
 
+  // Datasheet display name for feedback toasts.
+  const resolveName = (id: string) =>
+    datasheets.find((d) => d.id === id)?.name ?? detailCache[id]?.name ?? 'unit'
+
+  // Briefly highlights an entry row and scrolls it into view.
+  function flashEntry(id: string) {
+    setHighlightId(id)
+    requestAnimationFrame(() =>
+      document.querySelector(`[data-entry-id="${id}"]`)?.scrollIntoView({ block: 'center', behavior: 'smooth' }),
+    )
+    window.setTimeout(() => setHighlightId((cur) => (cur === id ? null : cur)), 1600)
+  }
+
+  // Re-adds a datasheet with the same size, wargear and loadout pool (used by
+  // Duplicate and by the Undo on Remove). Warlord/enhancement are not copied.
+  function addEntryLike(e: ListEntry) {
+    const groups = detailCache[e.datasheetId]?.variantGroups ?? []
+    const variantIds = new Set(groups.flatMap((g) => g.variants.map((v) => v.id)))
+    const optionIds = e.selectedOptions.filter((o) => !variantIds.has(o.id)).map((o) => o.id)
+    const variants = e.selectedOptions
+      .filter((o) => variantIds.has(o.id))
+      .map((o) => ({ id: o.id, quantity: o.quantity }))
+    return addEntry(list.id, e.datasheetId, optionIds, e.modelCount, e.forceId, variants.length ? variants : undefined)
+  }
+
   async function add(datasheetId: string, optionIds: string[] = [], models?: number, variants?: VariantQuantity[]) {
-    await run(() => addEntry(list.id, datasheetId, optionIds, models, activeForce?.id, variants))
-    if (!addedOnce.current) {
-      addedOnce.current = true
+    const before = new Set(list.entries.map((e) => e.id))
+    const name = resolveName(datasheetId)
+    setBusy(true)
+    try {
+      const next = await addEntry(list.id, datasheetId, optionIds, models, activeForce?.id, variants)
+      setList(next)
+      const newId = next.entries.find((e) => !before.has(e.id))?.id ?? null
+      if (newId) {
+        flashEntry(newId)
+        toast.push(`Added ${name}.`, 'success', {
+          label: 'Undo',
+          onClick: () => void run(() => removeEntry(list.id, newId)),
+        })
+      }
+      // A no-op unless the tour is waiting on this milestone.
       notify('entry-added')
+    } catch (err) {
+      toast.push(err instanceof ApiError ? err.message : 'Something went wrong.', 'error')
+    } finally {
+      setBusy(false)
     }
+  }
+
+  // Remove an entry, offering an Undo that re-adds an equivalent entry.
+  async function removeWithUndo(e: ListEntry) {
+    const name = e.customName || e.datasheetName
+    await run(() => removeEntry(list.id, e.id))
+    // Undo re-adds the unit only; Warlord and enhancement need setting again.
+    const lost = [e.isWarlord && 'Warlord', e.enhancementName].filter(Boolean).join(' and ')
+    toast.push(lost ? `Removed ${name} (was ${lost}).` : `Removed ${name}.`, 'info', {
+      label: 'Undo',
+      onClick: () =>
+        void (async () => {
+          const before = new Set(list.entries.map((x) => x.id))
+          try {
+            const next = await addEntryLike(e)
+            setList(next)
+            const newId = next.entries.find((x) => !before.has(x.id))?.id
+            if (newId) flashEntry(newId)
+          } catch {
+            toast.push('Could not undo the removal.', 'error')
+          }
+        })(),
+    })
   }
 
   // Add an allied force (a faction) and switch the catalogue to it.
@@ -358,21 +431,28 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
   // Copies an entry: re-adds the same datasheet, size, wargear, and loadout pool
   // (variants, when the datasheet's shape is known). Warlord/enhancement are
   // intentionally not copied (each is unique).
-  function duplicateEntry(e: ListEntry) {
-    const groups = detailCache[e.datasheetId]?.variantGroups ?? []
-    const variantIds = new Set(groups.flatMap((g) => g.variants.map((v) => v.id)))
-    const optionIds = e.selectedOptions.filter((o) => !variantIds.has(o.id)).map((o) => o.id)
-    const variants = e.selectedOptions
-      .filter((o) => variantIds.has(o.id))
-      .map((o) => ({ id: o.id, quantity: o.quantity }))
-    void run(() => addEntry(list.id, e.datasheetId, optionIds, e.modelCount, undefined, variants.length ? variants : undefined))
+  async function duplicateEntry(e: ListEntry) {
+    const before = new Set(list.entries.map((x) => x.id))
+    setBusy(true)
+    try {
+      const next = await addEntryLike(e)
+      setList(next)
+      const newId = next.entries.find((x) => !before.has(x.id))?.id
+      if (newId) flashEntry(newId)
+      toast.push(`Duplicated ${e.customName || e.datasheetName}.`, 'success')
+    } catch (err) {
+      toast.push(err instanceof ApiError ? err.message : 'Could not duplicate the unit.', 'error')
+    } finally {
+      setBusy(false)
+    }
   }
 
   // Inline custom-name editing: open with the current name, save on blur/Enter.
   function startRename(e: ListEntry) {
     setNotesId(null)
     setRenameId(e.id)
-    setNameDraft(e.customName ?? '')
+    // Prefill the current effective name so it reads as an editable value.
+    setNameDraft(e.customName ?? e.datasheetName)
   }
   async function commitRename(e: ListEntry) {
     setRenameId(null)
@@ -380,7 +460,9 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
       cancelEdit.current = false
       return
     }
-    const next = nameDraft.trim()
+    const raw = nameDraft.trim()
+    // The datasheet name (or blank) means "no custom name".
+    const next = raw === e.datasheetName ? '' : raw
     if (next === (e.customName ?? '')) return
     await run(() => updateEntry(list.id, e.id, { customName: next }))
   }
@@ -400,6 +482,13 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
     const next = notesDraft.trim()
     if (next === (e.notes ?? '')) return
     await run(() => updateEntry(list.id, e.id, { notes: next }))
+  }
+
+  // Toggles the Warlord slot, confirming the assignment with a toast.
+  async function toggleWarlord(e: ListEntry) {
+    const makeWarlord = !e.isWarlord
+    await run(() => setWarlord(list.id, e.id, makeWarlord))
+    if (makeWarlord) toast.push(`Warlord: ${e.customName || e.datasheetName}.`, 'success')
   }
 
   // Adds a datasheet and sets the new entry as Warlord in one step.
@@ -433,7 +522,7 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
   }
 
   async function remove() {
-    if (!confirm('Delete this list? This cannot be undone.')) return
+    if (!confirm(`Delete "${list.name}"? This cannot be undone.`)) return
     setBusy(true)
     try {
       await deleteList(list.id)
@@ -620,17 +709,37 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
     return availableEnhancements.filter((en) => !usedByOthers.has(en.id))
   }
 
+  function openDatasheet(id: string) {
+    setDetailId(id)
+    notify('datasheet-opened')
+  }
+
   const renderUnit = (d: CatalogueDatasheet, tourFirst: boolean) => (
-    <div className="unit-row" key={d.id}>
-      <button type="button" className="unit-name" onClick={() => setDetailId(d.id)}>
-        {d.name}
-      </button>
-      {!pointless && <span className="unit-pts">{d.points != null ? `${d.points}` : '-'}</span>}
+    <div
+      className="unit-row"
+      key={d.id}
+      role="button"
+      tabIndex={0}
+      aria-label={`${d.name} datasheet`}
+      data-tour={tourFirst ? 'catalogue-unit' : undefined}
+      onClick={() => openDatasheet(d.id)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          openDatasheet(d.id)
+        }
+      }}
+    >
+      <span className="unit-name">{d.name}</span>
+      {!pointless && <span className="unit-pts">{d.points != null ? `${d.points} pts` : '-'}</span>}
+      <span className="unit-chevron" aria-hidden="true">›</span>
       <button
         type="button"
         className="add-btn"
-        data-tour={tourFirst ? 'catalogue-add' : undefined}
-        onClick={() => void add(d.id)}
+        onClick={(e) => {
+          e.stopPropagation()
+          void add(d.id)
+        }}
         disabled={busy}
       >
         Add
@@ -645,26 +754,54 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
     const embedded = variant === 'embedded'
     const leaderRow = variant === 'leader'
     return (
-    <div className={`entry-row${embedded ? ' entry-embedded' : ''}${leaderRow ? ' entry-leader' : ''}`} key={e.id}>
+    <div
+      className={`entry-row${embedded ? ' entry-embedded' : ''}${leaderRow ? ' entry-leader' : ''}${highlightId === e.id ? ' flash' : ''}`}
+      key={e.id}
+      data-entry-id={e.id}
+    >
       <div className="entry-main">
         {renameId === e.id ? (
-          <input
-            className="entry-name-input"
-            autoFocus
-            value={nameDraft}
-            maxLength={200}
-            placeholder={e.datasheetName}
-            aria-label="Custom unit name"
-            onChange={(ev) => setNameDraft(ev.target.value)}
-            onBlur={() => void commitRename(e)}
-            onKeyDown={(ev) => {
-              if (ev.key === 'Enter') ev.currentTarget.blur()
-              else if (ev.key === 'Escape') {
-                cancelEdit.current = true
-                ev.currentTarget.blur()
-              }
-            }}
-          />
+          <div className="inline-editor">
+            <input
+              className="entry-name-input"
+              autoFocus
+              value={nameDraft}
+              maxLength={200}
+              placeholder={e.datasheetName}
+              aria-label="Custom unit name"
+              onFocus={(ev) => ev.currentTarget.select()}
+              onChange={(ev) => setNameDraft(ev.target.value)}
+              onBlur={() => void commitRename(e)}
+              onKeyDown={(ev) => {
+                if (ev.key === 'Enter') ev.currentTarget.blur()
+                else if (ev.key === 'Escape') {
+                  cancelEdit.current = true
+                  ev.currentTarget.blur()
+                }
+              }}
+            />
+            <div className="inline-editor-actions">
+              <button
+                type="button"
+                className="btn btn-sm"
+                onMouseDown={(ev) => ev.preventDefault()}
+                onClick={() => void commitRename(e)}
+              >
+                Save
+              </button>
+              <button
+                type="button"
+                className="btn btn-sm ghost"
+                onMouseDown={(ev) => ev.preventDefault()}
+                onClick={() => {
+                  cancelEdit.current = true
+                  setRenameId(null)
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
         ) : (
           <button type="button" className="entry-name entry-edit" onClick={() => setEditEntry(e)} title="View / edit options">
             {embedded && <span className="lead-marker" aria-hidden="true">↳ </span>}
@@ -675,7 +812,7 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
         {!pointless && (
           <div className="entry-each">
             {e.modelCount > 1 ? `${e.modelCount} models · ` : ''}
-            {e.points + e.optionsPoints + e.dynamicPoints} pts
+            {e.lineTotal} pts
             {e.optionsPoints > 0 || e.dynamicPoints > 0
               ? ` (${e.points}${e.optionsPoints > 0 ? ` + ${e.optionsPoints}` : ''}${
                   e.dynamicPoints !== 0 ? ` ${e.dynamicPoints > 0 ? '+' : '−'} ${Math.abs(e.dynamicPoints)}` : ''
@@ -699,7 +836,8 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
               <button
                 type="button"
                 className={`warlord-btn${e.isWarlord ? ' on' : ''}${e.forcedWarlord ? ' locked' : ''}`}
-                onClick={() => void run(() => setWarlord(list.id, e.id, !e.isWarlord))}
+                aria-pressed={e.isWarlord}
+                onClick={() => void toggleWarlord(e)}
                 disabled={busy || e.forcedWarlord || (!e.isWarlord && hasForcedWarlord)}
                 title={
                   e.forcedWarlord
@@ -718,23 +856,46 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
           </div>
         )}
         {notesId === e.id ? (
-          <textarea
-            className="entry-notes-input"
-            autoFocus
-            value={notesDraft}
-            maxLength={2000}
-            rows={3}
-            placeholder="Notes for this unit"
-            aria-label="Unit notes"
-            onChange={(ev) => setNotesDraft(ev.target.value)}
-            onBlur={() => void commitNotes(e)}
-            onKeyDown={(ev) => {
-              if (ev.key === 'Escape') {
-                cancelEdit.current = true
-                ev.currentTarget.blur()
-              }
-            }}
-          />
+          <div className="inline-editor">
+            <textarea
+              className="entry-notes-input"
+              autoFocus
+              value={notesDraft}
+              maxLength={2000}
+              rows={2}
+              placeholder="Notes for this unit"
+              aria-label="Unit notes"
+              onChange={(ev) => setNotesDraft(ev.target.value)}
+              onBlur={() => void commitNotes(e)}
+              onKeyDown={(ev) => {
+                if (ev.key === 'Escape') {
+                  cancelEdit.current = true
+                  ev.currentTarget.blur()
+                }
+              }}
+            />
+            <div className="inline-editor-actions">
+              <button
+                type="button"
+                className="btn btn-sm"
+                onMouseDown={(ev) => ev.preventDefault()}
+                onClick={() => void commitNotes(e)}
+              >
+                Save
+              </button>
+              <button
+                type="button"
+                className="btn btn-sm ghost"
+                onMouseDown={(ev) => ev.preventDefault()}
+                onClick={() => {
+                  cancelEdit.current = true
+                  setNotesId(null)
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
         ) : (
           e.notes && (
             <button type="button" className="entry-note" onClick={() => startNotes(e)} title="Edit note">
@@ -744,10 +905,10 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
         )}
         <div className="entry-links">
           <button type="button" className="entry-edit-link" onClick={() => setEditEntry(e)}>
-            Edit…
+            Options
           </button>
           <button type="button" className="entry-edit-link" onClick={() => startRename(e)}>
-            {e.customName ? 'Rename' : 'Name'}
+            Rename
           </button>
           {notesId !== e.id && !e.notes && (
             <button type="button" className="entry-edit-link" onClick={() => startNotes(e)}>
@@ -780,11 +941,10 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
           })()}
         </div>
       </div>
-      {!pointless && <span className="line-total">{e.lineTotal}</span>}
       <button
         type="button"
         className="icon-btn dup-btn"
-        onClick={() => duplicateEntry(e)}
+        onClick={() => void duplicateEntry(e)}
         disabled={busy}
         aria-label="Duplicate"
         title="Duplicate"
@@ -794,7 +954,7 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
           <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
         </svg>
       </button>
-      <button type="button" className="icon-btn" onClick={() => void run(() => removeEntry(list.id, e.id))} disabled={busy} aria-label="Remove">×</button>
+      <button type="button" className="icon-btn remove-btn" onClick={() => void removeWithUndo(e)} disabled={busy} aria-label="Remove">×</button>
     </div>
     )
   }
@@ -881,7 +1041,9 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
             aria-label="List name"
             maxLength={120}
           />
-          <span className="builder-faction">{list.factionName}</span>
+          {(pointless || list.forces.length === 0) && (
+            <span className="builder-faction">{list.factionName}</span>
+          )}
         </div>
 
         <div className="builder-meta">
@@ -1075,21 +1237,52 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
                   // One detachment is always allowed; past that, adding can't exceed the budget.
                   const overBudget =
                     !selected && !!rules && list.detachments.length >= 1 && dpUsed + d.dp > rules.dp
+                  const remaining = rules ? rules.dp - dpUsed : 0
                   const hasPreview = d.rules.length > 0 || d.enhancements.length > 0
                   return (
                     <div className="det-chip-wrap" key={d.id}>
-                      <button
-                        type="button"
-                        className={`det-chip${selected ? ' on' : ''}`}
-                        onClick={() => toggleDetachment(d.id)}
-                        disabled={busy || overBudget}
-                        title={overBudget ? 'Not enough Detachment Points left' : undefined}
-                      >
-                        {d.name} <span className="det-dp">{d.dp} DP</span>
-                      </button>
-                      {hasPreview && (
-                        <div className="det-popover" role="tooltip">
-                          <div className="dp-title">{d.name} · {d.dp} DP</div>
+                      <div className="det-chip-main">
+                        <button
+                          type="button"
+                          className={`det-chip${selected ? ' on' : ''}${overBudget ? ' over' : ''}`}
+                          aria-pressed={selected}
+                          aria-disabled={overBudget || undefined}
+                          onClick={() => {
+                            if (overBudget) {
+                              toast.push(`Needs ${d.dp} DP, ${remaining} remaining.`, 'info')
+                              return
+                            }
+                            toggleDetachment(d.id)
+                          }}
+                          disabled={busy}
+                        >
+                          {d.name} <span className="det-dp">{d.dp} DP</span>
+                        </button>
+                        {hasPreview && (
+                          <button
+                            type="button"
+                            className="det-info-btn"
+                            aria-label={`${d.name} rules`}
+                            aria-expanded={detInfo === d.id}
+                            onClick={() => setDetInfo((cur) => (cur === d.id ? null : d.id))}
+                          >
+                            ⓘ
+                          </button>
+                        )}
+                      </div>
+                      {hasPreview && detInfo === d.id && (
+                        <div className="det-popover open" role="dialog" aria-label={`${d.name} rules`}>
+                          <div className="det-popover-head">
+                            <span className="dp-title">{d.name} · {d.dp} DP</span>
+                            <button
+                              type="button"
+                              className="det-popover-close"
+                              aria-label="Close"
+                              onClick={() => setDetInfo(null)}
+                            >
+                              ×
+                            </button>
+                          </div>
                           {d.rules.length > 0 && (
                             <dl className="rules-list">
                               {d.rules.map((r) => (
@@ -1235,7 +1428,7 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
       </div>
 
       <div className={`builder-grid tab-${tab}`}>
-        <div className="panel panel-catalogue" data-tour="catalogue">
+        <div className="panel panel-catalogue">
           <div className="panel-head">
             <h3>Catalogue</h3>
             <div className="panel-head-actions">
@@ -1275,13 +1468,19 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
             <div className="tier-toggles">
               <span className="tier-label">Show</span>
               {legendsCount > 0 && (
-                <label className="tier-toggle">
+                <label
+                  className="tier-toggle"
+                  title="Legends: older or retired units, kept for casual play and not part of the standard range."
+                >
                   <input type="checkbox" checked={showLegends} onChange={(e) => setShowLegends(e.target.checked)} />
                   Legends <span className="tier-count">{legendsCount}</span>
                 </label>
               )}
               {crucibleCount > 0 && (
-                <label className="tier-toggle">
+                <label
+                  className="tier-toggle"
+                  title="Crucible: current expanded-content units, shown by default alongside the core range."
+                >
                   <input type="checkbox" checked={showCrucible} onChange={(e) => setShowCrucible(e.target.checked)} />
                   Crucible <span className="tier-count">{crucibleCount}</span>
                 </label>
@@ -1341,7 +1540,7 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
           <div className="panel-head">
             <h3>Your list</h3>
             <div className="panel-head-actions">
-              <span className="li-points">{list.entries.length} entries</span>
+              <span className="li-points">{list.entries.length} {list.entries.length === 1 ? 'entry' : 'entries'}</span>
               {list.entries.length > 1 && (
                 <div className="view-toggle" role="group" aria-label="List grouping">
                   <button type="button" className={listView === 'role' ? 'on' : ''} onClick={() => setListView('role')}>
@@ -1361,7 +1560,12 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
           </div>
           <div className="scroll">
             {list.entries.length === 0 && list.forces.length <= 1 ? (
-              <p className="empty">No {unitWord} yet. Add some from the catalogue.</p>
+              <div className="empty empty-cta">
+                <p>No {unitWord} yet.</p>
+                <button type="button" className="btn btn-primary" onClick={() => setTab('catalogue')}>
+                  Browse catalogue
+                </button>
+              </div>
             ) : list.forces.length > 1 ? (
               list.forces.map((f) => (
                 <section className="force-section" key={f.id}>
@@ -1448,7 +1652,10 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
           onToggleDetachment={toggleDetachment}
           onSetWarlord={(entryId, value) => void run(() => setWarlord(list.id, entryId, value))}
           onRemoveEnhancement={(entryId) => void run(() => setEnhancement(list.id, entryId, null))}
-          onRemoveEntry={(entryId) => void run(() => removeEntry(list.id, entryId))}
+          onRemoveEntry={(entryId) => {
+            const entry = list.entries.find((x) => x.id === entryId)
+            if (entry) void removeWithUndo(entry)
+          }}
           onAdd={(datasheetId) => void add(datasheetId)}
           onAddWarlord={(datasheetId) => void addAsWarlord(datasheetId)}
           onGoCatalogue={() => {

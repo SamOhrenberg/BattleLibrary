@@ -8,6 +8,7 @@ import { ProfileView } from './social/ProfileView'
 import { FeedbackView } from './feedback/FeedbackView'
 import { TourOverlay } from './onboarding/TourOverlay'
 import { InstallPrompt } from './onboarding/InstallPrompt'
+import { useGameInvites } from './games/useGameInvites'
 import './App.css'
 
 type Health = { state: 'loading' | 'ok' | 'error' }
@@ -52,6 +53,11 @@ function App() {
   const { user, status, logout } = useAuth()
   const [health, setHealth] = useState<Health>({ state: 'loading' })
   const [mainView, setMainView] = useState<MainView>('lists')
+  const gameInvites = useGameInvites(status === 'authenticated')
+  const badge = (id: MainView) =>
+    id === 'games' && gameInvites > 0 ? (
+      <span className="nav-dot" aria-label={`${gameInvites} game invite${gameInvites === 1 ? '' : 's'}`} />
+    ) : null
 
   useEffect(() => {
     apiGet<HealthStatus>('/api/health')
@@ -117,6 +123,7 @@ function App() {
                 onClick={() => setMainView(n.id)}
               >
                 {n.label}
+                {badge(n.id)}
               </button>
             ))}
           </nav>
@@ -135,7 +142,10 @@ function App() {
                   className={mainView === n.id ? 'active' : ''}
                   onClick={() => setMainView(n.id)}
                 >
-                  {n.icon}
+                  <span className="nav-icon">
+                    {n.icon}
+                    {badge(n.id)}
+                  </span>
                   <span>{n.label}</span>
                 </button>
               ))}

@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import type { CatalogueDatasheet, CatalogueDetachment } from '../lib/catalogue'
 import type { ArmyList, ListEntry } from '../lib/lists'
 import type { ListIssue } from './validation'
@@ -43,11 +44,23 @@ export function ListAssistant({
   const byId = new Map(list.entries.map((e) => [e.id, e] as const))
   const entries = (ids?: string[]) => (ids ?? []).map((id) => byId.get(id)).filter((e): e is ListEntry => !!e)
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal assistant" onClick={(e) => e.stopPropagation()}>
+      <div
+        className="modal assistant"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="assistant-title"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="modal-head">
-          <h3>List assistant</h3>
+          <h3 id="assistant-title">List assistant</h3>
           <button type="button" className="icon-btn" onClick={onClose} aria-label="Close">×</button>
         </div>
 
@@ -285,19 +298,29 @@ function IssueActions({
       // list so the sheet stays short.
       const units = entries(issue.entryIds)
       const shown = issue.code === 'over-points' ? units.slice(0, 6) : units
+      // Entries are in list order, so the last one is the newest copy.
+      const newestId = issue.code === 'rule-of-n' && units.length > 1 ? units[units.length - 1].id : null
       return (
         <ul className="ai-units">
           {shown.map((e) => (
             <li key={e.id}>
               <span className="ai-unit-name">
-                {e.datasheetName}{' '}
+                {e.isWarlord && <span className="ai-warlord" aria-label="Warlord">★ </span>}
+                {e.customName || e.datasheetName}{' '}
                 <span className="ai-sub">
                   {e.lineTotal} pts{e.modelCount > 1 ? ` · ${e.modelCount} models` : ''}
+                  {e.enhancementName ? ` · ${e.enhancementName}` : ''}
+                  {e.id === newestId ? ' · added last' : ''}
                 </span>
               </span>
               <div className="ai-unit-actions">
-                <button type="button" className="btn btn-danger" onClick={() => onRemoveEntry(e.id)} disabled={busy}>
-                  Remove
+                <button
+                  type="button"
+                  className={`btn${e.id === newestId ? ' btn-primary' : ''}`}
+                  onClick={() => onRemoveEntry(e.id)}
+                  disabled={busy}
+                >
+                  {e.id === newestId ? 'Remove newest' : 'Remove'}
                 </button>
               </div>
             </li>

@@ -13,24 +13,28 @@ export function RuleText({ text, rules }: { text: string; rules?: AbilityText[] 
   const lookup = rules && rules.length > 0 ? buildLookup(rules) : null
   const matcher = lookup ? buildMatcher([...lookup.keys()]) : null
 
+  // Turn Markdown list dashes at line starts into bullets so no bare "- " shows.
+  const src = text.replace(/^[ \t]*[-*]\s+/gm, '• ')
+
   const nodes: ReactNode[] = []
   let buffer = ''
   let bold = false
   let keyword = false
+  let italic = false
   let key = 0
 
   const flush = () => {
     if (!buffer) return
     const children: ReactNode = matcher && lookup ? injectRefs(buffer, matcher, lookup) : buffer
     buffer = ''
-    if (bold && keyword) nodes.push(<strong className="kw-text" key={key++}>{children}</strong>)
-    else if (bold) nodes.push(<strong key={key++}>{children}</strong>)
-    else if (keyword) nodes.push(<span className="kw-text" key={key++}>{children}</span>)
-    else nodes.push(<span key={key++}>{children}</span>)
+    let node: ReactNode = keyword ? <span className="kw-text">{children}</span> : children
+    if (italic) node = <em>{node}</em>
+    if (bold) node = <strong>{node}</strong>
+    nodes.push(<span key={key++}>{node}</span>)
   }
 
-  for (let i = 0; i < text.length; i++) {
-    const pair = text[i] + text[i + 1]
+  for (let i = 0; i < src.length; i++) {
+    const pair = src[i] + src[i + 1]
     if (pair === '**') {
       flush()
       bold = !bold
@@ -39,8 +43,12 @@ export function RuleText({ text, rules }: { text: string; rules?: AbilityText[] 
       flush()
       keyword = !keyword
       i++
+    } else if (src[i] === '_' || src[i] === '*') {
+      // Single _ or * toggles italic (** is handled above as bold).
+      flush()
+      italic = !italic
     } else {
-      buffer += text[i]
+      buffer += src[i]
     }
   }
   flush()
@@ -103,6 +111,8 @@ function RuleRef({ label, name, text }: { label: string; name: string; text: str
   const [coords, setCoords] = useState<{ top: number; left: number } | null>(null)
   const triggerRef = useRef<HTMLSpanElement>(null)
   const popRef = useRef<HTMLSpanElement>(null)
+  const hoverOpened = useRef(false)
+  const pointerFocus = useRef(false)
 
   useLayoutEffect(() => {
     if (!open) {
@@ -156,13 +166,34 @@ function RuleRef({ label, name, text }: { label: string; name: string; text: str
       role="button"
       tabIndex={0}
       aria-expanded={open}
+      onPointerDown={() => {
+        pointerFocus.current = true
+      }}
       onClick={(e) => {
         e.stopPropagation()
-        setOpen((o) => !o)
+        // A hover already opened it; the click confirms rather than closes.
+        if (hoverOpened.current) {
+          hoverOpened.current = false
+          setOpen(true)
+        } else {
+          setOpen((o) => !o)
+        }
       }}
-      onMouseEnter={() => setOpen(true)}
-      onMouseLeave={() => setOpen(false)}
-      onFocus={() => setOpen(true)}
+      onPointerEnter={(e) => {
+        if (e.pointerType !== 'mouse') return
+        hoverOpened.current = true
+        setOpen(true)
+      }}
+      onPointerLeave={(e) => {
+        if (e.pointerType !== 'mouse') return
+        hoverOpened.current = false
+        setOpen(false)
+      }}
+      onFocus={() => {
+        // Keyboard focus opens it; tap focus is left to the click toggle.
+        if (!pointerFocus.current) setOpen(true)
+        pointerFocus.current = false
+      }}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault()
