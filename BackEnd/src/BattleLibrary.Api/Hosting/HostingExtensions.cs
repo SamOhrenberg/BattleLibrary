@@ -20,6 +20,7 @@ public static class HostingExtensions
     public const string SearchPolicy = "search";
     public const string ImportPolicy = "import";
     public const string FeedbackPolicy = "feedback";
+    public const string OAuthPolicy = "oauth";
 
     // Console always; Axiom (OTLP over HTTP) when Axiom:Token is set.
     public static void AddStructuredLogging(this WebApplicationBuilder builder)
@@ -100,6 +101,11 @@ public static class HostingExtensions
             options.AddPolicy(AuthPolicy, http => RateLimitPartition.GetFixedWindowLimiter(
                 $"auth:{IpKey(http)}",
                 _ => new FixedWindowRateLimiterOptions { PermitLimit = 10, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
+
+            // OAuth registration/token calls; hosted MCP clients share IPs across users.
+            options.AddPolicy(OAuthPolicy, http => RateLimitPartition.GetFixedWindowLimiter(
+                $"oauth:{IpKey(http)}",
+                _ => new FixedWindowRateLimiterOptions { PermitLimit = 60, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
 
             options.AddPolicy(SearchPolicy, http => RateLimitPartition.GetFixedWindowLimiter(
                 $"search:{ClientKey(http)}",

@@ -2,6 +2,8 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { apiGet, type HealthStatus } from './lib/api'
 import { useAuth } from './auth/AuthContext'
 import { AuthPage } from './auth/AuthPage'
+import { OAuthConsent } from './auth/OAuthConsent'
+import { readConsentRequest } from './lib/oauth'
 import { ListsView } from './lists/ListsView'
 import { GamesView } from './games/GamesView'
 import { ProfileView } from './social/ProfileView'
@@ -12,6 +14,9 @@ import { useGameInvites } from './games/useGameInvites'
 import './App.css'
 
 type Health = { state: 'loading' | 'ok' | 'error' }
+
+// An app (MCP client) asking this account for access, from the URL.
+const consentRequest = readConsentRequest()
 type MainView = 'lists' | 'games' | 'profile' | 'feedback'
 
 const NAV: { id: MainView; label: string; icon: ReactNode }[] = [
@@ -110,9 +115,17 @@ function App() {
 
       {status === 'loading' && <p className="hint">Restoring session…</p>}
 
+      {status === 'anonymous' && consentRequest && (
+        <p className="hint">Sign in to connect an app to your account.</p>
+      )}
+
       {status === 'anonymous' && <AuthPage />}
 
-      {status === 'authenticated' && user && (
+      {status === 'authenticated' && user && consentRequest && (
+        <OAuthConsent request={consentRequest} username={user.username} />
+      )}
+
+      {status === 'authenticated' && user && !consentRequest && (
         <>
           <nav className="segmented main-nav top" aria-label="Sections">
             {NAV.map((n) => (

@@ -29,7 +29,7 @@ public static class SocialEndpoints
         friends.MapDelete("/{userId:guid}", RemoveFriend);
     }
 
-    private static async Task<IResult> GetProfile(ClaimsPrincipal principal, BattleLibraryDbContext db, CancellationToken ct)
+    internal static async Task<IResult> GetProfile(ClaimsPrincipal principal, BattleLibraryDbContext db, CancellationToken ct)
     {
         if (UserId(principal) is not { } me)
         {
@@ -71,7 +71,7 @@ public static class SocialEndpoints
         return Results.Ok(new ProfileSettingsDto(profile.Visibility.ToString(), profile.Bio));
     }
 
-    private static async Task<IResult> SearchUsers(string? q, ClaimsPrincipal principal, BattleLibraryDbContext db, CancellationToken ct)
+    internal static async Task<IResult> SearchUsers(string? q, ClaimsPrincipal principal, BattleLibraryDbContext db, CancellationToken ct)
     {
         if (UserId(principal) is not { } me)
         {
@@ -100,7 +100,7 @@ public static class SocialEndpoints
         return Results.Ok(results);
     }
 
-    private static async Task<IResult> GetPublicProfile(string username, ClaimsPrincipal principal, BattleLibraryDbContext db, CancellationToken ct)
+    internal static async Task<IResult> GetPublicProfile(string username, ClaimsPrincipal principal, BattleLibraryDbContext db, CancellationToken ct)
     {
         if (UserId(principal) is not { } me)
         {
@@ -140,7 +140,7 @@ public static class SocialEndpoints
             canView ? user.Profile.Bio : null, status, canView, listDtos));
     }
 
-    private static async Task<IResult> GetFriends(ClaimsPrincipal principal, BattleLibraryDbContext db, CancellationToken ct)
+    internal static async Task<IResult> GetFriends(ClaimsPrincipal principal, BattleLibraryDbContext db, CancellationToken ct)
     {
         if (UserId(principal) is not { } me)
         {
@@ -168,7 +168,7 @@ public static class SocialEndpoints
         return Results.Ok(friends);
     }
 
-    private static async Task<IResult> GetRequests(ClaimsPrincipal principal, BattleLibraryDbContext db, CancellationToken ct)
+    internal static async Task<IResult> GetRequests(ClaimsPrincipal principal, BattleLibraryDbContext db, CancellationToken ct)
     {
         if (UserId(principal) is not { } me)
         {

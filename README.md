@@ -29,6 +29,9 @@ Registration on the hosted app is currently invite-only.
   win rate.
 - **Rule search:** search unit abilities, weapons, and detachment rules while
   building or playing.
+- **AI assistant access (MCP):** connect Claude or another MCP client to read
+  your lists, games, stats, and the catalogue. Read-only, approved by you over
+  OAuth, and revocable from your profile.
 - **Mobile first:** designed for a phone at the table, with five color themes.
 - **Installable:** a Progressive Web App. Army data is cached on the device. Saving lists and games still
   needs a connection.
@@ -135,6 +138,9 @@ Create an `appsettings.json` (gitignored) to override the defaults without modif
 | `BsData:PollIntervalMinutes` | Poll interval, default 1 |
 | `BsData:GitHubToken` | Optional GitHub token; raises the GitHub API limit from 60/hr to 5000/hr |
 | `Axiom:Token`, `Axiom:Dataset` | Optional log shipping to Axiom; console logging only when unset |
+| `OAuth:FrontendUrl` | UI base URL where MCP clients are sent to approve access (with trailing slash) |
+| `OAuth:PublicUrl` | Optional public API base URL for OAuth metadata; defaults to the request's scheme and host |
+| `OAuth:AccessTokenMinutes`, `OAuth:RefreshTokenDays` | MCP token lifetimes, default 60 minutes and 30 days |
 
 The UI reads build-time variables (see `FrontEnd/.env.example`):
 
@@ -152,6 +158,26 @@ All require the `X-Admin-Key` header.
   and drop it from memory. It stays off across restarts until re-enabled.
 - `POST /api/admin/catalogue/{key}/purge`: drop a game system from memory until
   the next refresh.
+
+### MCP server
+
+The API serves a read-only [Model Context Protocol](https://modelcontextprotocol.io/)
+endpoint at `/mcp` (Streamable HTTP). Add it to an MCP client as a remote
+server, for example in Claude as a custom connector with the URL
+`https://battlelibrary-production.up.railway.app/mcp`, or locally with
+`claude mcp add --transport http battle-library http://localhost:5173/mcp`.
+
+The client discovers sign-in through OAuth 2.1 metadata
+(`/.well-known/oauth-protected-resource/mcp` and
+`/.well-known/oauth-authorization-server`), registers itself, and sends you to
+the UI to approve read access. Tokens only work on `/mcp`, and disconnecting an
+app under Profile > Connected apps cuts it off immediately.
+
+Tools: `get_my_account`, `list_army_lists`, `get_army_list`, `list_games`,
+`get_game`, `get_game_stats`, `list_live_games`, `get_live_game`,
+`list_friends`, `get_player_profile`, `search_players`, `list_game_systems`,
+`list_factions`, `get_faction`, `get_datasheet`, `search_rules`. They follow the
+same ownership and profile-visibility rules as the app.
 
 ## Data source and data rights
 

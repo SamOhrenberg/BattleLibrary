@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { ApiError } from '../lib/api'
 import { useToast } from '../ui/Toast'
 import { AdminPanel } from './AdminPanel'
+import { ConnectedApps } from './ConnectedApps'
 import { getLists, setListFeatured, type ArmyListSummary } from '../lib/lists'
 import {
   acceptFriendRequest,
@@ -198,6 +199,7 @@ function ProfileTab({ username, email, onPreview }: { username: string; email: s
       </button>
 
       <HighlightLists isPublic={savedState.visibility === 'Public'} />
+      <ConnectedApps />
       <AdminPanel />
     </div>
   )

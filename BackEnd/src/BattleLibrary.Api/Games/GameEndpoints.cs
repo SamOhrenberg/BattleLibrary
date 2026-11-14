@@ -21,7 +21,7 @@ public static class GameEndpoints
         return group;
     }
 
-    private static async Task<IResult> GetGames(ClaimsPrincipal principal, BattleLibraryDbContext db, CancellationToken ct)
+    internal static async Task<IResult> GetGames(ClaimsPrincipal principal, BattleLibraryDbContext db, CancellationToken ct)
     {
         if (CurrentUserId(principal) is not { } userId)
         {
@@ -56,7 +56,7 @@ public static class GameEndpoints
         return Results.Ok(new GameStatsDto(total, wins, losses, draws, winRate));
     }
 
-    private static async Task<IResult> GetGame(Guid id, ClaimsPrincipal principal, BattleLibraryDbContext db, CancellationToken ct)
+    internal static async Task<IResult> GetGame(Guid id, ClaimsPrincipal principal, BattleLibraryDbContext db, CancellationToken ct)
     {
         if (CurrentUserId(principal) is not { } userId)
         {

@@ -548,3 +548,17 @@
 .empty-note > p {
   margin: 0 0 12px;
 }
+
+.mcp-url {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.mcp-url input {
+  flex: 1;
+  min-width: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.82rem;
+}

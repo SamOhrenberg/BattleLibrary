@@ -3,6 +3,7 @@ using BattleLibrary.Domain.Common;
 using BattleLibrary.Domain.Feedback;
 using BattleLibrary.Domain.Games;
 using BattleLibrary.Domain.Lists;
+using BattleLibrary.Domain.OAuth;
 using BattleLibrary.Domain.Social;
 using BattleLibrary.Infrastructure.BsData.Caching;
 using Microsoft.EntityFrameworkCore;
@@ -34,6 +35,9 @@ public class BattleLibraryDbContext(DbContextOptions<BattleLibraryDbContext> opt
     public DbSet<GameParticipant> GameParticipants => Set<GameParticipant>();
 
     public DbSet<FeedbackReport> FeedbackReports => Set<FeedbackReport>();
+
+    public DbSet<OAuthClient> OAuthClients => Set<OAuthClient>();
+    public DbSet<OAuthGrant> OAuthGrants => Set<OAuthGrant>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

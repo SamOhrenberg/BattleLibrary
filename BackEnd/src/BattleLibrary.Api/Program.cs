@@ -6,6 +6,8 @@ using BattleLibrary.Api.Feedback;
 using BattleLibrary.Api.Games;
 using BattleLibrary.Api.Hosting;
 using BattleLibrary.Api.Lists;
+using BattleLibrary.Api.Mcp;
+using BattleLibrary.Api.OAuth;
 using BattleLibrary.Api.Social;
 using BattleLibrary.Domain.Accounts;
 using BattleLibrary.Infrastructure;
@@ -84,14 +86,23 @@ builder.Services.AddCors(options =>
               .AllowAnyHeader()
               .AllowAnyMethod()
               .AllowCredentials());
+
+    // OAuth and MCP are called by third-party clients from any origin, with bearer tokens only.
+    options.AddPolicy(OAuthEndpoints.PublicCorsPolicy, policy =>
+        policy.AllowAnyOrigin()
+              .AllowAnyHeader()
+              .AllowAnyMethod()
+              .WithExposedHeaders("WWW-Authenticate", "Mcp-Session-Id", "Mcp-Protocol-Version"));
 });
 
 builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection(JwtOptions.SectionName));
 builder.Services.AddSingleton<IPasswordHasher<User>, PasswordHasher<User>>();
 builder.Services.AddSingleton<TokenService>();
+builder.Services.Configure<OAuthOptions>(builder.Configuration.GetSection(OAuthOptions.SectionName));
 
 var jwt = builder.Configuration.GetSection(JwtOptions.SectionName).Get<JwtOptions>() ?? new JwtOptions();
-builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+var authentication = builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme);
+authentication
     .AddJwtBearer(options =>
     {
         options.MapInboundClaims = false;
@@ -123,6 +134,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         };
     });
 builder.Services.AddAuthorization();
+builder.Services.AddBattleLibraryMcp(authentication, jwt);
 
 var app = builder.Build();
 
@@ -175,6 +187,8 @@ app.MapSocialEndpoints();
 app.MapGameEndpoints();
 app.MapGameSessionEndpoints();
 app.MapFeedbackEndpoints();
+app.MapOAuthEndpoints();
+app.MapBattleLibraryMcp();
 app.MapHub<GameHub>("/hubs/game");
 
 // Ensure the settings row exists and grant admin to configured seed emails.

@@ -57,7 +57,7 @@ public static class GameSessionEndpoints
         return group;
     }
 
-    private static async Task<IResult> MySessions(ClaimsPrincipal principal, BattleLibraryDbContext db, CancellationToken ct)
+    internal static async Task<IResult> MySessions(ClaimsPrincipal principal, BattleLibraryDbContext db, CancellationToken ct)
     {
         if (Me(principal) is not { } me)
         {
@@ -131,7 +131,7 @@ public static class GameSessionEndpoints
         return Results.Created($"/api/game-sessions/{session.Id}", ToDto(full!, me));
     }
 
-    private static async Task<IResult> Get(
+    internal static async Task<IResult> Get(
         Guid id, ClaimsPrincipal principal, BattleLibraryDbContext db, CatalogueStore catalogue, CancellationToken ct)
     {
         if (Me(principal) is not { } me)

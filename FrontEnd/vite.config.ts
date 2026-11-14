@@ -10,6 +10,9 @@ export default defineConfig({
     proxy: {
       '/api': 'http://localhost:5080',
       '/hubs': { target: 'http://localhost:5080', ws: true },
+      '/mcp': 'http://localhost:5080',
+      '/oauth': 'http://localhost:5080',
+      '/.well-known': 'http://localhost:5080',
     },
   },
   plugins: [
@@ -37,7 +40,7 @@ export default defineConfig({
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2}'],
         navigateFallback: 'index.html',
-        navigateFallbackDenylist: [/\/api\//, /\/hubs\//],
+        navigateFallbackDenylist: [/\/api\//, /\/hubs\//, /\/mcp/, /\/oauth\//, /\/\.well-known\//],
         runtimeCaching: [
           {
             // Catalogue reads are anonymous and user-independent: serve cached, refresh in the background.

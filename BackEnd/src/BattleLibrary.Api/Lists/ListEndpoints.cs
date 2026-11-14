@@ -41,7 +41,7 @@ public static partial class ListEndpoints
         return group;
     }
 
-    private static async Task<IResult> GetLists(ClaimsPrincipal principal, BattleLibraryDbContext db, CancellationToken ct)
+    internal static async Task<IResult> GetLists(ClaimsPrincipal principal, BattleLibraryDbContext db, CancellationToken ct)
     {
         if (CurrentUserId(principal) is not { } userId)
         {
@@ -126,7 +126,7 @@ public static partial class ListEndpoints
         return Results.Created($"/api/lists/{list.Id}", ToDto(list));
     }
 
-    private static async Task<IResult> GetList(Guid id, ClaimsPrincipal principal, BattleLibraryDbContext db, CancellationToken ct)
+    internal static async Task<IResult> GetList(Guid id, ClaimsPrincipal principal, BattleLibraryDbContext db, CancellationToken ct)
     {
         if (CurrentUserId(principal) is not { } userId)
         {

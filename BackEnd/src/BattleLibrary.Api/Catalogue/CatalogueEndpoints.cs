@@ -53,7 +53,7 @@ public static class CatalogueEndpoints
         return await next(context);
     }
 
-    private static IResult GetSystems(CatalogueStore store)
+    internal static IResult GetSystems(CatalogueStore store)
     {
         var systems = store.All
             .OrderBy(s => s.Name)
@@ -71,7 +71,7 @@ public static class CatalogueEndpoints
     }
 
     // Faction/datasheet ids exposed to clients are the stable BSData ids.
-    private static IResult GetFactions(string systemKey, CatalogueStore store)
+    internal static IResult GetFactions(string systemKey, CatalogueStore store)
     {
         if (store.Get(systemKey) is not { } system)
         {
@@ -82,7 +82,7 @@ public static class CatalogueEndpoints
         return Results.Ok(factions);
     }
 
-    private static IResult GetDatasheets(string factionId, CatalogueStore store)
+    internal static IResult GetDatasheets(string factionId, CatalogueStore store)
     {
         if (store.FindFaction(factionId) is not var (system, faction))
         {
@@ -107,7 +107,7 @@ public static class CatalogueEndpoints
         });
     }
 
-    private static IResult GetDatasheet(string datasheetId, CatalogueStore store)
+    internal static IResult GetDatasheet(string datasheetId, CatalogueStore store)
     {
         var sheet = store.All
             .Select(s => s.DatasheetsById.GetValueOrDefault(datasheetId))
@@ -122,7 +122,7 @@ public static class CatalogueEndpoints
     // Rule Search over the loaded catalogue: datasheet names, unit ability names
     // + text, weapon names, and detachment rules + enhancements. No rules text
     // beyond what's already loaded.
-    private static IResult Search(string systemKey, string? q, CatalogueStore store)
+    internal static IResult Search(string systemKey, string? q, CatalogueStore store)
     {
         var term = q?.Trim() ?? "";
         if (term.Length < 2)
