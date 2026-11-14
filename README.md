@@ -1,3 +1,7 @@
+> [!IMPORTANT]
+> The community-run BSData source that this used has been shut down and is no longer available. For this reason, I am taking down the UI and the hosted backend for this. This repo will be archived to continue serving as a portfolio piece. 
+
+
 # The Battle Library
 
 An open-source companion app for tabletop wargames: build army lists tied to
