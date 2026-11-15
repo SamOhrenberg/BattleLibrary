@@ -2,7 +2,6 @@ using System.Security.Claims;
 using BattleLibrary.Domain.Accounts;
 using BattleLibrary.Domain.Games;
 using BattleLibrary.Domain.Lists;
-using BattleLibrary.Infrastructure.BsData.Caching;
 using BattleLibrary.Infrastructure.Persistence;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
@@ -112,7 +111,7 @@ public static class GameSessionEndpoints
         {
             CreatedByUserId = me,
             Name = string.IsNullOrWhiteSpace(name) ? null : name,
-            GameSystemKey = request.GameSystemKey?.Trim() ?? string.Empty,
+            GameSystemKey = string.IsNullOrWhiteSpace(request.GameSystemKey) ? string.Empty : GameSystems.Normalize(request.GameSystemKey),
             BattleSize = battleSize,
             PointsLimit = pointsLimit,
             StartingCp = Math.Max(0, request.StartingCp ?? 0),
@@ -132,7 +131,7 @@ public static class GameSessionEndpoints
     }
 
     internal static async Task<IResult> Get(
-        Guid id, ClaimsPrincipal principal, BattleLibraryDbContext db, CatalogueStore catalogue, CancellationToken ct)
+        Guid id, ClaimsPrincipal principal, BattleLibraryDbContext db, CancellationToken ct)
     {
         if (Me(principal) is not { } me)
         {
@@ -143,15 +142,7 @@ public static class GameSessionEndpoints
         {
             return Results.NotFound();
         }
-        // During setup, surface each accepted player's list legality so the host
-        // (and players) can see what's blocking the start before pressing it.
-        Dictionary<Guid, string?>? legality = null;
-        if (session.Status == GameSessionStatus.Setup)
-        {
-            var accepted = session.Participants.Where(p => p.Status == ParticipantStatus.Accepted).ToList();
-            legality = await ListIssuesByParticipant(db, catalogue, session, accepted, ct);
-        }
-        return Results.Ok(ToDto(session, me, legality));
+        return Results.Ok(ToDto(session, me));
     }
 
     private static async Task<IResult> Invite(
@@ -277,34 +268,29 @@ public static class GameSessionEndpoints
             {
                 return Results.NotFound(new { error = "That army list was not found." });
             }
-            if (ValidateList(list, session) is { } problem)
-            {
-                return Problem("list", $"That list can't be used: {problem}");
-            }
             // One unit per entry; the entry's model count is what you may bring
             // (default full, capped so you can't field more than the list).
             var units = new List<GameUnit>();
-            foreach (var e in list.Entries.OrderBy(e => e.DatasheetName).Take(MaxUnits))
+            foreach (var e in list.Entries.OrderBy(e => e.SortOrder).ThenBy(e => e.CreatedAt).Take(MaxUnits))
             {
-                var models = Math.Max(1, e.ModelCount);
+                var models = Math.Max(1, e.ModelCount ?? 1);
                 units.Add(new GameUnit
                 {
-                    DatasheetId = e.DatasheetId,
-                    Name = e.DatasheetName,
+                    Name = e.Name,
                     MaxModels = models,
                     StartingModels = models,
                     CurrentModels = models,
-                    Keywords = [.. e.Keywords],
                     IsWarlord = e.IsWarlord,
-                    EnhancementName = e.EnhancementName,
-                    Points = (e.Points + e.SelectedOptions.Sum(o => o.Points)) * e.Quantity + e.EnhancementPoints + e.DynamicPoints,
-                    Wargear = [.. e.SelectedOptions.Select(o => o.Name)],
+                    EnhancementName = e.Enhancement,
+                    Points = e.Points ?? 0,
+                    Wargear = [.. (e.Wargear ?? string.Empty)
+                        .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)],
                 });
             }
             mine.ArmyListId = list.Id;
             mine.FactionName = list.FactionName;
             mine.Units = units;
-            if (session.GameSystemKey.Length == 0)
+            if (session.GameSystemKey.Length == 0 && list.GameSystemKey != GameSystems.Other)
             {
                 session.GameSystemKey = list.GameSystemKey;
             }
@@ -377,7 +363,7 @@ public static class GameSessionEndpoints
     }
 
     private static async Task<IResult> Start(
-        Guid id, ClaimsPrincipal principal, BattleLibraryDbContext db, CatalogueStore catalogue, IHubContext<GameHub> hub,
+        Guid id, ClaimsPrincipal principal, BattleLibraryDbContext db, IHubContext<GameHub> hub,
         CancellationToken ct)
     {
         if (Me(principal) is not { } me)
@@ -399,18 +385,10 @@ public static class GameSessionEndpoints
             return Problem("participants", "At least two players must accept before starting.");
         }
 
-        // Every player needs a valid, legal army list before the game can begin.
-        var issues = await ListIssuesByParticipant(db, catalogue, session, players, ct);
-        foreach (var p in players)
+        // Every player needs an army list before the game can begin.
+        if (players.FirstOrDefault(p => p.ArmyListId is null) is { } missing)
         {
-            if (p.ArmyListId is null)
-            {
-                return Problem("lists", $"{p.User.Username} has not chosen an army list yet.");
-            }
-            if (issues.GetValueOrDefault(p.Id) is { } reason)
-            {
-                return Problem("lists", $"{p.User.Username}'s list can't be used: {reason}");
-            }
+            return Problem("lists", $"{missing.User.Username} has not chosen an army list yet.");
         }
 
         session.Status = GameSessionStatus.Active;
@@ -716,81 +694,11 @@ public static class GameSessionEndpoints
     private static int Total(GameParticipant p) =>
         p.Rounds.Sum(r => r.PrimaryScore + r.Secondaries.Sum(x => x.Score));
 
-    private static int ListTotal(ArmyList l) =>
-        l.Entries.Sum(e => (e.Points + e.SelectedOptions.Sum(o => o.Points)) * e.Quantity + e.EnhancementPoints + e.DynamicPoints);
-
-    // Legality reason per participant that has chosen a list: null when the list
-    // is both usable (system/points/non-empty) and legal (the builder's 11e
-    // rules). Participants with no list are left out of the map.
-    private static async Task<Dictionary<Guid, string?>> ListIssuesByParticipant(
-        BattleLibraryDbContext db, CatalogueStore catalogue, GameSession session, IReadOnlyList<GameParticipant> players,
-        CancellationToken ct)
-    {
-        var withLists = players.Where(p => p.ArmyListId is not null).ToList();
-        var listIds = withLists.Select(p => p.ArmyListId!.Value).Distinct().ToList();
-        var lists = listIds.Count == 0
-            ? []
-            : await db.ArmyLists.Include(l => l.Entries).Where(l => listIds.Contains(l.Id)).ToListAsync(ct);
-
-        // Catalogue context for legality: which systems are point-less, and which
-        // of the chosen factions offer detachments (so "needs a detachment" fires
-        // only where one exists).
-        var sysKeys = lists.Select(l => l.GameSystemKey).Distinct().ToList();
-        var factionIds = lists.Select(l => l.FactionId).Distinct().ToList();
-        var systems = sysKeys.Select(catalogue.Get).OfType<CatalogueSnapshot>().ToList();
-        var pointedSystems = systems.Where(s => !s.Pointless).Select(s => s.Key).ToList();
-        var detachmentFactions = systems
-            .SelectMany(s => factionIds
-                .Select(s.FactionsById.GetValueOrDefault)
-                .Where(f => f is { Detachments.Count: > 0 })
-                .Select(f => (s.Key, f!.Id)))
-            .ToHashSet();
-
-        var map = new Dictionary<Guid, string?>();
-        foreach (var p in withLists)
-        {
-            var list = lists.FirstOrDefault(l => l.Id == p.ArmyListId!.Value);
-            if (list is null)
-            {
-                map[p.Id] = "that army list was not found.";
-                continue;
-            }
-            if (ValidateList(list, session) is { } basic)
-            {
-                map[p.Id] = basic;
-                continue;
-            }
-            var pointless = !pointedSystems.Contains(list.GameSystemKey);
-            var hasDetachments = detachmentFactions.Contains((list.GameSystemKey, list.FactionId));
-            map[p.Id] = ListLegality.FirstIssue(list, hasDetachments, pointless);
-        }
-        return map;
-    }
-
-    // A list is usable in a game when it is non-empty, matches the game's system,
-    // and fits the game's points limit. Returns null when valid, else the reason.
-    private static string? ValidateList(ArmyList list, GameSession session)
-    {
-        if (session.GameSystemKey.Length > 0 && list.GameSystemKey != session.GameSystemKey)
-        {
-            return "it is for a different game system than this game.";
-        }
-        if (list.Entries.Count == 0)
-        {
-            return "it has no units yet.";
-        }
-        if (session.PointsLimit is { } limit && ListTotal(list) > limit)
-        {
-            return $"it is {ListTotal(list)} pts, over this game's {limit} pt limit.";
-        }
-        return null;
-    }
-
-    private static SessionDto ToDto(GameSession s, Guid me, IReadOnlyDictionary<Guid, string?>? legality = null)
+    private static SessionDto ToDto(GameSession s, Guid me)
     {
         var participants = s.Participants
             .OrderBy(p => p.Seat)
-            .Select(p => ToParticipant(p, me, s.StartingCp, legality?.GetValueOrDefault(p.Id)))
+            .Select(p => ToParticipant(p, me, s.StartingCp))
             .ToList();
         return new SessionDto(
             s.Id, s.Name, s.GameSystemKey, s.PointsLimit, s.BattleSize, s.StartingCp, s.Status.ToString(), s.CurrentRound,
@@ -798,12 +706,12 @@ public static class GameSessionEndpoints
             s.StartedAt, s.FinishedAt, participants);
     }
 
-    private static ParticipantDto ToParticipant(GameParticipant p, Guid me, int startingCp, string? listIssue = null)
+    private static ParticipantDto ToParticipant(GameParticipant p, Guid me, int startingCp)
     {
         var units = p.Units
             .Select(u => new UnitDto(
-                u.Id, u.DatasheetId, u.Name, u.MaxModels, u.StartingModels, u.CurrentModels, u.Destroyed,
-                u.Keywords, u.IsWarlord, u.EnhancementName, u.Points, u.Wargear))
+                u.Id, u.Name, u.MaxModels, u.StartingModels, u.CurrentModels, u.Destroyed,
+                u.IsWarlord, u.EnhancementName, u.Points, u.Wargear))
             .ToList();
         // CP spent is the sum of each round's logged stratagem/ability costs, so
         // logging a stratagem's cost is the only place spend is entered.
@@ -833,7 +741,7 @@ public static class GameSessionEndpoints
             currentCp,
             units.Count,
             units.Count(u => u.Destroyed),
-            units, rounds, actions, listIssue);
+            units, rounds, actions);
     }
 
     private static Guid? Me(ClaimsPrincipal principal) =>

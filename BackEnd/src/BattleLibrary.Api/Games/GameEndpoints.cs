@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using BattleLibrary.Domain.Games;
+using BattleLibrary.Domain.Lists;
 using BattleLibrary.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -170,7 +171,7 @@ public static class GameEndpoints
 
         // Optional link to one of the owner's own lists; defaults faction/system.
         string? playerFaction = Clean(request.PlayerFactionName, 200);
-        string gameSystemKey = Clean(request.GameSystemKey, 100) ?? string.Empty;
+        string gameSystemKey = Clean(request.GameSystemKey, 100) is { } key ? GameSystems.Normalize(key) : string.Empty;
         Guid? playerListId = null;
         if (request.PlayerListId is { } listId)
         {
@@ -183,7 +184,7 @@ public static class GameEndpoints
                 return Results.NotFound(new { error = "That army list was not found." });
             }
             playerListId = list.Id;
-            playerFaction ??= list.FactionName;
+            playerFaction ??= string.IsNullOrEmpty(list.FactionName) ? null : list.FactionName;
             if (gameSystemKey.Length == 0)
             {
                 gameSystemKey = list.GameSystemKey;

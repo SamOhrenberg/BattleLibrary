@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using BattleLibrary.Api.Hosting;
+using BattleLibrary.Api.Lists;
 using BattleLibrary.Domain.Accounts;
 using BattleLibrary.Domain.Lists;
 using BattleLibrary.Domain.Social;
@@ -133,7 +134,7 @@ public static class SocialEndpoints
 
         var listDtos = lists.Select(l => new PublicListDto(
             l.Id, l.Name, l.GameSystemKey, l.FactionName, l.PointsLimit,
-            l.Entries.Sum(Total), l.Entries.Count, l.Featured, l.UpdatedAt)).ToList();
+            ListEndpoints.Total(l), l.Entries.Count, l.Featured, l.UpdatedAt)).ToList();
 
         return Results.Ok(new PublicProfileDto(
             user.Id, user.Username, user.Profile.Visibility.ToString(),
@@ -329,9 +330,6 @@ public static class SocialEndpoints
         }
         return link.RequesterId == me ? "pending_outgoing" : "pending_incoming";
     }
-
-    private static int Total(ListEntry e) =>
-        e.Points + e.SelectedOptions.Sum(o => o.Points) + e.EnhancementPoints + e.DynamicPoints;
 
     private static Guid? UserId(ClaimsPrincipal principal) =>
         Guid.TryParse(principal.FindFirstValue("sub"), out var id) ? id : null;

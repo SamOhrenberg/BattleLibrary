@@ -7,8 +7,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace BattleLibrary.Api.Admin;
 
-// Site administration (JWT + the admin flag on the user), distinct from the
-// catalogue admin endpoints which use a shared X-Admin-Key.
+// Site administration (JWT + the admin flag on the user).
 public static class AdminEndpoints
 {
     // Emails that become admin on sign-up and can register even when closed.

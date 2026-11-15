@@ -37,13 +37,11 @@ public sealed record SessionSummaryDto(
 
 public sealed record UnitDto(
     Guid Id,
-    string DatasheetId,
     string Name,
     int MaxModels,
     int StartingModels,
     int CurrentModels,
     bool Destroyed,
-    IReadOnlyList<string> Keywords,
     bool IsWarlord,
     string? EnhancementName,
     int Points,
@@ -77,9 +75,7 @@ public sealed record ParticipantDto(
     int UnitsDestroyed,
     IReadOnlyList<UnitDto> Units,
     IReadOnlyList<RoundDto> Rounds,
-    IReadOnlyList<ActionDto> Actions,
-    // Setup-only: why this player's chosen list can't be used, else null.
-    string? ListIssue);
+    IReadOnlyList<ActionDto> Actions);
 
 public sealed record SessionDto(
     Guid Id,
