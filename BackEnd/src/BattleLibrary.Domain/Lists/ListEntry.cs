@@ -2,76 +2,29 @@ using BattleLibrary.Domain.Common;
 
 namespace BattleLibrary.Domain.Lists;
 
+// One unit in a list, entered by hand. Only the name is expected; points,
+// models, wargear, enhancement and notes are optional free input.
 public class ListEntry : Entity
 {
     public Guid ArmyListId { get; set; }
     public ArmyList ArmyList { get; set; } = null!;
 
-    // The force (faction slice) this entry belongs to. A grouping key into the
-    // list's ListForces, not a navigation; entries still cascade via ArmyListId.
+    // The section this entry belongs to. A grouping key, not a navigation.
     public Guid ListForceId { get; set; }
 
-    // Reference to the catalogue datasheet, with a points/name snapshot taken
-    // when the entry was added so the list total is stable.
-    public string DatasheetId { get; set; } = string.Empty;
-    public string DatasheetName { get; set; } = string.Empty;
-
-    // Optional player-given name for this unit (e.g. a character or squad name);
-    // null means show the datasheet name. Exported as the selection's customName.
-    public string? CustomName { get; set; }
-
-    // Optional free-text note the owner keeps against this unit.
+    public string Name { get; set; } = string.Empty;
+    public int? Points { get; set; }
+    public int? ModelCount { get; set; }
+    public string? Wargear { get; set; }
+    public string? Enhancement { get; set; }
     public string? Notes { get; set; }
 
-    // Points for the chosen unit size, snapshotted at add-time.
-    public int Points { get; set; }
-
-    // Chosen model count (the unit's size); drives Points for multi-size units.
-    public int ModelCount { get; set; } = 1;
-
-    public int Quantity { get; set; } = 1;
-
-    // Position in the owner's custom ordering of the list; new entries append.
-    // Ties fall back to datasheet name, so pre-existing lists keep their order.
+    // Position in the owner's custom ordering of the list.
     public int SortOrder { get; set; }
 
-    // Datasheet keywords snapshotted at add-time, for list-legality checks
-    // (CHARACTER / EPIC HERO / BATTLELINE / DEDICATED TRANSPORT).
-    public List<string> Keywords { get; set; } = [];
-
-    // Army's warlord (exactly one CHARACTER across the list).
     public bool IsWarlord { get; set; }
 
-    // Leader attachment: when set on a Character (the Leader), the id of the
-    // non-Character unit (the Bodyguard) it is attached to in this list. Null for
-    // a standalone unit. Cleared if the bodyguard is removed.
+    // The entry this one is attached to (e.g. a leader joining a unit); null when
+    // standalone. Cleared if the target is removed.
     public Guid? AttachedToEntryId { get; set; }
-
-    // Set when the datasheet's rules require this unit to be the Warlord; its
-    // Warlord status is then locked and two such units in one list is illegal.
-    public bool ForcedWarlord { get; set; }
-
-    // Enhancement assigned to this character, snapshotting id/name/points.
-    public string? EnhancementId { get; set; }
-    public string? EnhancementName { get; set; }
-    public int EnhancementPoints { get; set; }
-
-    // Selection-dependent points from the datasheet's cost rules (Crucible warband
-    // weapon pricing), recomputed from SelectedOptions whenever they change. Zero
-    // for ordinary units. Added to the line total alongside options/enhancement.
-    public int DynamicPoints { get; set; }
-
-    // Chosen wargear options, each snapshotting its id/name/points at add-time.
-    public List<SelectedOption> SelectedOptions { get; set; } = [];
-}
-
-public class SelectedOption
-{
-    public string Id { get; set; } = string.Empty;
-    public string Name { get; set; } = string.Empty;
-    public int Points { get; set; }
-
-    // How many of this choice. 1 for a plain upgrade; a per-model loadout variant
-    // carries its chosen count. Old rows (no field in jsonb) read back as 1.
-    public int Quantity { get; set; } = 1;
 }
