@@ -1,18 +1,15 @@
 using System.Security.Claims;
 using BattleLibrary.Domain.Lists;
-using BattleLibrary.Infrastructure.BsData.Caching;
 using BattleLibrary.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
 namespace BattleLibrary.Api.Lists;
 
-// Loadout presets: saved wargear/size choices for a datasheet, reusable when
-// adding that unit to any list. Part of ListEndpoints so it reuses the sheet /
-// option / size helpers (LoadSheet, ResolveOptions, PickSize).
+// Unit presets: saved typed fields for a unit, reusable when adding it to any of
+// the owner's lists for the same game system.
 public static partial class ListEndpoints
 {
-    // At most this many presets per datasheet per user, to keep the list tidy.
-    private const int MaxPresetsPerSheet = 25;
+    private const int MaxPresets = 200;
 
     public static RouteGroupBuilder MapPresetEndpoints(this IEndpointRouteBuilder routes)
     {
@@ -26,7 +23,7 @@ public static partial class ListEndpoints
     }
 
     private static async Task<IResult> GetPresets(
-        string? system, string? datasheetId, ClaimsPrincipal principal, BattleLibraryDbContext db, CancellationToken ct)
+        string? system, ClaimsPrincipal principal, BattleLibraryDbContext db, CancellationToken ct)
     {
         if (CurrentUserId(principal) is not { } userId)
         {
@@ -36,79 +33,44 @@ public static partial class ListEndpoints
         var query = db.LoadoutPresets.Where(p => p.UserId == userId);
         if (!string.IsNullOrWhiteSpace(system))
         {
-            query = query.Where(p => p.GameSystemKey == system);
-        }
-        if (!string.IsNullOrWhiteSpace(datasheetId))
-        {
-            query = query.Where(p => p.DatasheetId == datasheetId);
+            var key = GameSystems.Normalize(system);
+            query = query.Where(p => p.GameSystemKey == key);
         }
 
-        var presets = await query
-            .OrderBy(p => p.DatasheetName)
-            .ThenBy(p => p.Name)
-            .ToListAsync(ct);
+        var presets = await query.OrderBy(p => p.UnitName).ThenBy(p => p.Name).ToListAsync(ct);
         return Results.Ok(presets.Select(PresetToDto));
     }
 
+    // Saving over a same-named preset for the same unit and system overwrites it.
     private static async Task<IResult> CreatePreset(
-        CreatePresetRequest request, ClaimsPrincipal principal, BattleLibraryDbContext db, CatalogueStore catalogue,
-        CancellationToken ct)
+        PresetFieldsRequest request, ClaimsPrincipal principal, BattleLibraryDbContext db, CancellationToken ct)
     {
         if (CurrentUserId(principal) is not { } userId)
         {
             return Results.Unauthorized();
         }
 
-        var name = request.Name?.Trim() ?? string.Empty;
-        if (name.Length is < 1 or > 80)
-        {
-            return Problem("name", "Preset name must be 1-80 characters.");
-        }
-        if (string.IsNullOrWhiteSpace(request.GameSystemKey) || string.IsNullOrWhiteSpace(request.DatasheetId))
-        {
-            return Problem("datasheet", "A game system and datasheet are required.");
-        }
+        var system = GameSystems.Normalize(request.GameSystemKey);
+        var unitName = Clip(request.UnitName, 200) ?? DefaultEntryName;
+        var name = Clip(request.Name, 80) ?? Clip(unitName, 80)!;
 
-        var sheet = LoadSheet(catalogue, request.DatasheetId, request.GameSystemKey);
-        if (sheet is null)
-        {
-            return Results.NotFound(new { error = "Unknown datasheet for this game system." });
-        }
-
-        var size = PickSize(sheet.Sizes, request.Models);
-        List<SelectedOption> options =
-        [
-            .. ResolveOptions(sheet.Options, request.SelectedOptionIds),
-            .. ResolveVariants(sheet.VariantGroups, request.Variants),
-        ];
-
-        // Saving over a same-named preset for this unit overwrites it, so a tweak
-        // doesn't pile up duplicates.
         var preset = await db.LoadoutPresets.FirstOrDefaultAsync(
-            p => p.UserId == userId && p.GameSystemKey == request.GameSystemKey
-                 && p.DatasheetId == request.DatasheetId && p.Name == name, ct);
+            p => p.UserId == userId && p.GameSystemKey == system && p.UnitName == unitName && p.Name == name, ct);
         if (preset is null)
         {
-            var count = await db.LoadoutPresets.CountAsync(
-                p => p.UserId == userId && p.GameSystemKey == request.GameSystemKey && p.DatasheetId == request.DatasheetId, ct);
-            if (count >= MaxPresetsPerSheet)
+            if (await db.LoadoutPresets.CountAsync(p => p.UserId == userId, ct) >= MaxPresets)
             {
-                return Problem("name", $"You already have {MaxPresetsPerSheet} presets for this unit.");
+                return Problem("name", $"You already have {MaxPresets} presets.");
             }
-            preset = new LoadoutPreset
-            {
-                UserId = userId,
-                GameSystemKey = request.GameSystemKey,
-                DatasheetId = request.DatasheetId,
-                Name = name,
-            };
+            preset = new LoadoutPreset { UserId = userId, GameSystemKey = system, UnitName = unitName, Name = name };
             db.LoadoutPresets.Add(preset);
         }
 
-        preset.DatasheetName = sheet.Name;
-        preset.ModelCount = size?.Models ?? 1;
-        preset.Points = size?.Points ?? sheet.Points;
-        preset.SelectedOptions = options;
+        preset.Points = request.Points;
+        preset.ModelCount = request.ModelCount;
+        preset.Wargear = Clip(request.Wargear, 2000);
+        preset.Enhancement = Clip(request.Enhancement, 200);
+        preset.Notes = Clip(request.Notes, 2000);
         preset.UpdatedAt = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(ct);
         return Results.Ok(PresetToDto(preset));
@@ -131,13 +93,7 @@ public static partial class ListEndpoints
         return Results.NoContent();
     }
 
-    private static LoadoutPresetDto PresetToDto(LoadoutPreset p)
-    {
-        var optionsPoints = p.SelectedOptions.Sum(o => o.Points * Math.Max(1, o.Quantity));
-        return new LoadoutPresetDto(
-            p.Id, p.GameSystemKey, p.DatasheetId, p.DatasheetName, p.Name, p.ModelCount,
-            p.Points, p.Points + optionsPoints,
-            p.SelectedOptions.Select(o => new SelectedOptionDto(o.Id, o.Name, o.Points, Math.Max(1, o.Quantity))).ToList(),
-            p.UpdatedAt);
-    }
+    private static LoadoutPresetDto PresetToDto(LoadoutPreset p) => new(
+        p.Id, p.GameSystemKey, p.Name, p.UnitName, p.Points, p.ModelCount, p.Wargear, p.Enhancement, p.Notes,
+        p.UpdatedAt);
 }
