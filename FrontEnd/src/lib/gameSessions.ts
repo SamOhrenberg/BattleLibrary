@@ -9,13 +9,11 @@ export type ActionKind = 'Ability' | 'Stratagem'
 
 export interface SessionUnit {
   id: string
-  datasheetId: string
   name: string
   maxModels: number
   startingModels: number
   currentModels: number
   destroyed: boolean
-  keywords: string[]
   isWarlord: boolean
   enhancementName: string | null
   points: number
@@ -62,8 +60,6 @@ export interface SessionParticipant {
   units: SessionUnit[]
   rounds: SessionRound[]
   actions: SessionAction[]
-  // Setup-only: why this player's chosen list can't be used, else null.
-  listIssue: string | null
 }
 
 export interface GameSession {

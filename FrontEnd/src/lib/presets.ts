@@ -1,68 +1,37 @@
-import { ApiError, authFetch } from './api'
-import type { SelectedOption, VariantQuantity } from './lists'
+import { send } from './lists'
 
-// Saved loadouts (wargear + size) for a datasheet, reusable across lists.
+// Saved unit templates, reusable across the owner's lists for one game system.
 
-export interface LoadoutPreset {
+export interface UnitPreset {
   id: string
   gameSystemKey: string
-  datasheetId: string
-  datasheetName: string
   name: string
-  modelCount: number
-  // Base size points; total adds the options.
-  points: number
-  total: number
-  selectedOptions: SelectedOption[]
+  unitName: string
+  points: number | null
+  modelCount: number | null
+  wargear: string | null
+  enhancement: string | null
+  notes: string | null
   updatedAt: string
 }
 
-export interface CreatePresetInput {
+export interface PresetFields {
   gameSystemKey: string
-  datasheetId: string
   name: string
-  models?: number
-  selectedOptionIds: string[]
-  variants?: VariantQuantity[]
+  unitName: string
+  points?: number | null
+  modelCount?: number | null
+  wargear?: string | null
+  enhancement?: string | null
+  notes?: string | null
 }
 
-async function send<T>(path: string, method: string, body?: unknown): Promise<T> {
-  const res = await authFetch(path, {
-    method,
-    headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  })
-  if (!res.ok) {
-    let message = `Request failed (${res.status})`
-    try {
-      const data = await res.json()
-      if (data?.errors && typeof data.errors === 'object') {
-        const messages = Object.values(data.errors as Record<string, string[]>).flat()
-        if (messages.length > 0) message = messages.join(' ')
-      } else if (typeof data?.error === 'string') {
-        message = data.error
-      }
-    } catch {
-      // No JSON body; keep the generic message.
-    }
-    throw new ApiError(res.status, message)
-  }
-  if (res.status === 204) {
-    return undefined as T
-  }
-  return res.json() as Promise<T>
+export function getPresets(system?: string): Promise<UnitPreset[]> {
+  return send<UnitPreset[]>(`/api/presets${system ? `?system=${encodeURIComponent(system)}` : ''}`, 'GET')
 }
 
-export function getPresets(system?: string, datasheetId?: string): Promise<LoadoutPreset[]> {
-  const params = new URLSearchParams()
-  if (system) params.set('system', system)
-  if (datasheetId) params.set('datasheetId', datasheetId)
-  const q = params.toString()
-  return send<LoadoutPreset[]>(`/api/presets${q ? `?${q}` : ''}`, 'GET')
-}
-
-export function createPreset(input: CreatePresetInput): Promise<LoadoutPreset> {
-  return send<LoadoutPreset>('/api/presets', 'POST', input)
+export function createPreset(fields: PresetFields): Promise<UnitPreset> {
+  return send<UnitPreset>('/api/presets', 'POST', fields)
 }
 
 export function deletePreset(id: string): Promise<void> {
