@@ -5,7 +5,6 @@ using BattleLibrary.Domain.Games;
 using BattleLibrary.Domain.Lists;
 using BattleLibrary.Domain.OAuth;
 using BattleLibrary.Domain.Social;
-using BattleLibrary.Infrastructure.BsData.Caching;
 using Microsoft.EntityFrameworkCore;
 
 namespace BattleLibrary.Infrastructure.Persistence;
@@ -22,8 +21,6 @@ public class BattleLibraryDbContext(DbContextOptions<BattleLibraryDbContext> opt
     public DbSet<Invite> Invites => Set<Invite>();
     public DbSet<AppSetting> AppSettings => Set<AppSetting>();
     public DbSet<Friendship> Friendships => Set<Friendship>();
-
-    public DbSet<CatalogueSystemSetting> CatalogueSystemSettings => Set<CatalogueSystemSetting>();
 
     public DbSet<ArmyList> ArmyLists => Set<ArmyList>();
     public DbSet<ListForce> ListForces => Set<ListForce>();

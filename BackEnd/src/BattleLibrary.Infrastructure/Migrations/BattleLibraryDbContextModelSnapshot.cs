@@ -391,17 +391,12 @@ namespace BattleLibrary.Infrastructure.Migrations
                     b.Property<Guid>("Id")
                         .HasColumnType("uuid");
 
-                    b.Property<string>("BattleSize")
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)");
-
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<string>("FactionId")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
+                    b.Property<string>("Detachment")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
 
                     b.Property<string>("FactionName")
                         .IsRequired()
@@ -410,10 +405,6 @@ namespace BattleLibrary.Infrastructure.Migrations
 
                     b.Property<bool>("Featured")
                         .HasColumnType("boolean");
-
-                    b.Property<string>("ForceDisposition")
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
 
                     b.Property<string>("GameSystemKey")
                         .IsRequired()
@@ -424,6 +415,10 @@ namespace BattleLibrary.Infrastructure.Migrations
                         .IsRequired()
                         .HasMaxLength(120)
                         .HasColumnType("character varying(120)");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
 
                     b.Property<int?>("PointsLimit")
                         .HasColumnType("integer");
@@ -455,62 +450,37 @@ namespace BattleLibrary.Infrastructure.Migrations
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<string>("CustomName")
+                    b.Property<string>("Enhancement")
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
-
-                    b.Property<string>("DatasheetId")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
-
-                    b.Property<string>("DatasheetName")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)");
-
-                    b.Property<int>("DynamicPoints")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("EnhancementId")
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
-
-                    b.Property<string>("EnhancementName")
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)");
-
-                    b.Property<int>("EnhancementPoints")
-                        .HasColumnType("integer");
-
-                    b.Property<bool>("ForcedWarlord")
-                        .HasColumnType("boolean");
 
                     b.Property<bool>("IsWarlord")
                         .HasColumnType("boolean");
 
-                    b.PrimitiveCollection<List<string>>("Keywords")
-                        .IsRequired()
-                        .HasColumnType("text[]");
-
                     b.Property<Guid>("ListForceId")
                         .HasColumnType("uuid");
 
-                    b.Property<int>("ModelCount")
+                    b.Property<int?>("ModelCount")
                         .HasColumnType("integer");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
 
                     b.Property<string>("Notes")
                         .HasMaxLength(2000)
                         .HasColumnType("character varying(2000)");
 
-                    b.Property<int>("Points")
-                        .HasColumnType("integer");
-
-                    b.Property<int>("Quantity")
+                    b.Property<int?>("Points")
                         .HasColumnType("integer");
 
                     b.Property<int>("SortOrder")
                         .HasColumnType("integer");
+
+                    b.Property<string>("Wargear")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
 
                     b.HasKey("Id");
 
@@ -532,12 +502,7 @@ namespace BattleLibrary.Infrastructure.Migrations
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<string>("FactionId")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
-
-                    b.Property<string>("FactionName")
+                    b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
@@ -560,13 +525,7 @@ namespace BattleLibrary.Infrastructure.Migrations
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<string>("DatasheetId")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
-
-                    b.Property<string>("DatasheetName")
-                        .IsRequired()
+                    b.Property<string>("Enhancement")
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
@@ -575,7 +534,7 @@ namespace BattleLibrary.Infrastructure.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
 
-                    b.Property<int>("ModelCount")
+                    b.Property<int?>("ModelCount")
                         .HasColumnType("integer");
 
                     b.Property<string>("Name")
@@ -583,8 +542,17 @@ namespace BattleLibrary.Infrastructure.Migrations
                         .HasMaxLength(80)
                         .HasColumnType("character varying(80)");
 
-                    b.Property<int>("Points")
+                    b.Property<string>("Notes")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<int?>("Points")
                         .HasColumnType("integer");
+
+                    b.Property<string>("UnitName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -592,9 +560,13 @@ namespace BattleLibrary.Infrastructure.Migrations
                     b.Property<Guid>("UserId")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("Wargear")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
                     b.HasKey("Id");
 
-                    b.HasIndex("UserId", "GameSystemKey", "DatasheetId");
+                    b.HasIndex("UserId", "GameSystemKey");
 
                     b.ToTable("LoadoutPresets");
                 });
@@ -715,20 +687,6 @@ namespace BattleLibrary.Infrastructure.Migrations
                         .IsUnique();
 
                     b.ToTable("Friendships");
-                });
-
-            modelBuilder.Entity("BattleLibrary.Infrastructure.BsData.Caching.CatalogueSystemSetting", b =>
-                {
-                    b.Property<string>("Key")
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
-
-                    b.Property<bool>("Enabled")
-                        .HasColumnType("boolean");
-
-                    b.HasKey("Key");
-
-                    b.ToTable("CatalogueSystemSettings");
                 });
 
             modelBuilder.Entity("BattleLibrary.Domain.Accounts.Profile", b =>
@@ -895,9 +853,6 @@ namespace BattleLibrary.Infrastructure.Migrations
 
                             b1.Property<int>("CurrentModels");
 
-                            b1.Property<string>("DatasheetId")
-                                .IsRequired();
-
                             b1.Property<bool>("Destroyed");
 
                             b1.Property<string>("EnhancementName");
@@ -905,9 +860,6 @@ namespace BattleLibrary.Infrastructure.Migrations
                             b1.Property<Guid>("Id");
 
                             b1.Property<bool>("IsWarlord");
-
-                            b1.PrimitiveCollection<string>("Keywords")
-                                .IsRequired();
 
                             b1.Property<int>("MaxModels");
 
@@ -951,35 +903,6 @@ namespace BattleLibrary.Infrastructure.Migrations
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
-
-                    b.OwnsMany("BattleLibrary.Domain.Lists.ListDetachment", "Detachments", b1 =>
-                        {
-                            b1.Property<Guid>("ArmyListId");
-
-                            b1.Property<int>("__synthesizedOrdinal")
-                                .ValueGeneratedOnAdd();
-
-                            b1.Property<string>("DetachmentId")
-                                .IsRequired();
-
-                            b1.Property<int>("Dp");
-
-                            b1.Property<string>("Name")
-                                .IsRequired();
-
-                            b1.HasKey("ArmyListId", "__synthesizedOrdinal");
-
-                            b1.ToTable("ArmyLists");
-
-                            b1
-                                .ToJson("Detachments")
-                                .HasColumnType("jsonb");
-
-                            b1.WithOwner()
-                                .HasForeignKey("ArmyListId");
-                        });
-
-                    b.Navigation("Detachments");
                 });
 
             modelBuilder.Entity("BattleLibrary.Domain.Lists.ListEntry", b =>
@@ -990,38 +913,7 @@ namespace BattleLibrary.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.OwnsMany("BattleLibrary.Domain.Lists.SelectedOption", "SelectedOptions", b1 =>
-                        {
-                            b1.Property<Guid>("ListEntryId");
-
-                            b1.Property<int>("__synthesizedOrdinal")
-                                .ValueGeneratedOnAdd();
-
-                            b1.Property<string>("Id")
-                                .IsRequired();
-
-                            b1.Property<string>("Name")
-                                .IsRequired();
-
-                            b1.Property<int>("Points");
-
-                            b1.Property<int>("Quantity");
-
-                            b1.HasKey("ListEntryId", "__synthesizedOrdinal");
-
-                            b1.ToTable("ListEntries");
-
-                            b1
-                                .ToJson("SelectedOptions")
-                                .HasColumnType("jsonb");
-
-                            b1.WithOwner()
-                                .HasForeignKey("ListEntryId");
-                        });
-
                     b.Navigation("ArmyList");
-
-                    b.Navigation("SelectedOptions");
                 });
 
             modelBuilder.Entity("BattleLibrary.Domain.Lists.ListForce", b =>
@@ -1042,36 +934,6 @@ namespace BattleLibrary.Infrastructure.Migrations
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
-
-                    b.OwnsMany("BattleLibrary.Domain.Lists.SelectedOption", "SelectedOptions", b1 =>
-                        {
-                            b1.Property<Guid>("LoadoutPresetId");
-
-                            b1.Property<int>("__synthesizedOrdinal")
-                                .ValueGeneratedOnAdd();
-
-                            b1.Property<string>("Id");
-
-                            b1.Property<string>("Name")
-                                .IsRequired();
-
-                            b1.Property<int>("Points");
-
-                            b1.Property<int>("Quantity");
-
-                            b1.HasKey("LoadoutPresetId", "__synthesizedOrdinal");
-
-                            b1.ToTable("LoadoutPresets");
-
-                            b1
-                                .ToJson("SelectedOptions")
-                                .HasColumnType("jsonb");
-
-                            b1.WithOwner()
-                                .HasForeignKey("LoadoutPresetId");
-                        });
-
-                    b.Navigation("SelectedOptions");
                 });
 
             modelBuilder.Entity("BattleLibrary.Domain.OAuth.OAuthGrant", b =>
