@@ -18,7 +18,6 @@ public static class HostingExtensions
 {
     public const string AuthPolicy = "auth";
     public const string SearchPolicy = "search";
-    public const string ImportPolicy = "import";
     public const string FeedbackPolicy = "feedback";
     public const string OAuthPolicy = "oauth";
 
@@ -110,10 +109,6 @@ public static class HostingExtensions
             options.AddPolicy(SearchPolicy, http => RateLimitPartition.GetFixedWindowLimiter(
                 $"search:{ClientKey(http)}",
                 _ => new FixedWindowRateLimiterOptions { PermitLimit = 30, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
-
-            options.AddPolicy(ImportPolicy, http => RateLimitPartition.GetFixedWindowLimiter(
-                $"import:{ClientKey(http)}",
-                _ => new FixedWindowRateLimiterOptions { PermitLimit = 10, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
 
             // Each submission opens a public GitHub issue.
             options.AddPolicy(FeedbackPolicy, http => RateLimitPartition.GetFixedWindowLimiter(

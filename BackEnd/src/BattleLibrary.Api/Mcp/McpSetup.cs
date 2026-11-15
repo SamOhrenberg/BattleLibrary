@@ -25,9 +25,8 @@ public static class McpSetup
     private const string Instructions =
         "The Battle Library is a tabletop wargaming companion (Warhammer 40,000 and Kill Team). " +
         "These read-only tools return the signed-in player's army lists, logged games, live game sessions, " +
-        "friends, and the community BSData catalogue. Use list_* tools to find ids, then get_* tools for detail. " +
-        "Army list entries carry a datasheetId usable with get_datasheet. Catalogue data is unofficial and " +
-        "community maintained; it is not affiliated with or endorsed by Games Workshop.";
+        "and friends. Use list_* tools to find ids, then get_* tools for detail. Army lists are freeform: " +
+        "every unit field is text the player typed, with no rules data behind it.";
 
     public static void AddBattleLibraryMcp(this IServiceCollection services, AuthenticationBuilder auth, JwtOptions jwt)
     {

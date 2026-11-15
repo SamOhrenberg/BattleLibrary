@@ -1,7 +1,6 @@
 using System.Text;
 using BattleLibrary.Api.Admin;
 using BattleLibrary.Api.Auth;
-using BattleLibrary.Api.Catalogue;
 using BattleLibrary.Api.Feedback;
 using BattleLibrary.Api.Games;
 using BattleLibrary.Api.Hosting;
@@ -10,9 +9,8 @@ using BattleLibrary.Api.Mcp;
 using BattleLibrary.Api.OAuth;
 using BattleLibrary.Api.Social;
 using BattleLibrary.Domain.Accounts;
+using BattleLibrary.Domain.Lists;
 using BattleLibrary.Infrastructure;
-using BattleLibrary.Infrastructure.BsData;
-using BattleLibrary.Infrastructure.BsData.Caching;
 using BattleLibrary.Infrastructure.Feedback;
 using BattleLibrary.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -38,24 +36,6 @@ builder.Services.AddApiRateLimiting();
 builder.Services.AddForwardedHeaders();
 
 builder.Services.AddInfrastructure(builder.Configuration);
-
-var bsDataOptions = builder.Configuration.GetSection(BsDataOptions.SectionName).Get<BsDataOptions>() ?? new BsDataOptions();
-builder.Services.AddSingleton(bsDataOptions);
-builder.Services.AddSingleton<BsDataParser>();
-builder.Services.AddSingleton<CatalogueStore>();
-builder.Services.AddScoped<BsDataRefreshService>();
-builder.Services.AddHttpClient<BsDataGitHubClient>(client =>
-{
-    client.DefaultRequestHeaders.UserAgent.ParseAdd("BattleLibrary/0.1");
-    // GitHub's tree/raw endpoints can be slow for a ~130-file XML repo.
-    client.Timeout = TimeSpan.FromMinutes(2);
-    if (!string.IsNullOrWhiteSpace(bsDataOptions.GitHubToken))
-    {
-        client.DefaultRequestHeaders.Authorization =
-            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", bsDataOptions.GitHubToken);
-    }
-});
-builder.Services.AddHostedService<CatalogueRefreshBackgroundService>();
 
 var feedbackOptions = builder.Configuration.GetSection(FeedbackOptions.SectionName).Get<FeedbackOptions>() ?? new FeedbackOptions();
 builder.Services.AddSingleton(feedbackOptions);
@@ -174,13 +154,12 @@ app.MapGet("/api/health/db", async (BattleLibraryDbContext db, CancellationToken
 // Sample endpoint the frontend renders to prove the round-trip.
 app.MapGet("/api/game-systems", () => Results.Ok(new[]
 {
-    new GameSystemSummary("wh40k-10e", "Warhammer 40,000 (10th Edition)", "planned"),
-    new GameSystemSummary("kill-team", "Kill Team", "planned"),
+    new GameSystemSummary(GameSystems.Warhammer40k, "Warhammer 40,000"),
+    new GameSystemSummary(GameSystems.KillTeam, "Kill Team"),
+    new GameSystemSummary(GameSystems.Other, "Other"),
 }));
-
 app.MapAuthEndpoints();
 app.MapAdminEndpoints();
-app.MapCatalogueEndpoints();
 app.MapListEndpoints();
 app.MapPresetEndpoints();
 app.MapSocialEndpoints();
@@ -211,4 +190,4 @@ using (var scope = app.Services.CreateScope())
 
 app.Run();
 
-internal record GameSystemSummary(string Id, string Name, string Status);
+internal record GameSystemSummary(string Id, string Name);

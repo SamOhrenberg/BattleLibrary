@@ -2,12 +2,10 @@ using System.ComponentModel;
 using System.Security.Claims;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using BattleLibrary.Api.Catalogue;
 using BattleLibrary.Api.Games;
 using BattleLibrary.Api.Lists;
 using BattleLibrary.Api.Social;
 using BattleLibrary.Domain.Games;
-using BattleLibrary.Infrastructure.BsData.Caching;
 using BattleLibrary.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
@@ -59,7 +57,7 @@ public sealed class BattleLibraryTools
         Unwrap(await ListEndpoints.GetLists(Principal(context), db, ct));
 
     [McpServerTool(Name = "get_army_list", Title = "Get an army list", ReadOnly = true, Idempotent = true, OpenWorld = false)]
-    [Description("Full contents of one of the player's army lists: detachments, forces, and every unit with its points, model count, wargear selections, enhancement, warlord flag, and Leader attachment. Each unit's datasheetId works with get_datasheet.")]
+    [Description("Full contents of one of the player's army lists: faction, detachment, notes, sections, and every unit as the player wrote it (points, model count, wargear, enhancement, notes, warlord flag, and attachment). All fields are free text typed by the player.")]
     public static async Task<string> GetArmyList(
         RequestContext<CallToolRequestParams> context, BattleLibraryDbContext db,
         [Description("The list id, from list_army_lists.")] Guid listId,
@@ -116,10 +114,10 @@ public sealed class BattleLibraryTools
     [McpServerTool(Name = "get_live_game", Title = "Get a live game", ReadOnly = true, Idempotent = true, OpenWorld = false)]
     [Description("Full state of a live game session the player is part of: current round, each player's score by round (primary and secondaries), command points, logged stratagems, and every unit's remaining models.")]
     public static async Task<string> GetLiveGame(
-        RequestContext<CallToolRequestParams> context, BattleLibraryDbContext db, CatalogueStore catalogue,
+        RequestContext<CallToolRequestParams> context, BattleLibraryDbContext db,
         [Description("The session id, from list_live_games or a logged game's gameSessionId.")] Guid sessionId,
         CancellationToken ct) =>
-        Unwrap(await GameSessionEndpoints.Get(sessionId, Principal(context), db, catalogue, ct));
+        Unwrap(await GameSessionEndpoints.Get(sessionId, Principal(context), db, ct));
 
     [McpServerTool(Name = "list_friends", Title = "List my friends", ReadOnly = true, Idempotent = true, OpenWorld = false)]
     [Description("The player's friends, plus pending incoming and outgoing friend requests.")]
@@ -148,40 +146,6 @@ public sealed class BattleLibraryTools
         CancellationToken ct) =>
         Unwrap(await SocialEndpoints.SearchUsers(query, Principal(context), db, ct));
 
-    [McpServerTool(Name = "list_game_systems", Title = "List game systems", ReadOnly = true, Idempotent = true, OpenWorld = false)]
-    [Description("Game systems loaded from community BSData (for example wh40k-11e and kill-team-2024), with faction and datasheet counts.")]
-    public static string ListGameSystems(CatalogueStore catalogue) =>
-        Unwrap(CatalogueEndpoints.GetSystems(Ready(catalogue)));
-
-    [McpServerTool(Name = "list_factions", Title = "List factions", ReadOnly = true, Idempotent = true, OpenWorld = false)]
-    [Description("Factions (or kill teams) in a game system, with their ids.")]
-    public static string ListFactions(
-        CatalogueStore catalogue,
-        [Description("Game system key, from list_game_systems (for example wh40k-11e).")] string systemKey) =>
-        Unwrap(CatalogueEndpoints.GetFactions(systemKey, Ready(catalogue)));
-
-    [McpServerTool(Name = "get_faction", Title = "Get a faction", ReadOnly = true, Idempotent = true, OpenWorld = false)]
-    [Description("A faction's detachments (with enhancements and rules) and every datasheet it can field, with points and keywords. Large for big factions.")]
-    public static string GetFaction(
-        CatalogueStore catalogue,
-        [Description("Faction id, from list_factions or an army list's factionId.")] string factionId) =>
-        Unwrap(CatalogueEndpoints.GetDatasheets(factionId, Ready(catalogue)));
-
-    [McpServerTool(Name = "get_datasheet", Title = "Get a datasheet", ReadOnly = true, Idempotent = true, OpenWorld = false)]
-    [Description("One datasheet: stat line, weapon profiles, abilities, keywords, points by unit size, and wargear options.")]
-    public static string GetDatasheet(
-        CatalogueStore catalogue,
-        [Description("Datasheet id, from get_faction, search_rules, or an army list entry's datasheetId.")] string datasheetId) =>
-        Unwrap(CatalogueEndpoints.GetDatasheet(datasheetId, Ready(catalogue)));
-
-    [McpServerTool(Name = "search_rules", Title = "Search rules", ReadOnly = true, Idempotent = true, OpenWorld = false)]
-    [Description("Search a game system's datasheets, weapons, abilities, detachment rules, and enhancements by name or text.")]
-    public static string SearchRules(
-        CatalogueStore catalogue,
-        [Description("Game system key (for example wh40k-11e).")] string systemKey,
-        [Description("At least 2 characters.")] string query) =>
-        Unwrap(CatalogueEndpoints.Search(systemKey, query, Ready(catalogue)));
-
     private sealed record ResultRecord(string Key, int Games, int Wins, int Losses, int Draws, double WinRate);
 
     private static ResultRecord Record(string key, IReadOnlyList<GameResult> results)
@@ -200,9 +164,6 @@ public sealed class BattleLibraryTools
 
     private static Guid UserId(RequestContext<CallToolRequestParams> context) =>
         Guid.TryParse(Principal(context).FindFirstValue("sub"), out var id) ? id : throw new McpException("Not signed in.");
-
-    private static CatalogueStore Ready(CatalogueStore catalogue) =>
-        catalogue.Ready ? catalogue : throw new McpException("The catalogue is still loading. Try again in a few seconds.");
 
     private static string Unwrap(IResult result) => Serialize(Value(result));
 
