@@ -1,8 +1,7 @@
-import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { ApiError } from '../lib/api'
-import { getCatalogueSystems, getFactions, type CatalogueFaction, type CatalogueSystem } from '../lib/catalogue'
-import { BATTLE_SIZES, createList, deleteList, duplicateList, exportRoster, getList, getLists, importRoster, type ArmyList, type ArmyListSummary } from '../lib/lists'
-import { BATTLE_SIZE_RULES } from './validation'
+import { GAME_SYSTEMS, systemName } from '../lib/gameSystems'
+import { createList, deleteList, duplicateList, getList, getLists, type ArmyList, type ArmyListSummary } from '../lib/lists'
 import { useTour } from '../onboarding/TourContext'
 import { useToast } from '../ui/Toast'
 import { OverflowMenu } from '../ui/OverflowMenu'
@@ -15,10 +14,8 @@ export function ListsView() {
   const tour = useTour()
   const [view, setView] = useState<View>('index')
   const [lists, setLists] = useState<ArmyListSummary[] | null>(null)
-  const [systemNames, setSystemNames] = useState<Record<string, string>>({})
   const [active, setActive] = useState<ArmyList | null>(null)
   const toast = useToast()
-  const fileInputRef = useRef<HTMLInputElement>(null)
   const autoOffered = useRef(false)
 
   useEffect(() => {
@@ -26,19 +23,6 @@ export function ListsView() {
       .then(setLists)
       .catch(() => toast.push('Could not load your lists.', 'error'))
   }, [toast])
-
-  // Readable game names for the "by game" grouping; keyed by gameSystemKey.
-  useEffect(() => {
-    getCatalogueSystems()
-      .then((systems) => {
-        const map: Record<string, string> = {}
-        for (const s of systems) map[s.key] = s.name
-        setSystemNames(map)
-      })
-      .catch(() => {
-        /* Grouping falls back to the raw system key if names can't be loaded. */
-      })
-  }, [])
 
   // Offer the tour automatically, once, to a brand-new user with no lists yet.
   useEffect(() => {
@@ -76,33 +60,6 @@ export function ListsView() {
     }
   }
 
-  async function onExport(id: string, name: string) {
-    try {
-      await exportRoster(id, name)
-    } catch {
-      toast.push('Could not export that list.', 'error')
-    }
-  }
-
-  async function onImportFile(e: ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    e.target.value = '' // let the same file be re-picked later
-    if (!file) return
-    try {
-      const result = await importRoster(file)
-      setLists(await getLists())
-      const n = result.unmatched.length
-      toast.push(
-        n > 0
-          ? `Imported “${result.list.name}”. ${n} ${n === 1 ? 'entry' : 'entries'} couldn’t be matched and ${n === 1 ? 'was' : 'were'} skipped: ${result.unmatched.join(', ')}`
-          : `Imported “${result.list.name}”.`,
-        n > 0 ? 'info' : 'success',
-      )
-    } catch (err) {
-      toast.push(err instanceof ApiError ? err.message : 'Could not import that roster.', 'error')
-    }
-  }
-
   function openCreate() {
     setView('create')
     tour.notify('open-create')
@@ -135,9 +92,6 @@ export function ListsView() {
           )}
           {view === 'index' && (
             <>
-              <button type="button" className="btn" onClick={() => fileInputRef.current?.click()}>
-                Import roster
-              </button>
               <button type="button" className="btn btn-primary" data-tour="new-list" onClick={openCreate}>
                 New list
               </button>
@@ -146,25 +100,15 @@ export function ListsView() {
         </div>
       </div>
 
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept=".ros,.rosz"
-        hidden
-        onChange={(e) => void onImportFile(e)}
-      />
-
       {view === 'index' && (
         <ListIndex
           lists={lists}
-          systemNames={systemNames}
           onOpen={(id) => void openList(id)}
           onNew={openCreate}
           onTour={tour.start}
           tourLabel={tour.hasRun ? 'Replay the tour' : 'Take the tour'}
           onDuplicate={(id) => void onDuplicate(id)}
           onDelete={(id) => void onDelete(id)}
-          onExport={(id, name) => void onExport(id, name)}
         />
       )}
 
@@ -192,14 +136,14 @@ interface ArmyGroup {
 // "Chaos - Chaos Daemons" reads as "Chaos Daemons" once grouped under that faction.
 const shortFaction = (name: string) => name.split(' - ').pop() || name
 
-function groupLists(lists: ArmyListSummary[], systemNames: Record<string, string>): ArmyGroup[] {
+function groupLists(lists: ArmyListSummary[]): ArmyGroup[] {
   const groups = new Map<string, ArmyGroup>()
   for (const l of lists) {
-    const faction = l.factionName || 'Unknown army'
+    const faction = l.factionName || 'No faction'
     const key = `${l.gameSystemKey}\u0000${faction}`
     let group = groups.get(key)
     if (!group) {
-      group = { key, faction, system: systemNames[l.gameSystemKey] ?? l.gameSystemKey, lists: [] }
+      group = { key, faction, system: systemName(l.gameSystemKey), lists: [] }
       groups.set(key, group)
     }
     group.lists.push(l)
@@ -219,24 +163,20 @@ function loadCollapsed(): Set<string> {
 
 function ListIndex({
   lists,
-  systemNames,
   onOpen,
   onNew,
   onTour,
   tourLabel,
   onDuplicate,
   onDelete,
-  onExport,
 }: {
   lists: ArmyListSummary[] | null
-  systemNames: Record<string, string>
   onOpen: (id: string) => void
   onNew: () => void
   onTour: () => void
   tourLabel: string
   onDuplicate: (id: string) => void
   onDelete: (id: string) => void
-  onExport: (id: string, name: string) => void
 }) {
   const [collapsed, setCollapsed] = useState<Set<string>>(loadCollapsed)
   const [system, setSystem] = useState(ALL_SYSTEMS)
@@ -259,9 +199,9 @@ function ListIndex({
   const systems = useMemo(
     () =>
       [...new Set((lists ?? []).map((l) => l.gameSystemKey))]
-        .map((key) => ({ key, name: systemNames[key] ?? key }))
+        .map((key) => ({ key, name: systemName(key) }))
         .sort((a, b) => a.name.localeCompare(b.name)),
-    [lists, systemNames],
+    [lists],
   )
   const multiSystem = systems.length > 1
   const term = query.trim().toLowerCase()
@@ -275,13 +215,13 @@ function ListIndex({
       ),
     [lists, system, term],
   )
-  const groups = useMemo(() => groupLists(visible, systemNames), [visible, systemNames])
+  const groups = useMemo(() => groupLists(visible), [visible])
 
   if (lists === null) return <p className="hint">Loading…</p>
   if (lists.length === 0) {
     return (
       <div className="empty-note">
-        <p>No lists yet. Build your first army list, or import a BattleScribe roster.</p>
+        <p>No lists yet. Write up your first army list.</p>
         <button type="button" className="btn btn-primary" onClick={onNew}>New list</button>
         <p className="tour-link">
           <button type="button" className="link-button" onClick={onTour}>{tourLabel}</button>
@@ -345,7 +285,6 @@ function ListIndex({
                     onOpen={onOpen}
                     onDuplicate={onDuplicate}
                     onDelete={onDelete}
-                    onExport={onExport}
                   />
                 ))}
               </ul>
@@ -366,35 +305,33 @@ function ListRow({
   onOpen,
   onDuplicate,
   onDelete,
-  onExport,
 }: {
   list: ArmyListSummary
   onOpen: (id: string) => void
   onDuplicate: (id: string) => void
   onDelete: (id: string) => void
-  onExport: (id: string, name: string) => void
 }) {
   return (
     <li className="list-card" onClick={() => onOpen(l.id)}>
       <div className="lc-main">
         <div className="lc-top">
           <span className="li-name">{l.name}</span>
-          <span className="li-points">
-            {l.total}
-            {l.pointsLimit != null ? ` / ${l.pointsLimit}` : ''} pts
-          </span>
+          {(l.total > 0 || l.pointsLimit != null) && (
+            <span className="li-points">
+              {l.total}
+              {l.pointsLimit != null ? ` / ${l.pointsLimit}` : ''} pts
+            </span>
+          )}
         </div>
         <div className="li-meta">
-          {shortFaction(l.factionName)} · {l.entryCount} {l.entryCount === 1 ? 'entry' : 'entries'}
-          {l.usesLegends && <span className="tier-tag legends">Legends</span>}
-          {l.usesCrucible && <span className="tier-tag crucible">Crucible</span>}
+          {l.factionName ? `${shortFaction(l.factionName)} · ` : ''}
+          {l.entryCount} {l.entryCount === 1 ? 'unit' : 'units'}
         </div>
       </div>
       <OverflowMenu
         label={`Actions for ${l.name}`}
         items={[
           { label: 'Duplicate', onSelect: () => onDuplicate(l.id) },
-          { label: 'Export roster (.rosz)', onSelect: () => onExport(l.id, l.name) },
           {
             label: 'Delete',
             danger: true,
@@ -408,134 +345,28 @@ function ListRow({
   )
 }
 
-// Faction names encode a hierarchy with " - " (e.g. "Imperium - Adeptus Astartes
-// - Blood Angels"): alliance, faction, and an optional third level. The tree
-// drives the cascading selects; a flat list (no separators, e.g. Kill Team)
-// leaves `hierarchical` false and the form shows a single faction dropdown.
-const NAME_SEP = ' - '
-const KEY_SEP = '\u0000'
-
-interface FactionLeaf {
-  label: string
-  id: string
-}
-
-interface FactionTree {
-  hierarchical: boolean
-  alliances: string[]
-  groups: Record<string, string[]>
-  leaves: Record<string, FactionLeaf[]>
-}
-
-const leafKey = (alliance: string, group: string) => `${alliance}${KEY_SEP}${group}`
-
-function buildFactionTree(factions: CatalogueFaction[]): FactionTree {
-  const tree: FactionTree = { hierarchical: false, alliances: [], groups: {}, leaves: {} }
-  for (const f of factions) {
-    const parts = f.name.split(NAME_SEP)
-    if (parts.length > 1) tree.hierarchical = true
-    const alliance = parts[0]
-    const group = parts[1] ?? parts[0]
-    const label = parts[2] ?? group
-    if (!tree.alliances.includes(alliance)) {
-      tree.alliances.push(alliance)
-      tree.groups[alliance] = []
-    }
-    if (!tree.groups[alliance].includes(group)) tree.groups[alliance].push(group)
-    ;(tree.leaves[leafKey(alliance, group)] ??= []).push({ label, id: f.id })
-  }
-  tree.alliances.sort()
-  for (const a of tree.alliances) tree.groups[a].sort()
-  for (const key of Object.keys(tree.leaves)) tree.leaves[key].sort((a, b) => a.label.localeCompare(b.label))
-  return tree
-}
-
 function CreateForm({ onCreated, onCancel }: { onCreated: (list: ArmyList) => void; onCancel: () => void }) {
   const tour = useTour()
-  const [systems, setSystems] = useState<CatalogueSystem[]>([])
-  const [factions, setFactions] = useState<CatalogueFaction[]>([])
-  const [systemKey, setSystemKey] = useState('')
-  const [factionId, setFactionId] = useState('')
-  const [alliance, setAlliance] = useState('')
-  const [group, setGroup] = useState('')
   const [name, setName] = useState('')
-  const [limit, setLimit] = useState('2000')
-  const [battleSize, setBattleSize] = useState<string>('Strike Force')
+  const [systemKey, setSystemKey] = useState<string>(GAME_SYSTEMS[0].key)
+  const [faction, setFaction] = useState('')
+  const [detachment, setDetachment] = useState('')
+  const [limit, setLimit] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    getCatalogueSystems()
-      .then((s) => {
-        setSystems(s)
-        // Default to the first pointed system so the points step is present.
-        const preferred = s.find((x) => !x.pointless) ?? s[0]
-        if (preferred) setSystemKey(preferred.key)
-      })
-      .catch(() => setError('Could not load game systems. Is the catalogue loaded?'))
-  }, [])
-
-  useEffect(() => {
-    if (!systemKey) return
-    setFactions([])
-    setFactionId('')
-    getFactions(systemKey)
-      .then(setFactions)
-      .catch(() => setError('Could not load factions.'))
-  }, [systemKey])
-
-  const tree = useMemo(() => buildFactionTree(factions), [factions])
-  const leafOptions = tree.leaves[leafKey(alliance, group)] ?? []
-
-  // Seed the cascade (or the flat dropdown) from the first faction once loaded.
-  useEffect(() => {
-    if (factions.length === 0) return
-    if (!tree.hierarchical) {
-      setFactionId(factions[0].id)
-      return
-    }
-    const a = tree.alliances[0]
-    const g = tree.groups[a][0]
-    setAlliance(a)
-    setGroup(g)
-    setFactionId(tree.leaves[leafKey(a, g)][0].id)
-  }, [tree, factions])
-
-  function pickAlliance(a: string) {
-    const g = tree.groups[a][0]
-    setAlliance(a)
-    setGroup(g)
-    setFactionId(tree.leaves[leafKey(a, g)][0].id)
-  }
-
-  function pickGroup(g: string) {
-    setGroup(g)
-    setFactionId(tree.leaves[leafKey(alliance, g)][0].id)
-  }
-
-  const pointless = useMemo(
-    () => systems.find((s) => s.key === systemKey)?.pointless ?? false,
-    [systems, systemKey],
-  )
-
-  const canSubmit = useMemo(
-    () => name.trim().length > 0 && systemKey !== '' && factionId !== '' && !busy,
-    [name, systemKey, factionId, busy],
-  )
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault()
     setBusy(true)
     setError(null)
     try {
-      const custom = battleSize === 'Custom'
-      const parsed = limit.trim() === '' ? null : Number(limit)
+      const parsed = parseInt(limit, 10)
       const list = await createList({
-        name: name.trim(),
+        name,
         gameSystemKey: systemKey,
-        factionId,
-        pointsLimit: pointless || custom ? (Number.isNaN(parsed!) ? null : parsed) : BATTLE_SIZE_RULES[battleSize].cap,
-        battleSize: pointless || custom ? null : battleSize,
+        factionName: faction,
+        detachment,
+        pointsLimit: Number.isNaN(parsed) ? null : parsed,
       })
       onCreated(list)
     } catch (err) {
@@ -548,100 +379,44 @@ function CreateForm({ onCreated, onCancel }: { onCreated: (list: ArmyList) => vo
     <form className="create-form" onSubmit={onSubmit}>
       <label data-tour="create-name">
         List name
-        <input value={name} onChange={(e) => setName(e.target.value)} maxLength={120} autoFocus required />
+        <input value={name} onChange={(e) => setName(e.target.value)} maxLength={120} placeholder="Untitled list" autoFocus />
       </label>
 
-      <div className="create-faction-region" data-tour="create-faction">
-        <div className="create-grid">
-          <label>
-            Game system
-            <select value={systemKey} onChange={(e) => setSystemKey(e.target.value)}>
-              {systems.length === 0 && <option value="">Loading…</option>}
-              {systems.map((s) => (
-                <option key={s.key} value={s.key}>{s.name}</option>
-              ))}
-            </select>
-          </label>
-          {tree.hierarchical ? (
-            <label>
-              Alliance
-              <select value={alliance} onChange={(e) => pickAlliance(e.target.value)}>
-                {tree.alliances.map((a) => (
-                  <option key={a} value={a}>{a}</option>
-                ))}
-              </select>
-            </label>
-          ) : (
-            <label>
-              Faction
-              <select value={factionId} onChange={(e) => setFactionId(e.target.value)}>
-                {factions.length === 0 && <option value="">Loading…</option>}
-                {factions.map((f) => (
-                  <option key={f.id} value={f.id}>{f.name}</option>
-                ))}
-              </select>
-            </label>
-          )}
-        </div>
-
-        {tree.hierarchical && (
-          <div className="create-grid">
-            <label>
-              Faction
-              <select value={group} onChange={(e) => pickGroup(e.target.value)}>
-                {(tree.groups[alliance] ?? []).map((g) => (
-                  <option key={g} value={g}>{g}</option>
-                ))}
-              </select>
-            </label>
-            {leafOptions.length > 1 && (
-              <label>
-                Chapter
-                <select value={factionId} onChange={(e) => setFactionId(e.target.value)}>
-                  {leafOptions.map((l) => (
-                    <option key={l.id} value={l.id}>{l.label}</option>
-                  ))}
-                </select>
-              </label>
-            )}
-          </div>
-        )}
+      <div className="create-grid" data-tour="create-faction">
+        <label>
+          Game system
+          <select value={systemKey} onChange={(e) => setSystemKey(e.target.value)}>
+            {GAME_SYSTEMS.map((s) => (
+              <option key={s.key} value={s.key}>{s.name}</option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Faction (optional)
+          <input value={faction} onChange={(e) => setFaction(e.target.value)} maxLength={200} />
+        </label>
       </div>
 
-      {!pointless && (
-        <div className="create-grid" data-tour="create-limit">
-          <label>
-            Battle size
-            <select value={battleSize} onChange={(e) => setBattleSize(e.target.value)}>
-              <option value="Custom">Custom</option>
-              {BATTLE_SIZES.map((b) => (
-                <option key={b} value={b}>{b} · {BATTLE_SIZE_RULES[b].cap} pts</option>
-              ))}
-            </select>
-          </label>
-          {battleSize === 'Custom' ? (
-            <label>
-              Points limit (optional)
-              <input
-                inputMode="numeric"
-                value={limit}
-                placeholder="e.g. 2000"
-                onChange={(e) => setLimit(e.target.value.replace(/[^0-9]/g, ''))}
-              />
-            </label>
-          ) : (
-            <label>
-              Points limit
-              <input value={`${BATTLE_SIZE_RULES[battleSize].cap} pts`} disabled readOnly />
-            </label>
-          )}
-        </div>
-      )}
+      <div className="create-grid" data-tour="create-limit">
+        <label>
+          Detachment (optional)
+          <input value={detachment} onChange={(e) => setDetachment(e.target.value)} maxLength={200} />
+        </label>
+        <label>
+          Points limit (optional)
+          <input
+            inputMode="numeric"
+            value={limit}
+            placeholder="e.g. 2000"
+            onChange={(e) => setLimit(e.target.value.replace(/[^0-9]/g, ''))}
+          />
+        </label>
+      </div>
 
       {error && <p className="builder-error">{error}</p>}
 
       <div className="create-actions">
-        <button type="submit" className="btn btn-primary" data-tour="create-submit" disabled={!canSubmit}>
+        <button type="submit" className="btn btn-primary" data-tour="create-submit" disabled={busy}>
           {busy ? 'Creating…' : 'Create list'}
         </button>
         <button type="button" className="btn" onClick={() => { tour.stop(false); onCancel() }}>

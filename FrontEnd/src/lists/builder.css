@@ -3688,3 +3688,187 @@
   text-align: center;
   font-size: 0.85rem;
 }
+
+/* ---- Freeform builder ---- */
+.list-details {
+  margin: 0 0 14px;
+}
+
+.list-details input,
+.list-details textarea {
+  width: 100%;
+  padding: 10px;
+  min-height: 42px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--fg);
+  font: inherit;
+}
+
+.unit-sections {
+  padding: 4px 0;
+}
+
+.entry-note-text {
+  margin-top: 6px;
+  padding: 6px 9px;
+  border-left: 3px solid var(--accent);
+  border-radius: 4px;
+  background: var(--surface-2, var(--bg));
+  color: var(--muted);
+  font-size: 0.76rem;
+  white-space: pre-wrap;
+}
+
+.force-name-btn {
+  border: none;
+  background: none;
+  padding: 0;
+  color: inherit;
+  font-size: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.force-rename {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+}
+
+/* Thumb-reachable add button pinned to the bottom of the units panel. */
+.add-unit-bar {
+  position: sticky;
+  bottom: 0;
+  padding: 10px 12px;
+  border-top: 1px solid var(--line);
+  background: var(--surface-solid, var(--surface));
+}
+
+.add-unit-btn {
+  width: 100%;
+  min-height: 46px;
+}
+
+/* Unit form sheet */
+.unit-form .uf-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.unit-form label {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.unit-form .uf-wide {
+  grid-column: 1 / -1;
+}
+
+.unit-form input:not([type='checkbox']),
+.unit-form select,
+.unit-form textarea {
+  width: 100%;
+  min-width: 0;
+  padding: 10px 11px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+  font-size: 16px;
+}
+
+.unit-form textarea {
+  resize: vertical;
+}
+
+.unit-form .uf-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--fg);
+}
+
+.unit-form .uf-check input {
+  width: 20px;
+  height: 20px;
+}
+
+.uf-presets {
+  margin-top: 6px;
+}
+
+.uf-label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.uf-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.uf-chip {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.uf-chip button {
+  border: none;
+  background: none;
+  color: var(--fg);
+  font: inherit;
+  font-size: 0.82rem;
+  padding: 7px 10px;
+  cursor: pointer;
+}
+
+.uf-chip .uf-chip-x {
+  padding: 7px 9px 7px 2px;
+  color: var(--muted);
+}
+
+.uf-preset-save {
+  margin-top: 12px;
+}
+
+.uf-preset-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.uf-preset-row input {
+  flex: 1 1 160px;
+}
+
+.play-notes {
+  margin: 0 0 12px;
+  white-space: pre-wrap;
+  color: var(--muted);
+}
+
+.pc-wargear-list {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  font-size: 0.85rem;
+}
