@@ -16,7 +16,7 @@ Closes #
 
 - [ ] The backend builds and `dotnet run --project tests/BattleLibrary.Tests` passes
 - [ ] `npm run lint` and `npm run build` pass in `FrontEnd/`
-- [ ] No BSData-derived data, rules text, or screenshots of rules are committed
+- [ ] No Games Workshop rules text or army data is added to the app or the repo
 - [ ] Schema changes include an EF migration
 - [ ] UI changes work at phone width and in every theme
 - [ ] AI tools that wrote a meaningful part of this change are noted above

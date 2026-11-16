@@ -1,13 +1,15 @@
-> [!IMPORTANT]
-> The community-run BSData source that this used has been shut down and is no longer available. For this reason, I am taking down the UI and the hosted backend for this. This repo will be archived to continue serving as a portfolio piece. 
-
+> [!NOTE]
+> The Battle Library used to load army data from the community BSData
+> repositories. That source has been shut down, so the app no longer ships or
+> fetches any army data. Lists are now freeform: write in your own units, the
+> way you would on paper.
 
 # The Battle Library
 
-An open-source companion app for tabletop wargames: build army lists tied to
+An open-source companion app for tabletop wargames: write army lists tied to
 your account, add friends, track games (including live, round-by-round
-multiplayer sessions), and keep a public or private profile. Supports
-**Warhammer 40,000 (11th Edition)** and **Kill Team (2024)**.
+multiplayer sessions), and keep a public or private profile. Lists can be
+tagged **Warhammer 40,000**, **Kill Team**, or **Other**.
 
 - **App:** https://samohrenberg.github.io/BattleLibrary/
 - **API:** https://battlelibrary-production.up.railway.app (health check at `/api/health`)
@@ -22,23 +24,24 @@ Registration on the hosted app is currently invite-only.
 
 ## Features
 
-- **List building:** detachments, enhancements, wargear options, battle sizes,
-  legality checks, Leader attachment, allied forces, loadout presets, and
-  BattleScribe `.rosz` import/export.
-- **Kill Team rosters:** operatives, weapons, abilities, and faction equipment.
+- **Freeform lists:** like a paper list. Each unit has a name plus optional
+  models, points, wargear, enhancement, and notes. Nothing is required and
+  nothing is checked against game rules; points simply add up to a running
+  total.
+- **List extras:** named sections (for allies or anything else), a warlord
+  marker, attaching one unit to another, reusable unit presets, a printable
+  play view, and plain-text export.
 - **Friends and profiles:** username search, friend requests, public or private
   profiles.
 - **Game tracking:** log a finished game, or run a live session for up to four
   players with real-time scoring, CP, and kills, then review your history and
   win rate.
-- **Rule search:** search unit abilities, weapons, and detachment rules while
-  building or playing.
 - **AI assistant access (MCP):** connect Claude or another MCP client to read
-  your lists, games, stats, and the catalogue. Read-only, approved by you over
+  your lists, games, and stats. Read-only, approved by you over
   OAuth, and revocable from your profile.
 - **Mobile first:** designed for a phone at the table, with five color themes.
-- **Installable:** a Progressive Web App. Army data is cached on the device. Saving lists and games still
-  needs a connection.
+- **Installable:** a Progressive Web App. Saving lists and games needs a
+  connection.
 
 ## Stack
 
@@ -52,7 +55,7 @@ Registration on the hosted app is currently invite-only.
 BackEnd/
   BattleLibrary.slnx
   src/BattleLibrary.Domain/          entities, no framework dependencies
-  src/BattleLibrary.Infrastructure/  EF Core, migrations, BSData parser and in-memory catalogue
+  src/BattleLibrary.Infrastructure/  EF Core, migrations
   src/BattleLibrary.Api/             endpoints, auth, SignalR hub
   tests/BattleLibrary.Tests/         xUnit v3 tests
 FrontEnd/                            Vite + React + TypeScript app
@@ -93,14 +96,7 @@ cd BackEnd
 dotnet run --project src/BattleLibrary.Api
 ```
 
-**4. Load the army data.** The catalogue starts empty. With the API running,
-trigger a refresh.
-
-```bash
-curl -X POST -H "X-Admin-Key: dev-admin-key" http://localhost:5080/api/admin/catalogue/refresh
-```
-
-**5. Run the UI** at http://localhost:5173:
+**4. Run the UI** at http://localhost:5173:
 
 ```bash
 cd FrontEnd
@@ -108,7 +104,7 @@ npm install
 npm run dev
 ```
 
-**6. Create an account.** Registration is invite-only by default. The first
+**5. Create an account.** Registration is invite-only by default. The first
 account after initial creation is allowed, though, and is made the admin. There is an admin panel on the Profile page can open registration or create
 invites for test accounts.
 
@@ -136,11 +132,7 @@ Create an `appsettings.json` (gitignored) to override the defaults without modif
 | `DATABASE_URL` | Alternative `postgresql://` URL, converted automatically (Railway sets this) |
 | `Cors:AllowedOrigins` | Array of browser origins allowed to call the API |
 | `Jwt:Key`, `Jwt:Issuer`, `Jwt:Audience` | Token signing and validation. Use a long random key in production. |
-| `Admin:ApiKey` | Value required in the `X-Admin-Key` header for catalogue admin endpoints |
 | `Admin:SeedEmails` | Emails that may always register and become site admins |
-| `BsData:AutoRefreshEnabled` | Poll BSData for new commits (off in Development) |
-| `BsData:PollIntervalMinutes` | Poll interval, default 1 |
-| `BsData:GitHubToken` | Optional GitHub token; raises the GitHub API limit from 60/hr to 5000/hr |
 | `Axiom:Token`, `Axiom:Dataset` | Optional log shipping to Axiom; console logging only when unset |
 | `OAuth:FrontendUrl` | UI base URL where MCP clients are sent to approve access (with trailing slash) |
 | `OAuth:PublicUrl` | Optional public API base URL for OAuth metadata; defaults to the request's scheme and host |
@@ -150,18 +142,6 @@ The UI reads build-time variables (see `FrontEnd/.env.example`):
 
 - `VITE_API_BASE_URL`: base URL of the API, no trailing slash
 - `VITE_BASE`: Pages subpath for builds, `/BattleLibrary/` for the hosted site
-
-### Catalogue admin endpoints
-
-All require the `X-Admin-Key` header.
-
-- `POST /api/admin/catalogue/refresh`: refresh every source. Add
-  `?system=wh40k-11e` or `?system=kill-team-2024` for one, and `&force=true` to
-  rebuild even when the source commit is unchanged.
-- `POST /api/admin/catalogue/{key}/enabled?value=false`: disable a game system
-  and drop it from memory. It stays off across restarts until re-enabled.
-- `POST /api/admin/catalogue/{key}/purge`: drop a game system from memory until
-  the next refresh.
 
 ### MCP server
 
@@ -179,37 +159,19 @@ app under Profile > Connected apps cuts it off immediately.
 
 Tools: `get_my_account`, `list_army_lists`, `get_army_list`, `list_games`,
 `get_game`, `get_game_stats`, `list_live_games`, `get_live_game`,
-`list_friends`, `get_player_profile`, `search_players`, `list_game_systems`,
-`list_factions`, `get_faction`, `get_datasheet`, `search_rules`. They follow the
-same ownership and profile-visibility rules as the app.
+`list_friends`, `get_player_profile`, `search_players`. They follow the same
+ownership and profile-visibility rules as the app.
 
-## Data source and data rights
+## Game content
 
-Army data comes from the community BattleScribe data repositories in the
-[`BSData`](https://github.com/BSData) organization:
-[`wh40k-11e`](https://github.com/BSData/wh40k-11e) (JSON) and
-[`wh40k-killteam`](https://github.com/BSData/wh40k-killteam) (XML, 2024
-edition). Thanks to everyone who maintains them.
+The app contains no Games Workshop rules or army data, and does not fetch any.
+Everything in a list is typed in by its owner, and nothing is validated
+against game rules.
 
-That data has no license and describes Games Workshop's intellectual property,
-so this project treats it conservatively:
-
-- It is fetched at runtime and held only in the API server's memory: never
-  written to the database, committed to this repository, or redistributed. It
-  is reloaded from the source repositories each time the server starts.
-- Only the functional minimum is kept: names, points, stat lines, wargear
-  options, and ability names. No lore or flavor text.
-- Saved lists store references to BSData ids, not copies of the data.
-- Each game system can be disabled and purged immediately on request.
-- The project is, and will stay, non-commercial.
-
-If you represent a rights holder and want content removed, please open an
-issue or contact the maintainer, and it will be disabled promptly.
-
-Errors in unit data (wrong points, missing options) usually come from the
-BSData files themselves and are best reported to the relevant BSData
-repository. If the data is right upstream but wrong here, open a
-[data issue](https://github.com/SamOhrenberg/BattleLibrary/issues/new/choose).
+Earlier versions read army data at runtime from the community
+[`BSData`](https://github.com/BSData) repositories. That source has been shut
+down, and all code that read it has been removed. Thanks to everyone who
+maintained it.
 
 ## Contributing
 
