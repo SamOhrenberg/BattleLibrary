@@ -2,16 +2,10 @@ import { useCallback, useEffect, useState } from 'react'
 import { ApiError } from '../lib/api'
 import { getLists, getList, type ArmyListSummary, type ArmyList } from '../lib/lists'
 import { PlayView } from '../lists/PlayView'
-import { RuleSearch } from '../lists/RuleSearch'
 import { getFriends, searchUsers, type Friend, type UserSearchResult } from '../lib/social'
 import { joinSessionGroup, leaveSessionGroup, onSessionUpdated } from '../lib/gameHub'
-import { groupByRole } from '../lists/roles'
-import { DatasheetModal } from './DatasheetModal'
-import { getCatalogueSystems } from '../lib/catalogue'
+import { systemName } from '../lib/gameSystems'
 import { useToast } from '../ui/Toast'
-
-// Open a read-only datasheet for a unit by its catalogue id.
-type ViewUnit = (datasheetId: string, name: string) => void
 import {
   advanceSession,
   deleteSessionAction,
@@ -36,10 +30,6 @@ export function GameSessionView({ sessionId, onExit }: { sessionId: string; onEx
   const [session, setSession] = useState<GameSession | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [playList, setPlayList] = useState<ArmyList | null>(null)
-  const [viewUnit, setViewUnit] = useState<{ datasheetId: string; name: string } | null>(null)
-  const [showSearch, setShowSearch] = useState(false)
-  const [systemName, setSystemName] = useState<string | null>(null)
-  const onViewUnit: ViewUnit = (datasheetId, name) => setViewUnit({ datasheetId, name })
 
   async function openPlayView(listId: string) {
     setError(null)
@@ -69,14 +59,6 @@ export function GameSessionView({ sessionId, onExit }: { sessionId: string; onEx
       void leaveSessionGroup(sessionId)
     }
   }, [sessionId, reload])
-
-  const systemKey = session?.gameSystemKey ?? null
-  useEffect(() => {
-    if (!systemKey) return
-    getCatalogueSystems()
-      .then((all) => setSystemName(all.find((s) => s.key === systemKey)?.name ?? null))
-      .catch(() => {})
-  }, [systemKey])
 
   if (!session) {
     return (
@@ -112,9 +94,6 @@ export function GameSessionView({ sessionId, onExit }: { sessionId: string; onEx
               <span aria-hidden="true">▶</span> Play view
             </button>
           )}
-          {session.gameSystemKey && (
-            <button className="btn" onClick={() => setShowSearch(true)}>Rule search</button>
-          )}
           <button className="btn" onClick={onExit}>Back</button>
         </div>
       </div>
@@ -123,15 +102,15 @@ export function GameSessionView({ sessionId, onExit }: { sessionId: string; onEx
         <span className={`status-pill s-${session.status.toLowerCase()}`}>{statusLabel(session)}</span>
         {session.battleSize && <span className="status-pill">{session.battleSize}</span>}
         {session.pointsLimit != null && <span className="status-pill">{session.pointsLimit} pts</span>}
-        {session.gameSystemKey && <span className="status-pill">{systemName ?? session.gameSystemKey}</span>}
+        {session.gameSystemKey && <span className="status-pill">{systemName(session.gameSystemKey)}</span>}
       </div>
 
       {error && <p className="builder-error">{error}</p>}
 
       {session.status === 'Setup' && (
-        <SetupView session={session} me={me} act={act} onUpdated={setSession} onViewUnit={onViewUnit} />
+        <SetupView session={session} me={me} act={act} onUpdated={setSession} />
       )}
-      {session.status === 'Active' && me && <ActiveView session={session} me={me} act={act} setError={setError} onViewUnit={onViewUnit} />}
+      {session.status === 'Active' && me && <ActiveView session={session} me={me} act={act} setError={setError} />}
       {(session.status === 'Finished' || session.status === 'Abandoned') && <FinishedView session={session} />}
 
       {playList && (
@@ -139,16 +118,6 @@ export function GameSessionView({ sessionId, onExit }: { sessionId: string; onEx
           list={playList}
           context={[session.name, session.status === 'Active' ? statusLabel(session) : null].filter(Boolean).join(' · ')}
           onClose={() => setPlayList(null)}
-        />
-      )}
-      {viewUnit && (
-        <DatasheetModal datasheetId={viewUnit.datasheetId} title={viewUnit.name} onClose={() => setViewUnit(null)} />
-      )}
-      {showSearch && session.gameSystemKey && (
-        <RuleSearch
-          systemKey={session.gameSystemKey}
-          onOpenDatasheet={(id, name) => setViewUnit({ datasheetId: id, name })}
-          onClose={() => setShowSearch(false)}
         />
       )}
     </section>
@@ -169,13 +138,11 @@ function SetupView({
   me,
   act,
   onUpdated,
-  onViewUnit,
 }: {
   session: GameSession
   me: SessionParticipant | null
   act: (fn: () => Promise<GameSession | void>) => Promise<boolean>
   onUpdated: (s: GameSession) => void
-  onViewUnit: ViewUnit
 }) {
   const [lists, setLists] = useState<ArmyListSummary[]>([])
   const accepted = session.participants.filter((p) => p.status === 'Accepted')
@@ -183,26 +150,20 @@ function SetupView({
   const invitedCount = session.participants.filter((p) => p.status === 'Invited').length
   // Mirrors the server's start checks so a disabled Start explains itself.
   const noList = accepted.find((p) => !p.armyListId)
-  const badList = accepted.find((p) => p.listIssue)
   const notReady =
     acceptedCount < 2
       ? 'Needs at least two players who have accepted.'
       : noList
         ? `Waiting for ${noList.username} to choose a list.`
-        : badList
-          ? `${badList.username}'s list can't be used yet.`
-          : null
+        : null
 
   useEffect(() => {
     if (me && me.status === 'Accepted') getLists().then(setLists).catch(() => {})
   }, [me])
 
-  // Lists for this game's system that fit the points cap, regardless of the
-  // battle size they were built at.
-  const usableLists = lists.filter(
-    (l) =>
-      (!session.gameSystemKey || l.gameSystemKey === session.gameSystemKey) &&
-      (session.pointsLimit == null || l.total <= session.pointsLimit),
+  // Any list can be brought; lists for this game's system come first.
+  const usableLists = [...lists].sort(
+    (a, b) => Number(b.gameSystemKey === session.gameSystemKey) - Number(a.gameSystemKey === session.gameSystemKey),
   )
 
   return (
@@ -226,19 +187,17 @@ function SetupView({
                       {p.userId === session.createdByUserId ? ' · host' : ''}
                       {p.isMe ? ' (you)' : ''}
                     </span>
-                    <span className={`person-sub${p.status === 'Accepted' && p.armyListId && p.listIssue ? ' warn' : ''}`}>
+                    <span className="person-sub">
                       {p.status === 'Invited'
                         ? 'awaiting reply'
                         : !p.armyListId
                           ? 'no list yet'
-                          : p.listIssue
-                            ? `${p.factionName} · ⚠ ${p.listIssue}`
-                            : `${p.factionName} · list ready`}
+                          : `${p.factionName ? `${p.factionName} · ` : ''}list ready`}
                     </span>
                   </span>
                 </span>
-                <span className={`status-pill s-${p.status.toLowerCase()}${p.status === 'Accepted' && p.armyListId && !p.listIssue ? ' s-ready' : ''}`}>
-                  {p.status === 'Invited' ? 'Invited' : p.armyListId && !p.listIssue ? 'Ready' : 'Joined'}
+                <span className={`status-pill s-${p.status.toLowerCase()}${p.status === 'Accepted' && p.armyListId ? ' s-ready' : ''}`}>
+                  {p.status === 'Invited' ? 'Invited' : p.armyListId ? 'Ready' : 'Joined'}
                 </span>
                 {session.isHost && !p.isMe && (
                   <button
@@ -281,14 +240,14 @@ function SetupView({
               <option value="">Choose a list…</option>
               {usableLists.map((l) => (
                 <option key={l.id} value={l.id}>
-                  {l.name} · {l.factionName}{l.total > 0 ? ` (${l.total} pts)` : ''}
+                  {l.name}{l.factionName ? ` · ${l.factionName}` : ''}{l.total > 0 ? ` (${l.total} pts)` : ''}
                 </option>
               ))}
             </select>
           </label>
           {usableLists.length === 0 && (
             <p className="empty-note">
-              No lists for this game system{session.pointsLimit != null ? ` within ${session.pointsLimit} pts` : ''} yet. Build one in the Lists tab first.
+              No lists yet. Write one up in the Lists tab first.
             </p>
           )}
           {me.units.length > 0 && (
@@ -297,9 +256,7 @@ function SetupView({
               <ul className="unit-list">
                 {me.units.map((u) => (
                   <li className="unit-row" key={u.id}>
-                    <button type="button" className="unit-link" onClick={() => onViewUnit(u.datasheetId, u.name)}>
-                      {u.name}
-                    </button>
+                    <span className="unit-link">{u.name}</span>
                     {u.maxModels === 1 ? (
                       <span className="step-fixed">1 model</span>
                     ) : (
@@ -510,13 +467,11 @@ function ActiveView({
   me,
   act,
   setError,
-  onViewUnit,
 }: {
   session: GameSession
   me: SessionParticipant
   act: (fn: () => Promise<GameSession | void>) => Promise<boolean>
   setError: (m: string | null) => void
-  onViewUnit: ViewUnit
 }) {
   const [round, setRound] = useState(session.currentRound)
   useEffect(() => {
@@ -606,7 +561,7 @@ function ActiveView({
         </ul>
         <AddSecondary onAdd={(name) => commit(round, { ...current, secondaries: [...current.secondaries, { name, score: 0 }] })} />
 
-        <UnitTracker session={session} me={me} act={act} onViewUnit={onViewUnit} />
+        <UnitTracker session={session} me={me} act={act} />
 
         <ActionPanel session={session} me={me} act={act} setError={setError} />
       </div>
@@ -651,25 +606,20 @@ function UnitTracker({
   session,
   me,
   act,
-  onViewUnit,
 }: {
   session: GameSession
   me: SessionParticipant
   act: (fn: () => Promise<GameSession | void>) => Promise<boolean>
-  onViewUnit: ViewUnit
 }) {
   if (me.units.length === 0) return null
-  const groups = groupByRole(me.units, (u) => u.keywords)
   return (
     <>
       <div className="sub-head"><span className="cell-label">Your units</span></div>
-      {groups.map((group) => (
-        <div className="unit-group" key={group.role}>
-          <div className="unit-role">{group.role}</div>
+      <div className="unit-group">
           <ul className="unit-list">
-            {group.items.map((u) => (
+            {me.units.map((u) => (
               <li className={`unit-row ${u.destroyed ? 'dead' : ''}`} key={u.id}>
-                <button type="button" className="unit-main" onClick={() => onViewUnit(u.datasheetId, u.name)}>
+                <div className="unit-main">
                   <span className="unit-top">
                     <span className="unit-name">{u.name}</span>
                     {u.isWarlord && <span className="u-warlord" title="Warlord">★</span>}
@@ -681,7 +631,7 @@ function UnitTracker({
                       {u.wargear.length > 0 && <span className="u-wargear">{u.wargear.join(', ')}</span>}
                     </span>
                   )}
-                </button>
+                </div>
                 <div className="unit-controls">
                   <Stepper
                     value={u.currentModels}
@@ -700,8 +650,7 @@ function UnitTracker({
               </li>
             ))}
           </ul>
-        </div>
-      ))}
+      </div>
     </>
   )
 }

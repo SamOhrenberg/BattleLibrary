@@ -7,7 +7,6 @@ const READ_ACCESS = [
   'Your logged games and win/loss stats',
   'Live games you are part of',
   'Your friends and profiles you can already see',
-  'The unit and rules catalogue',
 ]
 
 // Consent screen for an app (an MCP client like Claude) asking to read this account.

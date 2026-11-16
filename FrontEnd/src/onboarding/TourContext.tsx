@@ -10,7 +10,7 @@ import {
 
 // Milestones are fired by the app when the user completes a tour action, so a
 // step can advance the moment the real task is done rather than on "Next".
-export type TourMilestone = 'open-create' | 'list-created' | 'datasheet-opened' | 'entry-added' | 'saved'
+export type TourMilestone = 'open-create' | 'list-created' | 'unit-form-opened' | 'entry-added'
 
 // How a step may be advanced. When the target is interactive the overlay works
 // this out from the DOM, so 'none' is only set to opt an informational step
@@ -25,15 +25,10 @@ export interface TourStep {
   advanceOn?: TourMilestone
   // Override auto-detection of the target's interaction requirement.
   interact?: TourInteraction
-  // A later milestone may skip past this step (e.g. adding a unit straight from the catalogue).
+  // A later milestone may skip past this step.
   optional?: boolean
   // The target only exists for some units; the step is passed over when it is absent.
   ifPresent?: boolean
-}
-
-// Read-only walkthrough steps inside the open datasheet. Adding a unit early skips them.
-function datasheetSteps(steps: Pick<TourStep, 'target' | 'title' | 'body' | 'ifPresent'>[]): TourStep[] {
-  return steps.map((s) => ({ ...s, placement: 'bottom', interact: 'none', optional: true }))
 }
 
 export const TOUR_STEPS: TourStep[] = [
@@ -52,111 +47,53 @@ export const TOUR_STEPS: TourStep[] = [
   },
   {
     target: 'create-faction',
-    title: 'Pick a faction',
-    body: 'Choose a game system, then the faction to build. Units are drawn from that faction’s catalogue.',
+    title: 'Game and faction',
+    body: 'Pick the game, and type your faction if you like. Everything except the game is optional.',
     placement: 'bottom',
   },
   {
     target: 'create-limit',
-    title: 'Set a points limit',
-    body: 'The limit is the ceiling to build toward. The total turns red if your list goes over it. 2000 is a common 40k game size.',
+    title: 'Detachment and points',
+    body: 'Write in a detachment and a points limit if your game uses them. Nothing here is checked against the rules.',
     placement: 'bottom',
   },
   {
     target: 'create-submit',
     title: 'Create the list',
-    body: 'This saves the empty list and opens the builder, where units get added.',
+    body: 'This saves the empty list and opens it, ready for units.',
     placement: 'top',
     advanceOn: 'list-created',
   },
   {
-    target: 'catalogue-unit',
-    title: 'Open a datasheet',
-    body: 'Your faction’s units are listed by battlefield role; search or filter to find one. Tap a unit’s name to open its datasheet. The Add button is a shortcut for later.',
-    placement: 'bottom',
-    advanceOn: 'datasheet-opened',
-    optional: true,
+    target: 'add-unit',
+    title: 'Add a unit',
+    body: 'Write in each unit you are bringing, like a paper list.',
+    placement: 'top',
+    advanceOn: 'unit-form-opened',
   },
-  ...datasheetSteps([
-    {
-      target: 'datasheet-head',
-      title: 'The datasheet',
-      body: 'Every unit has a datasheet: its rules card. The number by the name is its points cost. Armies are built to a points limit, so each unit spends part of that budget.',
-    },
-    {
-      target: 'datasheet-keywords',
-      title: 'Keywords',
-      body: 'Keywords say what a unit is: Infantry, Vehicle, Character, its faction and more. Rules often target units "with" a keyword, so these decide what affects it. Tap +N to see them all.',
-    },
-    {
-      target: 'datasheet-size',
-      title: 'Unit size',
-      body: 'Many units can be fielded at more than one size. More models means a tougher unit, at a higher points cost.',
-      ifPresent: true,
-    },
-    {
-      target: 'datasheet-stats',
-      title: 'The stat line',
-      body: 'M: Movement in inches. T: Toughness, how hard it is to wound. Sv: Save, the roll needed to ignore a hit. W: Wounds per model. Ld: Leadership, for Battle-shock tests. OC: Objective Control, its weight when holding objectives. InSv: an invulnerable save that AP can’t worsen. For an X+ value, lower is better.',
-    },
-    {
-      target: 'datasheet-weapons',
-      title: 'Weapons',
-      body: 'Range is in inches (Melee means close combat). A: Attacks, dice rolled. BS/WS: the roll needed to hit. S: Strength, compared to Toughness to wound. AP: makes the target’s save worse. D: Damage per failed save. Tap an underlined keyword for its rule.',
-    },
-    {
-      target: 'datasheet-abilities',
-      title: 'Abilities and rules',
-      body: 'What makes the unit special: its own abilities, plus shared core and faction rules. Tap a heading to expand it.',
-    },
-    {
-      target: 'datasheet-leads',
-      title: 'Leaders',
-      body: 'A Character can lead a unit, joining it so they fight as one. This lists the units this Character can attach to.',
-      ifPresent: true,
-    },
-    {
-      target: 'datasheet-loadouts',
-      title: 'Loadouts',
-      body: 'This unit splits its models between loadouts. Assign each model until the count matches the unit size.',
-      ifPresent: true,
-    },
-    {
-      target: 'datasheet-options',
-      title: 'Wargear options',
-      body: 'Swap or add weapons and gear. Default is the standard loadout, Fixed can’t change, and +N is the extra points cost.',
-      ifPresent: true,
-    },
-    {
-      target: 'datasheet-presets',
-      title: 'Saved loadouts',
-      body: 'Save a wargear setup you like, then apply it in one tap the next time you add this unit.',
-      ifPresent: true,
-    },
-  ]),
   {
-    target: 'datasheet-add',
-    title: 'Add it to your list',
-    body: 'The subtotal includes your choices. Press Add to list to drop the unit into your army.',
+    target: 'unit-name',
+    title: 'Fill in what you want',
+    body: 'Only the name matters. Models, points, wargear, enhancement and notes are all optional.',
+    placement: 'bottom',
+  },
+  {
+    target: 'unit-save',
+    title: 'Save it',
+    body: 'Add puts the unit in your list. Add another keeps the form open for the next one.',
     placement: 'top',
     advanceOn: 'entry-added',
   },
   {
     target: 'list-total',
-    title: 'Watch the total',
-    body: 'Your running points total lives here. Adjust quantities on the right; the total - and the over-limit warning - update live.',
+    title: 'The running total',
+    body: 'Points you enter add up here. It is a tally, not a rule check. Changes save as you go, so that is the whole loop.',
     placement: 'bottom',
     interact: 'none',
   },
-  {
-    target: 'save-list',
-    title: 'You’re set',
-    body: 'Changes save as you go, but Save forces it and timestamps the list. That’s the whole loop - build away!',
-    placement: 'top',
-  },
 ]
 
-const STORAGE_KEY = 'bl.tour.v1'
+const STORAGE_KEY = 'bl.tour.v2'
 
 function readDone(): boolean {
   try {

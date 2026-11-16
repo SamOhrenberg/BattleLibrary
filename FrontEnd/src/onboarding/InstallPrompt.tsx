@@ -115,7 +115,7 @@ const BENEFITS: { title: string; body: string; icon: ReactNode }[] = [
   },
   {
     title: 'Works on bad signal',
-    body: 'Datasheets you have opened stay readable when the store Wi-Fi drops.',
+    body: 'The app shell loads even when the store Wi-Fi drops.',
     icon: (
       <>
         <path d="M2 9a15 15 0 0120 0M5 12.5a10 10 0 0114 0M8.5 16a5 5 0 017 0" />

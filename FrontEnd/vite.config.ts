@@ -43,27 +43,6 @@ export default defineConfig({
         navigateFallbackDenylist: [/\/api\//, /\/hubs\//, /\/mcp/, /\/oauth\//, /\/\.well-known\//],
         runtimeCaching: [
           {
-            // Catalogue reads are anonymous and user-independent: serve cached, refresh in the background.
-            urlPattern: ({ url }) =>
-              url.pathname.startsWith('/api/catalogue/') && !url.pathname.endsWith('/search'),
-            handler: 'StaleWhileRevalidate',
-            options: {
-              cacheName: 'catalogue',
-              expiration: { maxEntries: 2000, maxAgeSeconds: 60 * 60 * 24 * 30 },
-              cacheableResponse: { statuses: [200] },
-            },
-          },
-          {
-            urlPattern: ({ url }) => url.pathname.startsWith('/api/catalogue/') && url.pathname.endsWith('/search'),
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'catalogue-search',
-              networkTimeoutSeconds: 4,
-              expiration: { maxEntries: 100, maxAgeSeconds: 60 * 60 * 24 * 7 },
-              cacheableResponse: { statuses: [200] },
-            },
-          },
-          {
             urlPattern: ({ url }) =>
               url.origin === 'https://fonts.googleapis.com' || url.origin === 'https://fonts.gstatic.com',
             handler: 'CacheFirst',

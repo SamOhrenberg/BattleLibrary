@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { ApiError } from '../lib/api'
-import { getCatalogueSystems, type CatalogueSystem } from '../lib/catalogue'
-import { getLists, BATTLE_SIZES, type ArmyListSummary } from '../lib/lists'
-import { BATTLE_SIZE_RULES } from '../lists/validation'
+import { GAME_SYSTEMS, systemName } from '../lib/gameSystems'
+import { getLists, type ArmyListSummary } from '../lib/lists'
 import { getFriends, searchUsers, type Friend } from '../lib/social'
 import {
   deleteGame,
@@ -133,26 +132,24 @@ function SessionList({
   )
 }
 
+// Named battle sizes the API accepts for live games, with their points caps.
+const BATTLE_SIZES = [
+  { name: 'Incursion', cap: 1000 },
+  { name: 'Strike Force', cap: 2000 },
+  { name: 'Onslaught', cap: 3000 },
+] as const
+
 function CreateSessionForm({ onCreated, onCancel }: { onCreated: (id: string) => void; onCancel: () => void }) {
   const [name, setName] = useState('')
-  const [systems, setSystems] = useState<CatalogueSystem[]>([])
-  const [systemKey, setSystemKey] = useState('')
+  const [systemKey, setSystemKey] = useState<string>(GAME_SYSTEMS[0].key)
   const [battleSize, setBattleSize] = useState('Strike Force')
   const [limit, setLimit] = useState('2000')
   const [startingCp, setStartingCp] = useState('0')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    getCatalogueSystems()
-      .then((s) => {
-        setSystems(s)
-        if (s.length > 0) setSystemKey(s[0].key)
-      })
-      .catch(() => {})
-  }, [])
-
-  const pointless = systems.find((s) => s.key === systemKey)?.pointless ?? false
+  // Kill Team is played without points or CP.
+  const pointless = systemKey === 'kill-team'
   const custom = battleSize === 'Custom'
 
   async function submit(e: FormEvent) {
@@ -189,23 +186,21 @@ function CreateSessionForm({ onCreated, onCancel }: { onCreated: (id: string) =>
           autoFocus
         />
       </label>
-      {systems.length > 1 && (
-        <label>
-          Game system
-          <select value={systemKey} onChange={(e) => setSystemKey(e.target.value)}>
-            {systems.map((s) => (
-              <option key={s.key} value={s.key}>{s.name}</option>
-            ))}
-          </select>
-        </label>
-      )}
+      <label>
+        Game system
+        <select value={systemKey} onChange={(e) => setSystemKey(e.target.value)}>
+          {GAME_SYSTEMS.map((s) => (
+            <option key={s.key} value={s.key}>{s.name}</option>
+          ))}
+        </select>
+      </label>
       {!pointless && (
         <label>
           Battle size
           <select value={battleSize} onChange={(e) => setBattleSize(e.target.value)}>
             {BATTLE_SIZES.map((s) => (
-              <option key={s} value={s}>
-                {s} · {BATTLE_SIZE_RULES[s].cap} pts
+              <option key={s.name} value={s.name}>
+                {s.name} · {s.cap} pts
               </option>
             ))}
             <option value="Custom">Custom</option>
@@ -242,7 +237,6 @@ const UNSIZED = 'Unsized'
 
 function HistoryTab() {
   const [games, setGames] = useState<Game[] | null>(null)
-  const [systems, setSystems] = useState<CatalogueSystem[]>([])
   const [lists, setLists] = useState<ArmyListSummary[]>([])
   const [view, setView] = useState<'index' | 'form'>('index')
   const [editing, setEditing] = useState<Game | null>(null)
@@ -261,23 +255,20 @@ function HistoryTab() {
 
   useEffect(() => {
     void reload()
-    getCatalogueSystems().then(setSystems).catch(() => {})
     getLists().then(setLists).catch(() => {})
   }, [reload])
 
   const listsById = useMemo(() => new Map(lists.map((l) => [l.id, l])), [lists])
 
   const enriched = useMemo<EnrichedGame[]>(() => {
-    const systemName = (key: string) =>
-      systems.find((s) => s.key === key)?.name || (key ? key : 'Unspecified')
+    const nameOf = (key: string) => (key ? systemName(key) : 'Unspecified')
     const sizeOf = (g: Game): string => {
       const list = g.playerListId ? listsById.get(g.playerListId) : undefined
-      if (list?.battleSize) return list.battleSize
       if (list?.pointsLimit) return `${list.pointsLimit} pts`
       return UNSIZED
     }
-    return (games ?? []).map((g) => ({ ...g, systemName: systemName(g.gameSystemKey), sizeLabel: sizeOf(g) }))
-  }, [games, systems, listsById])
+    return (games ?? []).map((g) => ({ ...g, systemName: nameOf(g.gameSystemKey), sizeLabel: sizeOf(g) }))
+  }, [games, listsById])
 
   const systemOptions = useMemo(() => {
     const seen = new Map<string, string>()
@@ -653,15 +644,9 @@ function computeStats(games: Game[]): GameStats {
   return { total, wins, losses, draws, winRate }
 }
 
-// Battle sizes first (in play order), then points-based sizes ascending, then
-// Unsized last, so the dropdown reads naturally.
+// Points-based sizes ascending, then Unsized last, so the dropdown reads naturally.
 function compareSizes(a: string, b: string): number {
-  const rank = (s: string) => {
-    if (s === UNSIZED) return 3
-    const idx = BATTLE_SIZES.indexOf(s as (typeof BATTLE_SIZES)[number])
-    if (idx >= 0) return idx
-    return 2
-  }
+  const rank = (s: string) => (s === UNSIZED ? 3 : 2)
   const ra = rank(a)
   const rb = rank(b)
   if (ra !== rb) return ra - rb
@@ -762,13 +747,11 @@ function GameForm({
   const [opponentScore, setOpponentScore] = useState(initial?.opponentScore?.toString() ?? '')
   const [notes, setNotes] = useState(initial?.notes ?? '')
 
-  const [systems, setSystems] = useState<CatalogueSystem[]>([])
   const [lists, setLists] = useState<ArmyListSummary[]>([])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    getCatalogueSystems().then(setSystems).catch(() => {})
     getLists().then(setLists).catch(() => {})
   }, [])
 
@@ -777,7 +760,7 @@ function GameForm({
     const list = lists.find((l) => l.id === id)
     if (list) {
       setGameSystemKey(list.gameSystemKey)
-      if (!playerFaction.trim()) setPlayerFaction(list.factionName)
+      if (!playerFaction.trim() && list.factionName) setPlayerFaction(list.factionName)
     }
   }
 
@@ -877,26 +860,24 @@ function GameForm({
               <option value="">No list</option>
               {listsForSystem.map((l) => (
                 <option key={l.id} value={l.id}>
-                  {l.name} · {l.factionName}
+                  {l.name}{l.factionName ? ` · ${l.factionName}` : ''}
                 </option>
               ))}
             </select>
           </label>
         )}
 
-        {systems.length > 0 && (
-          <label>
-            Game system (optional)
-            <select value={gameSystemKey} onChange={(e) => pickSystem(e.target.value)}>
-              <option value="">Unspecified</option>
-              {systems.map((s) => (
-                <option key={s.key} value={s.key}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
+        <label>
+          Game system (optional)
+          <select value={gameSystemKey} onChange={(e) => pickSystem(e.target.value)}>
+            <option value="">Unspecified</option>
+            {GAME_SYSTEMS.map((s) => (
+              <option key={s.key} value={s.key}>
+                {s.name}
+              </option>
+            ))}
+          </select>
+        </label>
 
         <div className="create-grid">
           <label>
