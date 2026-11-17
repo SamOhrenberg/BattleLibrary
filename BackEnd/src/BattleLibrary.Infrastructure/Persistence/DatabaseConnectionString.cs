@@ -17,7 +17,7 @@ public static class DatabaseConnectionString
             return fromConfig;
         }
 
-        // URL-style connection string from a managed host (Railway, Heroku).
+        // URL-style connection string, as many managed hosts provide.
         var url = configuration["DATABASE_URL"]
                   ?? Environment.GetEnvironmentVariable("DATABASE_URL");
         if (!string.IsNullOrWhiteSpace(url))

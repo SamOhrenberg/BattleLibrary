@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { createPortal } from 'react-dom'
 import type { ArmyList, EntryFields, ListEntry } from '../lib/lists'
 import type { UnitPreset } from '../lib/presets'
 
@@ -127,7 +128,9 @@ export function UnitForm({
     ? []
     : list.entries.filter((e) => e.id !== entry?.id && e.attachedToEntryId === null)
 
-  return (
+  // Portaled to body: a themed .card (backdrop-filter, clip-path) would otherwise
+  // anchor or clip this fixed sheet.
+  return createPortal(
     <div className="modal-backdrop" onClick={onClose}>
       <form className="modal unit-form" onClick={(e) => e.stopPropagation()} onSubmit={onFormSubmit}>
         <div className="modal-top">
@@ -282,6 +285,7 @@ export function UnitForm({
           </button>
         </div>
       </form>
-    </div>
+    </div>,
+    document.body,
   )
 }

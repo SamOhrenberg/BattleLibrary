@@ -11,10 +11,8 @@ your account, add friends, track games (including live, round-by-round
 multiplayer sessions), and keep a public or private profile. Lists can be
 tagged **Warhammer 40,000**, **Kill Team**, or **Other**.
 
-- **App:** https://samohrenberg.github.io/BattleLibrary/
-- **API:** https://battlelibrary-production.up.railway.app (health check at `/api/health`)
-
-Registration on the hosted app is currently invite-only.
+It is self-hosted: run it on your own server with Docker Compose (see
+[Self-hosting](#self-hosting)).
 
 > **Unofficial.** The Battle Library is a non-commercial fan project. It is not
 > affiliated with, endorsed by, or sponsored by Games Workshop. Warhammer
@@ -43,11 +41,87 @@ Registration on the hosted app is currently invite-only.
 - **Installable:** a Progressive Web App. Saving lists and games needs a
   connection.
 
+## Screenshots
+
+See [portfolio.md](portfolio.md) for a screenshot tour of lists, live games,
+history, friends, and themes.
+
 ## Stack
 
 - **API:** ASP.NET Core (.NET 10) minimal APIs, EF Core, PostgreSQL, SignalR
 - **UI:** React 19 + TypeScript (Vite)
-- **Hosting:** GitHub Pages (UI), Railway + Docker (API and database)
+- **Hosting:** a single Docker image (API serving the UI) on GitHub Container
+  Registry, run with Docker Compose alongside PostgreSQL
+
+## Self-hosting
+
+The app ships as one image, `ghcr.io/samohrenberg/battlelibrary`, built for
+`linux/amd64` and `linux/arm64`. The API serves the UI from the same origin,
+and database migrations run on startup.
+
+**1. Get the compose file and settings template** into an empty folder:
+
+```bash
+mkdir battle-library && cd battle-library
+curl -fsSLO https://raw.githubusercontent.com/SamOhrenberg/BattleLibrary/main/deploy/docker-compose.yml
+curl -fsSL -o .env https://raw.githubusercontent.com/SamOhrenberg/BattleLibrary/main/deploy/.env.example
+```
+
+**2. Fill in `.env`.** `POSTGRES_PASSWORD` and `JWT_KEY` are required:
+
+```bash
+openssl rand -hex 24   # POSTGRES_PASSWORD
+openssl rand -hex 32   # JWT_KEY
+```
+
+**3. Start it:**
+
+```bash
+docker compose up -d
+```
+
+The app is at `http://<host>:8080` (change `HTTP_PORT` to move it). The first
+account created becomes the admin; registration is invite-only after that,
+and the admin panel on the Profile page can open it or create invites.
+
+**Updating:** `docker compose pull && docker compose up -d`. `latest` follows
+`main`; set `BATTLE_LIBRARY_VERSION` to a release such as `1.2.0` to pin one.
+
+**Backups:** all data lives in PostgreSQL, in the `pgdata` volume:
+
+```bash
+docker compose exec db pg_dump -U battlelibrary battlelibrary > backup.sql
+```
+
+**HTTPS and reverse proxies.** Put the app behind Caddy, Traefik, or nginx for
+TLS, and serve it at the root of its own (sub)domain; a path prefix like
+`/battle-library/` is not supported. The app trusts `X-Forwarded-For` and
+`X-Forwarded-Proto`, so pass the original `Host` header through. If the proxy
+cannot, set `PUBLIC_URL`. HTTPS is needed for installing the app as a PWA and
+for connecting MCP clients from other machines.
+
+| `.env` setting | Purpose |
+|---|---|
+| `POSTGRES_PASSWORD` | Required. Database password, letters and digits only |
+| `JWT_KEY` | Required. Token signing key, 32+ characters; changing it signs everyone out |
+| `HTTP_PORT` | Host port, default `8080` |
+| `BATTLE_LIBRARY_VERSION` | Image tag, default `latest` |
+| `ADMIN_EMAIL` | Optional. An email that can always register and becomes admin |
+| `PUBLIC_URL` | Optional. Public base URL when a proxy hides the scheme or host |
+| `AXIOM_TOKEN` | Optional. Ships logs to Axiom |
+
+In-app feedback is off on self-hosted instances unless `Feedback__GitHubToken`
+and `Feedback__Repository` are added to the `app` service's environment.
+
+### Building the image
+
+`.github/workflows/publish-image.yml` builds and pushes the image on every push
+to `main` and on `v*` tags (`v1.2.3` also publishes `1.2.3` and `1.2`). To
+build it yourself from the repository root:
+
+```bash
+docker build -t battlelibrary .
+```
 
 ## Repository layout
 
@@ -59,8 +133,10 @@ BackEnd/
   src/BattleLibrary.Api/             endpoints, auth, SignalR hub
   tests/BattleLibrary.Tests/         xUnit v3 tests
 FrontEnd/                            Vite + React + TypeScript app
-.github/                             Pages workflow, issue and PR templates
-docker-compose.yml                   local PostgreSQL
+.github/                             image workflow, issue and PR templates
+deploy/                              self-hosting compose file and .env template
+Dockerfile                           self-hosted image (API + bundled UI)
+docker-compose.yml                   local PostgreSQL for development
 ```
 
 ## Running locally
@@ -129,26 +205,26 @@ Create an `appsettings.json` (gitignored) to override the defaults without modif
 | Setting | Purpose |
 |---|---|
 | `ConnectionStrings:Default` | PostgreSQL connection (Npgsql key/value form) |
-| `DATABASE_URL` | Alternative `postgresql://` URL, converted automatically (Railway sets this) |
-| `Cors:AllowedOrigins` | Array of browser origins allowed to call the API |
+| `DATABASE_URL` | Alternative `postgresql://` URL, converted automatically |
+| `Cors:AllowedOrigins` | Array of browser origins allowed to call the API (only needed when the UI runs on another origin, as in development) |
 | `Jwt:Key`, `Jwt:Issuer`, `Jwt:Audience` | Token signing and validation. Use a long random key in production. |
 | `Admin:SeedEmails` | Emails that may always register and become site admins |
 | `Axiom:Token`, `Axiom:Dataset` | Optional log shipping to Axiom; console logging only when unset |
-| `OAuth:FrontendUrl` | UI base URL where MCP clients are sent to approve access (with trailing slash) |
+| `OAuth:FrontendUrl` | UI base URL where MCP clients are sent to approve access (with trailing slash); defaults to the request's origin when the UI is bundled |
 | `OAuth:PublicUrl` | Optional public API base URL for OAuth metadata; defaults to the request's scheme and host |
 | `OAuth:AccessTokenMinutes`, `OAuth:RefreshTokenDays` | MCP token lifetimes, default 60 minutes and 30 days |
 
-The UI reads build-time variables (see `FrontEnd/.env.example`):
+The UI reads one build-time variable (see `FrontEnd/.env.example`):
 
-- `VITE_API_BASE_URL`: base URL of the API, no trailing slash
-- `VITE_BASE`: Pages subpath for builds, `/BattleLibrary/` for the hosted site
+- `VITE_API_BASE_URL`: base URL of the API, no trailing slash. Empty means the
+  same origin, which is how the Docker image builds it.
 
 ### MCP server
 
 The API serves a read-only [Model Context Protocol](https://modelcontextprotocol.io/)
 endpoint at `/mcp` (Streamable HTTP). Add it to an MCP client as a remote
 server, for example in Claude as a custom connector with the URL
-`https://battlelibrary-production.up.railway.app/mcp`, or locally with
+`https://<your-host>/mcp`, or locally with
 `claude mcp add --transport http battle-library http://localhost:5173/mcp`.
 
 The client discovers sign-in through OAuth 2.1 metadata

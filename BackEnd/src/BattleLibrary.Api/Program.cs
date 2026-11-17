@@ -21,7 +21,7 @@ using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Managed hosts (Railway) inject the listen port via PORT; honor it when set.
+// Some hosts inject the listen port via PORT; honor it when set.
 var port = Environment.GetEnvironmentVariable("PORT");
 if (!string.IsNullOrWhiteSpace(port))
 {
@@ -117,10 +117,15 @@ builder.Services.AddAuthorization();
 builder.Services.AddBattleLibraryMcp(authentication, jwt);
 
 var app = builder.Build();
+var bundledFrontend = app.Environment.HasBundledFrontend();
 
 app.UseForwardedHeaders();
 app.UseExceptionHandler();
 app.UseStatusCodePages();
+if (bundledFrontend)
+{
+    app.UseBundledFrontend();
+}
 app.UseApiRequestLogging();
 app.UseCors(FrontendCorsPolicy);
 app.UseAuthentication();
@@ -169,6 +174,10 @@ app.MapFeedbackEndpoints();
 app.MapOAuthEndpoints();
 app.MapBattleLibraryMcp();
 app.MapHub<GameHub>("/hubs/game");
+if (bundledFrontend)
+{
+    app.MapBundledFrontend();
+}
 
 // Ensure the settings row exists and grant admin to configured seed emails.
 using (var scope = app.Services.CreateScope())

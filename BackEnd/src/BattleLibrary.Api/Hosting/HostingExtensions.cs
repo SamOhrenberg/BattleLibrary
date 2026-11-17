@@ -123,7 +123,7 @@ public static class HostingExtensions
         });
     }
 
-    // Railway terminates TLS and proxies; trust its forwarded headers so the
+    // A reverse proxy terminates TLS; trust its forwarded headers so the
     // client IP (rate limiting, logs) is the real one.
     public static void AddForwardedHeaders(this IServiceCollection services) =>
         services.Configure<ForwardedHeadersOptions>(options =>
@@ -151,6 +151,28 @@ public static class HostingExtensions
                 }
             };
         });
+
+    // Self-hosted image: the built UI ships in wwwroot and is served from the API's origin.
+    public static bool HasBundledFrontend(this IWebHostEnvironment env) =>
+        env.WebRootFileProvider.GetFileInfo("index.html").Exists;
+
+    // Hashed build assets never change; everything else revalidates so updates land.
+    private static readonly StaticFileOptions FrontendFiles = new()
+    {
+        OnPrepareResponse = ctx => ctx.Context.Response.Headers.CacheControl =
+            ctx.Context.Request.Path.StartsWithSegments("/assets")
+                ? "public, max-age=31536000, immutable"
+                : "no-cache",
+    };
+
+    public static void UseBundledFrontend(this WebApplication app) => app.UseStaticFiles(FrontendFiles);
+
+    // Client-side routes get the SPA shell; unknown API paths stay 404s.
+    public static void MapBundledFrontend(this WebApplication app)
+    {
+        app.MapFallbackToFile("index.html", FrontendFiles);
+        app.MapFallback("/api/{**path}", () => Results.NotFound());
+    }
 
     public static bool FixedTimeEquals(string? a, string? b) =>
         a is not null && b is not null

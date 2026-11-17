@@ -1,4 +1,5 @@
 import { useEffect, useMemo } from 'react'
+import { createPortal } from 'react-dom'
 import { systemName } from '../lib/gameSystems'
 import type { ArmyList, ListEntry } from '../lib/lists'
 import { OverflowMenu } from '../ui/OverflowMenu'
@@ -23,7 +24,8 @@ export function PlayView({ list, context, onClose }: { list: ArmyList; context?:
     list.total > 0 ? `${list.total} pts` : null,
   ].filter(Boolean)
 
-  return (
+  // Portaled to body so a themed .card can't anchor or clip the full-screen view.
+  return createPortal(
     <div className="play-view">
       <header className="play-head">
         <button type="button" className="play-back" aria-label="Close play view" onClick={onClose}>
@@ -63,7 +65,8 @@ export function PlayView({ list, context, onClose }: { list: ArmyList; context?:
         ))}
         {list.entries.length === 0 && <p className="hint">No units in this list.</p>}
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
 

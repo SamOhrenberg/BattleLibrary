@@ -44,7 +44,7 @@ body:
     attributes:
       label: Where did it happen?
       options:
-        - Hosted app (samohrenberg.github.io)
+        - Self-hosted Docker image
         - Local development build
     validations:
       required: true

@@ -1,0 +1,24 @@
+# Build outputs and dependencies
+**/bin/
+**/obj/
+**/node_modules/
+**/dist/
+**/.vs/
+**/*.user
+
+# Local config and secrets never belong in a published image
+**/.env
+**/.env.local
+**/.env.*.local
+**/*.local
+**/appsettings.json
+**/appsettings.Development.json
+
+# Not needed to build the image
+.git/
+.github/
+.claude/
+deploy/
+CLAUDE.md
+CLAUDE.local.md
+changes.md

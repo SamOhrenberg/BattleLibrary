@@ -1,0 +1,38 @@
+# Self-hosted Battle Library: app + PostgreSQL.
+# Put a filled-in .env (from .env.example) next to this file, then: docker compose up -d
+name: battle-library
+
+services:
+  app:
+    image: ghcr.io/samohrenberg/battlelibrary:${BATTLE_LIBRARY_VERSION:-latest}
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "${HTTP_PORT:-8080}:8080"
+    environment:
+      ConnectionStrings__Default: "Host=db;Port=5432;Database=battlelibrary;Username=battlelibrary;Password=${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env};Gss Encryption Mode=Disable"
+      Jwt__Key: "${JWT_KEY:?Set JWT_KEY in .env (at least 32 characters)}"
+      Admin__SeedEmails__0: "${ADMIN_EMAIL:-}"
+      OAuth__PublicUrl: "${PUBLIC_URL:-}"
+      OAuth__FrontendUrl: "${PUBLIC_URL:-}"
+      Axiom__Token: "${AXIOM_TOKEN:-}"
+
+  db:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: battlelibrary
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}"
+      POSTGRES_DB: battlelibrary
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U battlelibrary -d battlelibrary"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  pgdata:

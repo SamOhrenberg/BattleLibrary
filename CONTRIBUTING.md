@@ -106,7 +106,7 @@ includes the TypeScript type check.
 3. Make sure the backend builds, the tests pass, and the UI lints and builds.
 4. Fill in the PR template, including screenshots (phone width) for UI changes.
 
-I review, test, and merge contributions. A merge to main automatically publishes the UI to Pages, so main must remain deployable. That is why unrelated cleanup, speculative refactoring, or dependency upgrades should not be mixed into otherwise focused changes.
+I review, test, and merge contributions. A merge to main automatically publishes the `latest` Docker image that self-hosters pull, so main must remain deployable. That is why unrelated cleanup, speculative refactoring, or dependency upgrades should not be mixed into otherwise focused changes.
 
 ### AI-assisted contributions
 

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { ApiError } from '../lib/api'
 import { GAME_SYSTEMS, systemName } from '../lib/gameSystems'
 import {
@@ -68,6 +68,21 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
   const [highlightId, setHighlightId] = useState<string | null>(null)
   const [renamingForce, setRenamingForce] = useState<{ id: string; name: string } | null>(null)
   const lastSaved = useRef(JSON.stringify(detailsOf(initial)))
+  const nameRef = useRef<HTMLTextAreaElement>(null)
+
+  // Grows the name field to fit its wrapped text.
+  useLayoutEffect(() => {
+    const el = nameRef.current
+    if (!el) return
+    const fit = () => {
+      el.style.height = 'auto'
+      el.style.height = `${el.scrollHeight + el.offsetHeight - el.clientHeight}px`
+    }
+    fit()
+    void document.fonts?.ready.then(fit)
+    window.addEventListener('resize', fit)
+    return () => window.removeEventListener('resize', fit)
+  }, [details.name])
 
   useEffect(() => {
     getPresets(list.gameSystemKey)
@@ -396,10 +411,18 @@ export function ListBuilder({ initial, onBack, onDeleted }: Props) {
           <button type="button" className="tour-skip" onClick={onBack} style={{ textAlign: 'left' }}>
             ← All lists
           </button>
-          <input
+          <textarea
+            ref={nameRef}
             className="builder-name"
+            rows={1}
             value={details.name}
-            onChange={(e) => setDetails((d) => ({ ...d, name: e.target.value }))}
+            onChange={(e) => setDetails((d) => ({ ...d, name: e.target.value.replace(/[\r\n]+/g, ' ') }))}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                e.currentTarget.blur()
+              }
+            }}
             onBlur={() => void saveDetails()}
             aria-label="List name"
             maxLength={120}

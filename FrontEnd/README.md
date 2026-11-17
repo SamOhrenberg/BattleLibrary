@@ -19,8 +19,8 @@ npm run preview   # serve the production build locally
 Build-time variables (see `.env.example`; `.env.development` is used by
 `npm run dev`):
 
-- `VITE_API_BASE_URL`: base URL of the API, no trailing slash
-- `VITE_BASE`: base path for the build, `/BattleLibrary/` on GitHub Pages
+- `VITE_API_BASE_URL`: base URL of the API, no trailing slash. Empty means the
+  same origin, as in the Docker image.
 
 ## Layout
 

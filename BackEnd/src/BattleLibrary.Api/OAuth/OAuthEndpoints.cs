@@ -102,7 +102,7 @@ public static class OAuthEndpoints
 
     // Validates the request, then hands off to the SPA's consent screen.
     private static async Task<IResult> Authorize(
-        HttpContext http, BattleLibraryDbContext db, IOptions<OAuthOptions> options, CancellationToken ct)
+        HttpContext http, BattleLibraryDbContext db, IOptions<OAuthOptions> options, IWebHostEnvironment env, CancellationToken ct)
     {
         var q = http.Request.Query;
         var redirectUri = q["redirect_uri"].ToString();
@@ -123,12 +123,16 @@ public static class OAuthEndpoints
         {
             return Results.Redirect(ErrorRedirect(redirectUri, "invalid_request", "PKCE with S256 is required.", state, issuer));
         }
-        if (string.IsNullOrWhiteSpace(options.Value.FrontendUrl))
+        // A bundled UI shares this origin, so the consent screen needs no configured URL.
+        var frontendUrl = !string.IsNullOrWhiteSpace(options.Value.FrontendUrl) ? options.Value.FrontendUrl
+            : env.HasBundledFrontend() ? $"{issuer}/"
+            : null;
+        if (frontendUrl is null)
         {
             return Results.Text("Sign-in for connected apps is not configured on this server.", "text/plain", statusCode: 503);
         }
 
-        return Results.Redirect(OAuthRules.AppendQuery(options.Value.FrontendUrl,
+        return Results.Redirect(OAuthRules.AppendQuery(frontendUrl,
         [
             new("oauth_authorize", "1"),
             new("client_id", client.PublicId),
